@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --navy: #07375a;
+    --navy2: #062b47;
+    --gold: #d8a83e;
+    --cream: #fbfaf7;
+    --line: #dce8ef;
+    --text: #143b59;
+    --muted: #6f8291;
+    --font-heading: 'Amiri', 'Traditional Arabic', serif;
+    --font-body: 'Tajawal', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: #f6f9fb;
+    color: var(--text);
+  }
+
+  h1, h2, h3, .font-literary {
+    font-family: var(--font-heading);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #eef2f7;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0b385e;
+}
+
+/* Literary Marquee Animation */
+@keyframes marquee-rtl {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(50%); }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee-rtl 55s linear infinite;
+}
+
+/* 3D Hardcover Book Effects */
+.book-3d-card {
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+  transform: perspective(800px) rotateY(-3deg);
+}
+
+.book-3d-card:hover {
+  transform: perspective(800px) rotateY(-8deg) rotateX(3deg) translateY(-5px);
+  box-shadow: -14px 16px 28px rgba(7, 36, 60, 0.35), 0 0 12px rgba(223, 168, 91, 0.25);
+}
+
+.book-spine-effect {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.45) 0%, rgba(255, 255, 255, 0.2) 40%, rgba(0, 0, 0, 0.25) 100%);
+  pointer-events: none;
+  border-top-right-radius: inherit;
+  border-bottom-right-radius: inherit;
+}
+
+/* Golden Gilded Border Hover Glow */
+.gold-gilded-card {
+  border: 1px solid rgba(223, 168, 91, 0.3);
+  transition: all 0.3s ease;
+}
+
+.gold-gilded-card:hover {
+  border-color: rgba(223, 168, 91, 0.8);
+  box-shadow: 0 8px 24px -4px rgba(7, 36, 60, 0.12), 0 0 16px rgba(223, 168, 91, 0.2);
+}
+

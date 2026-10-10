@@ -1,0 +1,6 @@
+{
+  "name": "الموقع الرسمي للكاتب أ. نبيل بركات",
+  "description": "الموقع الشخصي والأدبي للكاتب أ. نبيل بركات: مؤلفات وكتب، مقاطع وفيديوهات تيكتوك، ألبوم صور وفعاليات ثقافية، مقالات وأخبار، وروابط وتواصل ومراسلة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

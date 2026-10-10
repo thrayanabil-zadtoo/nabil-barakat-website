@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>الكاتب أ. نبيل بركات</title>
+<meta name="description" content="الموقع الشخصي الخاص بالكاتب أ. نبيل بركات">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-mini">✒️ <span>موقع خاص</span></div>
+  <nav>
+    <a href="#home">الرئيسية</a><a href="#books">المؤلفات</a><a href="#videos">الفيديوهات</a><a href="#photos">الصور</a><a href="#news">الأخبار</a><a href="#links">الروابط والمواقع</a><a href="#contact">تواصل معي</a>
+  </nav>
+  <button class="admin-btn" id="openAdmin">⚙ لوحة التحكم</button>
+</header>
+
+<main>
+<section id="home" class="hero">
+  <div class="hero-copy">
+    <span class="eyebrow">الكاتب</span>
+    <h1>أ. نبيل بركات</h1>
+    <div class="quill">✦</div>
+    <p class="tagline">حروفي مرآتي وصمتي قصيدة</p>
+    <p class="intro">مساحة شخصية تحفظ المؤلفات، الصور، الفيديوهات، الأخبار والروابط في مكان واحد.</p>
+    <div class="hero-actions"><a class="gold-btn" href="#books">استكشف مؤلفاتي</a><a class="ghost-btn" href="#contact">تواصل معي</a></div>
+  </div>
+  <div class="hero-photo"><img src="assets/author.jpg" alt="صورة الكاتب أ. نبيل بركات"></div>
+</section>
+
+<section class="quick-grid">
+  <a href="#books" class="quick active"><b>📚</b><span>مؤلفاتي</span><small>كتبي وإصداراتي</small></a>
+  <a href="#videos" class="quick"><b>▶</b><span>فيديوهاتي</span><small>مقاطع TikTok</small></a>
+  <a href="#photos" class="quick"><b>▣</b><span>صوري</span><small>معرض الصور</small></a>
+  <a href="#news" class="quick"><b>▤</b><span>أخباري</span><small>آخر الأخبار والكتابات</small></a>
+  <a href="#links" class="quick"><b>🔗</b><span>الروابط والمواقع</span><small>مواقع وحسابات مهمة</small></a>
+  <a href="#contact" class="quick"><b>💬</b><span>تواصل معي</span><small>رسائل وتعليقات</small></a>
+</section>
+
+<section class="content-grid">
+<aside class="sidebar">
+  <div class="card contact-card" id="contact">
+    <h2>تواصل معي</h2><p class="muted">يسعدني تواصلك</p>
+    <form id="messageForm"><input id="senderName" placeholder="الاسم" required><input id="senderEmail" type="email" placeholder="البريد الإلكتروني"><textarea id="messageText" placeholder="الرسالة" required></textarea><button class="primary" type="submit">إرسال الرسالة</button></form>
+  </div>
+  <div class="card"><h2>آخر التعليقات</h2><div id="commentsList" class="comments"></div><form id="commentForm" class="comment-form"><input id="commentName" placeholder="اسمك" required><textarea id="commentText" placeholder="اكتب تعليقك..." required></textarea><button class="primary">إضافة تعليق</button></form></div>
+</aside>
+
+<div class="main-column">
+<section id="books" class="card section"><div class="section-head"><h2>أحدث مؤلفاتي</h2><a href="#books">عرض جميع الكتب ←</a></div><div class="book-grid" id="booksGrid"></div></section>
+<section id="videos" class="card section"><div class="section-head"><h2>أحدث الفيديوهات</h2><a href="#videos">عرض جميع الفيديوهات ←</a></div><div class="video-grid" id="videosGrid"></div></section>
+<section id="photos" class="card section"><div class="section-head"><h2>معرض الصور</h2><a href="#photos">كل الصور ←</a></div><div class="photo-grid" id="photosGrid"></div></section>
+</div>
+
+<aside class="news-column">
+<section id="news" class="card section"><div class="section-head"><h2>آخر الأخبار</h2><a href="#news">عرض جميع الأخبار ←</a></div><div id="newsList"></div></section>
+<section id="links" class="card section"><div class="section-head"><h2>الروابط والمواقع</h2><a href="#links">عرض الروابط ←</a></div><div class="links-grid" id="linksGrid"></div></section>
+</aside>
+</section>
+
+<section class="quote">« الكتابة ليست مجرد حروف... بل حياة أخرى نعيشها » <span>— نبيل بركات</span></section>
+</main>
+
+<footer><span>© <span id="year"></span> الكاتب أ. نبيل بركات — جميع الحقوق محفوظة</span><span>حروفي مرآتي وصمتي قصيدة</span></footer>
+
+<div class="modal" id="adminModal"><div class="modal-box"><button class="close" id="closeAdmin">×</button><h2>لوحة التحكم الخاصة</h2><p class="muted">هذه النسخة تعمل محليًا داخل المتصفح لإدارة المحتوى التجريبي.</p><div class="tabs"><button data-tab="booksTab">الكتب</button><button data-tab="newsTab">الأخبار</button><button data-tab="videosTab">الفيديوهات</button></div><div id="booksTab" class="tab-panel"><form id="bookForm"><input id="bookTitle" placeholder="اسم الكتاب" required><input id="bookDesc" placeholder="وصف مختصر"><input id="bookCover" type="file" accept="image/*"><button class="primary">إضافة كتاب</button></form></div><div id="newsTab" class="tab-panel hidden"><form id="newsForm"><input id="newsTitle" placeholder="عنوان الخبر" required><textarea id="newsBody" placeholder="نص الخبر"></textarea><button class="primary">إضافة خبر</button></form></div><div id="videosTab" class="tab-panel hidden"><form id="videoForm"><input id="videoTitle" placeholder="عنوان الفيديو" required><input id="videoUrl" placeholder="رابط TikTok"><button class="primary">إضافة فيديو</button></form></div><button id="resetData" class="danger">إعادة المحتوى التجريبي</button></div></div>
+<script src="app.js"></script>
+</body></html>
