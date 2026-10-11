@@ -26,15 +26,10 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Deploy to Firebase Hosting (Service Account)
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' || secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT != '' }}
+      - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT }}
           channelId: live
-          projectId: ${{ secrets.FIREBASE_PROJECT_ID || 'nabil-barakat-website' }}
-
-      - name: Deploy to Firebase Hosting (Token Fallback)
-        if: ${{ (secrets.FIREBASE_SERVICE_ACCOUNT == '' && secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT == '') && secrets.FIREBASE_TOKEN != '' }}
-        run: npx firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
+          projectId: nabil-barakat-website
