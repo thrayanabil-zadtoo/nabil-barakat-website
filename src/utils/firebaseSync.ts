@@ -75,10 +75,14 @@ export function subscribeToCloudSiteData(onUpdate: (data: SyncedSiteData) => voi
       if (snapshot.exists()) {
         const data = snapshot.data() as SyncedSiteData;
         onUpdate(data);
+      } else {
+        // Notify listener that database connection is active and ready for initial data
+        onUpdate({});
       }
     },
     (error) => {
       console.warn('[Firestore] Sync subscription notice:', error.message);
+      onUpdate({});
     }
   );
 
@@ -103,8 +107,6 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
 // Save all or partial site data to Firestore
 let syncTimeout: any = null;
 export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>): Promise<void> {
-  const docRef = doc(db, CONTENT_DOC_PATH, CONTENT_DOC_ID);
-  
   if (syncTimeout) {
     clearTimeout(syncTimeout);
   }
@@ -116,13 +118,27 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>): Promis
           ...data,
           updatedAt: new Date().toISOString(),
         };
-        await setDoc(docRef, payload, { merge: true });
+
+        // 1. Save to main aggregate doc
+        const mainDocRef = doc(db, CONTENT_DOC_PATH, CONTENT_DOC_ID);
+        await setDoc(mainDocRef, payload, { merge: true });
+
+        // 2. Also modularly save books and profile separately to avoid 1MB document limit
+        if (data.books) {
+          const booksDocRef = doc(db, CONTENT_DOC_PATH, 'books');
+          await setDoc(booksDocRef, { books: data.books, updatedAt: new Date().toISOString() });
+        }
+        if (data.authorProfile) {
+          const profileDocRef = doc(db, CONTENT_DOC_PATH, 'profile');
+          await setDoc(profileDocRef, { authorProfile: data.authorProfile, updatedAt: new Date().toISOString() });
+        }
+
         console.log('[Firestore] Site data successfully saved to cloud.');
         resolve();
       } catch (error) {
         console.error('[Firestore] Failed to save to cloud:', error);
         resolve();
       }
-    }, 400);
+    }, 250);
   });
 }

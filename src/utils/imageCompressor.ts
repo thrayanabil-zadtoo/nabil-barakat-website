@@ -5,9 +5,9 @@
 
 export const compressImage = (
   fileOrDataUrl: File | string,
-  maxWidth = 1200,
-  maxHeight = 1200,
-  quality = 0.82
+  maxWidth = 720,
+  maxHeight = 960,
+  quality = 0.75
 ): Promise<string> => {
   return new Promise((resolve) => {
     // If it's already a small asset path (like /author.jpg or /src/assets/...), return as is

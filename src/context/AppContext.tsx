@@ -174,14 +174,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const hydrateFromIDB = async () => {
       try {
         const idbBooks = await loadFromIndexedDB<Book[]>('nabil_author_v4_books');
-        if (idbBooks && Array.isArray(idbBooks) && idbBooks.length >= 3) {
-          setBooks((current) => {
-            const hasMorePages = idbBooks.some((ib) => {
-              const cb = current.find((c) => c.id === ib.id);
-              return cb && (ib.samplePages?.length || 0) > (cb.samplePages?.length || 0);
-            });
-            return hasMorePages ? idbBooks : current;
-          });
+        if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
+          setBooks(idbBooks);
+        }
+        const idbProfile = await loadFromIndexedDB<AuthorProfile>('nabil_author_v4_profile');
+        if (idbProfile && idbProfile.name) {
+          setAuthorProfile((prev) => ({ ...prev, ...idbProfile }));
+        }
+        const idbPhotos = await loadFromIndexedDB<PhotoItem[]>('nabil_author_v4_photos');
+        if (idbPhotos && Array.isArray(idbPhotos)) {
+          setPhotos(idbPhotos);
+        }
+        const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos');
+        if (idbVideos && Array.isArray(idbVideos)) {
+          setVideos(idbVideos);
+        }
+        const idbNews = await loadFromIndexedDB<NewsItem[]>('nabil_author_v4_news');
+        if (idbNews && Array.isArray(idbNews)) {
+          setNews(idbNews);
         }
       } catch (err) {
         console.warn('IDB hydration check:', err);
@@ -562,14 +572,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateAuthorHeaderPhoto = async (headerBannerImage: string, portraitImage?: string) => {
-    const optimizedBanner = headerBannerImage ? await compressImage(headerBannerImage, 1920, 1080, 0.82) : '';
-    const optimizedPortrait = portraitImage ? await compressImage(portraitImage, 800, 800, 0.82) : undefined;
-    setAuthorProfile((prev) => ({
-      ...prev,
-      headerBannerImage: optimizedBanner,
-      portraitImage: optimizedPortrait || prev.portraitImage,
-    }));
-    showToast('تم تحديث صورة وبيانات الهيدر بنجاح!');
+    const optimizedBanner = headerBannerImage ? await compressImage(headerBannerImage, 1200, 700, 0.75) : '';
+    const optimizedPortrait = portraitImage ? await compressImage(portraitImage, 600, 600, 0.75) : undefined;
+    setAuthorProfile((prev) => {
+      const next = {
+        ...prev,
+        headerBannerImage: optimizedBanner,
+        portraitImage: optimizedPortrait || prev.portraitImage,
+      };
+      safeSetItem('nabil_author_v4_profile', next);
+      saveSiteDataToCloud({ authorProfile: next });
+      return next;
+    });
+    showToast('تم تحديث صورة وبيانات الهيدر وحفظها سحابياً!');
   };
 
   // Sync with LocalStorage & IndexedDB safely without crashing on quota
@@ -647,8 +662,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateAuthorProfile = (profile: Partial<AuthorProfile>) => {
-    setAuthorProfile((prev) => ({ ...prev, ...profile }));
-    showToast('تم تحديث البيانات الشخصية للكاتب بنجاح');
+    setAuthorProfile((prev) => {
+      const next = { ...prev, ...profile };
+      safeSetItem('nabil_author_v4_profile', next);
+      saveSiteDataToCloud({ authorProfile: next });
+      return next;
+    });
+    showToast('تم تحديث البيانات الشخصية للكاتب وحفظها سحابياً');
   };
 
   // Books
@@ -661,27 +681,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBooks((prev) => {
       const next = [newBook, ...prev];
       safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب بنجاح');
+    showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب وحفظه سحابياً');
   };
 
   const updateBook = (id: string, updated: Partial<Book>) => {
     setBooks((prev) => {
       const next = prev.map((b) => (b.id === id ? { ...b, ...updated } : b));
       safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast('تم حفظ تعديلات الكتاب في قاعدة البيانات');
+    showToast('تم حفظ تعديلات الكتاب في قاعدة البيانات سحابياً');
   };
 
   const deleteBook = (id: string) => {
     setBooks((prev) => {
       const next = prev.filter((b) => b.id !== id);
       safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast('تم حذف الكتاب من القائمة');
+    showToast('تم حذف الكتاب من القائمة وتحديث السحابة');
   };
 
   const setBookPdf = (bookId: string, pdfUrl: string, pdfFileName?: string) => {
@@ -690,9 +713,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setBookCover = async (bookId: string, coverImage: string) => {
-    const optimizedCover = await compressImage(coverImage, 900, 1200, 0.82);
+    const optimizedCover = await compressImage(coverImage, 640, 860, 0.75);
     setBooks((prev) => {
-      return prev.map((b) => {
+      const next = prev.map((b) => {
         if (b.id !== bookId) return b;
         const cleanedGallery = (b.galleryImages || []).filter(
           (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
@@ -705,13 +728,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: newGallery,
         };
       });
+      safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
+      return next;
     });
-    showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح');
+    showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح وحفظها سحابياً');
   };
 
   const deleteBookGalleryImage = (bookId: string, imageIndex: number) => {
     setBooks((prev) => {
-      return prev.map((b) => {
+      const next = prev.map((b) => {
         if (b.id !== bookId) return b;
         const newGallery = [...(b.galleryImages || [])];
         const removed = newGallery.splice(imageIndex, 1)[0];
@@ -726,6 +752,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: newGallery,
         };
       });
+      safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
+      return next;
     });
     showToast('تم حذف العنصر من معرض الكتاب بنجاح');
   };
@@ -735,10 +764,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isVideo = isVideoMedia(mediaUrl);
     let finalMedia = mediaUrl;
     if (!isVideo) {
-      finalMedia = await compressImage(mediaUrl, 1200, 1200, 0.82);
+      finalMedia = await compressImage(mediaUrl, 800, 800, 0.75);
     }
     setBooks((prev) => {
-      return prev.map((b) => {
+      const next = prev.map((b) => {
         if (b.id !== bookId) return b;
         const current = (b.galleryImages || []).filter(
           (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
@@ -748,8 +777,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: [...current, finalMedia],
         };
       });
+      safeSetItem('nabil_author_v4_books', next);
+      saveSiteDataToCloud({ books: next });
+      return next;
     });
-    showToast(isVideo ? 'تمت إضافة الفيديو إلى معرض الكتاب بنجاح' : 'تمت إضافة الصورة إلى معرض الكتاب بنجاح');
+    showToast(isVideo ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً' : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً');
   };
 
   const addBookComment = (bookId: string, commentData: Omit<BookComment, 'id' | 'date'>) => {
@@ -827,18 +859,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `vid-${Date.now()}`,
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
     };
-    setVideos((prev) => [newVideo, ...prev]);
-    showToast('تمت إضافة مقطع الفيديو بنجاح');
+    setVideos((prev) => {
+      const next = [newVideo, ...prev];
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
+      return next;
+    });
+    showToast('تمت إضافة مقطع الفيديو وحفظه سحابياً');
   };
 
   const updateVideo = (id: string, updated: Partial<VideoItem>) => {
-    setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, ...updated } : v)));
-    showToast('تم تحديث بيانات الفيديو');
+    setVideos((prev) => {
+      const next = prev.map((v) => (v.id === id ? { ...v, ...updated } : v));
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
+      return next;
+    });
+    showToast('تم تحديث بيانات الفيديو وحفظها سحابياً');
   };
 
   const deleteVideo = (id: string) => {
-    setVideos((prev) => prev.filter((v) => v.id !== id));
-    showToast('تم إزالة الفيديو');
+    setVideos((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
+      return next;
+    });
+    showToast('تم إزالة الفيديو وتحديث السحابة');
   };
 
   const togglePinVideo = (id: string) => {
@@ -850,6 +897,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...target, isPinned: isNowPinned };
       const rest = prev.filter((v) => v.id !== id);
       const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
       showToast(isNowPinned ? `تم تثبيت مقطع الفيديو في المقدمة 📌` : `تم إلغاء تثبيت مقطع الفيديو`);
       return next;
     });
@@ -865,6 +914,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const temp = next[idx];
       next[idx] = next[targetIdx];
       next[targetIdx] = temp;
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
       showToast(`تم تغيير ترتيب الفيديو إلى المركز (${targetIdx + 1})`);
       return next;
     });
@@ -879,6 +930,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = [...prev];
       const [item] = next.splice(idx, 1);
       next.splice(targetIdx, 0, item);
+      safeSetItem('nabil_author_v4_videos', next);
+      saveSiteDataToCloud({ videos: next });
       showToast(`تم تغيير ترتيب الفيديو ليصبح في المركز (${targetIdx + 1})`);
       return next;
     });
@@ -888,25 +941,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addPhoto = async (photoData: Omit<PhotoItem, 'id'>) => {
     let optimizedUrl = photoData.imageUrl;
     if (optimizedUrl && optimizedUrl.startsWith('data:image/')) {
-      optimizedUrl = await compressImage(optimizedUrl, 1280, 1280, 0.82);
+      optimizedUrl = await compressImage(optimizedUrl, 800, 800, 0.75);
     }
     const newPhoto: PhotoItem = {
       ...photoData,
       imageUrl: optimizedUrl,
       id: `p-${Date.now()}`,
     };
-    setPhotos((prev) => [newPhoto, ...prev]);
-    showToast('تمت إضافة الصورة إلى الألبوم بنجاح');
+    setPhotos((prev) => {
+      const next = [newPhoto, ...prev];
+      safeSetItem('nabil_author_v4_photos', next);
+      saveSiteDataToCloud({ photos: next });
+      return next;
+    });
+    showToast('تمت إضافة الصورة إلى الألبوم وحفظها سحابياً');
   };
 
   const updatePhoto = (id: string, updated: Partial<PhotoItem>) => {
-    setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
-    showToast('تم تحديث بيانات الصورة');
+    setPhotos((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
+      safeSetItem('nabil_author_v4_photos', next);
+      saveSiteDataToCloud({ photos: next });
+      return next;
+    });
+    showToast('تم تحديث بيانات الصورة وحفظها سحابياً');
   };
 
   const deletePhoto = (id: string) => {
-    setPhotos((prev) => prev.filter((p) => p.id !== id));
-    showToast('تم حذف الصورة من الألبوم');
+    setPhotos((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      safeSetItem('nabil_author_v4_photos', next);
+      saveSiteDataToCloud({ photos: next });
+      return next;
+    });
+    showToast('تم حذف الصورة من الألبوم وتحديث السحابة');
   };
 
   const togglePinPhoto = (id: string) => {

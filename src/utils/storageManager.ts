@@ -113,32 +113,9 @@ export const safeSetItem = (key: string, rawData: unknown): boolean => {
       localStorage.setItem(key, serialized);
       return true;
     } catch {
-      // 2. If it still fails, for large arrays like 'books', create a lightweight version for localStorage
-      try {
-        if (Array.isArray(rawData)) {
-          // Downsample or strip heavy raw base64 data for the localStorage cache
-          const sanitized = rawData.map((item: any) => {
-            if (typeof item === 'object' && item !== null) {
-              const copy = { ...item };
-              // If coverImage is huge base64, truncate or fallback
-              if (copy.coverImage && typeof copy.coverImage === 'string' && copy.coverImage.length > 500000) {
-                copy.coverImage = copy.coverImage.slice(0, 100); // mark as needing fallback or reload from idb
-              }
-              // Limit sample pages or gallery images if extremely large
-              if (Array.isArray(copy.galleryImages)) {
-                copy.galleryImages = copy.galleryImages.slice(0, 6);
-              }
-              return copy;
-            }
-            return item;
-          });
-          localStorage.setItem(key, JSON.stringify(sanitized));
-          return true;
-        }
-      } catch {
-        // Safe catch - never crash the application
-        console.warn(`[Storage] Could not write to localStorage for ${key}. Data safely kept in memory and IndexedDB.`);
-      }
+      // If localStorage is full, IndexedDB already holds the full persistent state safely
+      console.warn(`[Storage] LocalStorage quota reached for ${key}. Data is reliably backed up in IndexedDB.`);
+      return true;
     }
   }
 
