@@ -93,41 +93,30 @@ export const Navbar: React.FC = () => {
           <span className="font-bold text-sm text-[#f6ebd9]">الكاتب أ. نبيل بركات</span>
         </div>
 
-        {/* Left Side: "موقع خاص" (Private Site & Supervisor Login / Panel Button) */}
-        <div className="flex items-center gap-2">
-          {isAuthorMode ? (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setIsAdminPanelOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-[#dfa85b] border-[#c4924c] text-[#092b45] shadow transition cursor-pointer"
-                title="لوحة تحكم المشرف وإدارة المحتوى"
-              >
-                <Settings className="w-3.5 h-3.5 text-[#092b45]" />
-                <span>لوحة التحكم</span>
-                {unreadMessagesCount > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-                )}
-              </button>
-              <button
-                onClick={logoutSupervisor}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 transition cursor-pointer"
-                title="تسجيل خروج المشرف وقفل الصلاحيات"
-              >
-                <LogOut className="w-3.5 h-3.5 text-rose-400" />
-                <span className="hidden sm:inline">خروج</span>
-              </button>
-            </div>
-          ) : (
+        {/* Left Side: Supervisor Controls (Visible only when logged in; login button is in Footer) */}
+        {isAuthorMode && (
+          <div className="flex items-center gap-1.5">
             <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#10436d] bg-[#082c49] text-[#e5edf5] hover:bg-[#0f4470] hover:text-white transition shadow-sm cursor-pointer"
-              title="تسجيل دخول المشرف (موقع خاص)"
+              onClick={() => setIsAdminPanelOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-[#dfa85b] border-[#c4924c] text-[#092b45] shadow transition cursor-pointer"
+              title="لوحة تحكم المشرف وإدارة المحتوى"
             >
-              <Lock className="w-3.5 h-3.5 text-[#dfa85b]" />
-              <span>موقع خاص (دخول المشرف)</span>
+              <Settings className="w-3.5 h-3.5 text-[#092b45]" />
+              <span>لوحة التحكم</span>
+              {unreadMessagesCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
+              )}
             </button>
-          )}
-        </div>
+            <button
+              onClick={logoutSupervisor}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 transition cursor-pointer"
+              title="تسجيل خروج المشرف وقفل الصلاحيات"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">خروج</span>
+            </button>
+          </div>
+        )}
 
       </div>
 

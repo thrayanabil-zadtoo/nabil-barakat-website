@@ -25,6 +25,7 @@ import {
 import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/storageManager';
 import { compressImage } from '../utils/imageCompressor';
 import { isVideoMedia } from '../utils/mediaUtils';
+import { subscribeToCloudSiteData, saveSiteDataToCloud } from '../utils/firebaseSync';
 
 interface AppContextType {
   authorProfile: AuthorProfile;
@@ -120,7 +121,7 @@ interface AppContextType {
   setIsAdminPanelOpen: (val: boolean) => void;
   isLoginModalOpen: boolean;
   setIsLoginModalOpen: (val: boolean) => void;
-  loginAsSupervisor: (user: string, pass: string) => { success: boolean; error?: string };
+  loginAsSupervisor: (user: string, pass: string) => { success: boolean; error?: string; attempts?: number; isBlocked?: boolean; remainingSeconds?: number };
   logoutSupervisor: () => void;
   isUnlocked: boolean;
   setIsUnlocked: (val: boolean) => void;
@@ -158,6 +159,10 @@ interface AppContextType {
 
   // Reset demo data
   resetAllData: () => void;
+
+  // Cloud Sync Status & Actions
+  isCloudSynced: boolean;
+  syncAllToCloudNow: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -345,6 +350,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isUnlocked, setIsUnlocked] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Firebase Cloud Synchronization State
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
+  const isCloudHydrated = React.useRef<boolean>(false);
+
+  // Subscribe to real-time changes from Firebase Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToCloudSiteData((cloudData) => {
+      if (cloudData && Object.keys(cloudData).length > 0) {
+        if (cloudData.authorProfile) {
+          setAuthorProfile((prev) => ({ ...prev, ...cloudData.authorProfile }));
+        }
+        if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
+          setBooks(cloudData.books);
+        }
+        if (cloudData.videos && Array.isArray(cloudData.videos)) {
+          setVideos(cloudData.videos);
+        }
+        if (cloudData.photos && Array.isArray(cloudData.photos)) {
+          setPhotos(cloudData.photos);
+        }
+        if (cloudData.news && Array.isArray(cloudData.news)) {
+          setNews(cloudData.news);
+        }
+        if (cloudData.links && Array.isArray(cloudData.links)) {
+          setLinks(cloudData.links);
+        }
+        if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
+          setAnnouncements(cloudData.announcements);
+        }
+        if (cloudData.comments && Array.isArray(cloudData.comments)) {
+          setComments(cloudData.comments);
+        }
+        if (cloudData.messages && Array.isArray(cloudData.messages)) {
+          setMessages(cloudData.messages);
+        }
+        setIsCloudSynced(true);
+        isCloudHydrated.current = true;
+      } else {
+        // First initialization: seed baseline data to Firestore
+        saveSiteDataToCloud({
+          authorProfile,
+          books,
+          videos,
+          photos,
+          news,
+          links,
+          announcements,
+        });
+        isCloudHydrated.current = true;
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const syncAllToCloudNow = async () => {
+    try {
+      showToast('جاري حفظ ومزامنة كافة بيانات وكتب الموقع سحابياً على Firebase...');
+      await saveSiteDataToCloud({
+        authorProfile,
+        books,
+        videos,
+        photos,
+        news,
+        links,
+        announcements,
+        comments,
+        messages,
+      });
+      setIsCloudSynced(true);
+      isCloudHydrated.current = true;
+      showToast('تم الحفظ السحابي بنجاح! التعديلات ظاهرة الآن لجميع زوار الموقع حول العالم.');
+    } catch (e) {
+      console.error(e);
+      showToast('حدث خطأ أثناء الحفظ السحابي.');
+    }
+  };
+
   // CV Service monetization toggle (configurable by supervisor)
   const [cvFeesEnabled, setCvFeesEnabled] = useState<boolean>(() => {
     return localStorage.getItem('nabil_cv_fees_enabled') === 'true';
@@ -360,6 +443,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginAsSupervisor = (usernameInput: string, passwordInput: string) => {
+    const now = Date.now();
+    const storedBlockTime = parseInt(localStorage.getItem('nabil_login_blocked_until') || '0', 10);
+
+    // If currently blocked, prevent attempts
+    if (storedBlockTime > now) {
+      const remainingMinutes = Math.ceil((storedBlockTime - now) / 60000);
+      return {
+        success: false,
+        isBlocked: true,
+        remainingSeconds: Math.ceil((storedBlockTime - now) / 1000),
+        error: `⛔ تم حظر تسجيل الدخول مؤقتاً لتكرار إدخال كلمة المرور بشكل خاطئ (3 محاولات فاشلة). يُرجى الانتظار ${remainingMinutes} دقيقة لحين انتهاء الحظر الأمني.`,
+      };
+    }
+
     const cleanUser = usernameInput.trim().toLowerCase();
     const cleanPass = passwordInput.trim();
 
@@ -367,14 +464,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsAuthorMode(true);
       setIsVisitorPreviewMode(false);
       localStorage.setItem('isSupervisorLoggedIn', 'true');
+      localStorage.removeItem('nabil_login_failed_attempts');
+      localStorage.removeItem('nabil_login_blocked_until');
       setIsLoginModalOpen(false);
       showToast('مرحباً بك يا أ. نبيل بركات.. تم تسجيل دخول المشرف بنجاح');
       return { success: true };
     } else {
-      return {
-        success: false,
-        error: 'اسم المستخدم أو كلمة المرور غير صحيحة. هذا الفضاء مخصص حصراً لإدارة المشرف.',
-      };
+      const currentAttempts = parseInt(localStorage.getItem('nabil_login_failed_attempts') || '0', 10);
+      const newAttempts = currentAttempts + 1;
+      localStorage.setItem('nabil_login_failed_attempts', String(newAttempts));
+
+      if (newAttempts === 1) {
+        return {
+          success: false,
+          attempts: 1,
+          isBlocked: false,
+          error: 'اسم المستخدم أو كلمة المرور غير صحيحة. (المحاولة الأولى من 3)',
+        };
+      } else if (newAttempts === 2) {
+        return {
+          success: false,
+          attempts: 2,
+          isBlocked: false,
+          error: '⚠️ تنبيه أمني عاجل: كلمة المرور غير صحيحة (المحاولة 2 من 3). سيتم حظرك ومنع تسجيل الدخول بعد المحاولة الثالثة مباشرة!',
+        };
+      } else {
+        // Block user for 15 minutes after 3rd attempt
+        const blockDurationMs = 15 * 60 * 1000;
+        const blockUntil = now + blockDurationMs;
+        localStorage.setItem('nabil_login_blocked_until', String(blockUntil));
+        return {
+          success: false,
+          attempts: 3,
+          isBlocked: true,
+          remainingSeconds: 15 * 60,
+          error: '⛔ تم حظرك تلقائياً ومنع تسجيل الدخول بعد المحاولة الثالثة الخاطئة! تم قفل النظام لحماية لوحة التحكم لمدة 15 دقيقة.',
+        };
+      }
     }
   };
 
@@ -494,6 +620,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     safeSetItem('nabil_author_v4_announcements', announcements);
   }, [announcements]);
+
+  // Automatically sync and persist to Firebase Cloud when supervisor makes changes
+  useEffect(() => {
+    if (!isCloudHydrated.current) return;
+    if (isAuthorMode) {
+      saveSiteDataToCloud({
+        authorProfile,
+        books,
+        videos,
+        photos,
+        news,
+        links,
+        announcements,
+        comments,
+        messages,
+      });
+    }
+  }, [authorProfile, books, videos, photos, news, links, announcements, comments, messages, isAuthorMode]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -1181,6 +1325,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         exportAllSiteData,
         importSiteData,
         resetAllData,
+        isCloudSynced,
+        syncAllToCloudNow,
       }}
     >
       {children}

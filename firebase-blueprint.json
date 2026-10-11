@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "SiteProfile": {
+      "title": "SiteProfile",
+      "description": "Author profile details, bio, and banners",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "bio": { "type": "string" },
+        "portraitImage": { "type": "string" },
+        "headerBannerImage": { "type": "string" },
+        "email": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "title"]
+    },
+    "Book": {
+      "title": "Book",
+      "description": "Literary book or publication by the author",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "coverImage": { "type": "string" },
+        "description": { "type": "string" },
+        "publicationYear": { "type": "string" },
+        "genre": { "type": "string" },
+        "order": { "type": "number" },
+        "isPinned": { "type": "boolean" }
+      },
+      "required": ["id", "title"]
+    },
+    "MediaItem": {
+      "title": "MediaItem",
+      "description": "Video or photo gallery item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "title"]
+    },
+    "VisitorComment": {
+      "title": "VisitorComment",
+      "description": "Comments left by visitors or readers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderName": { "type": "string" },
+        "content": { "type": "string" },
+        "date": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "senderName", "content"]
+    },
+    "SiteContent": {
+      "title": "SiteContent",
+      "description": "Comprehensive synchronized website content document",
+      "type": "object",
+      "properties": {
+        "authorProfile": { "type": "object" },
+        "books": { "type": "array" },
+        "videos": { "type": "array" },
+        "photos": { "type": "array" },
+        "news": { "type": "array" },
+        "links": { "type": "array" },
+        "announcements": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["updatedAt"]
+    }
+  },
+  "firestore": {
+    "/site_content/{contentId}": {
+      "schema": "SiteContent",
+      "description": "Full synchronized website content and updates"
+    },
+    "/books/{bookId}": {
+      "schema": "Book",
+      "description": "Collection of author books"
+    },
+    "/comments/{commentId}": {
+      "schema": "VisitorComment",
+      "description": "Public comments and reviews"
+    }
+  }
+}

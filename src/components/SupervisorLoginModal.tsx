@@ -19,11 +19,19 @@ export const SupervisorLoginModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [attempts, setAttempts] = useState<number>(() => {
+    return parseInt(localStorage.getItem('nabil_login_failed_attempts') || '0', 10);
+  });
+  const [isBlocked, setIsBlocked] = useState<boolean>(() => {
+    const blockUntil = parseInt(localStorage.getItem('nabil_login_blocked_until') || '0', 10);
+    return blockUntil > Date.now();
+  });
 
   if (!isLoginModalOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlocked) return;
     setErrorMessage(null);
     setIsSubmitting(true);
 
@@ -31,9 +39,17 @@ export const SupervisorLoginModal: React.FC = () => {
       const result = loginAsSupervisor(username, password);
       if (!result.success) {
         setErrorMessage(result.error || 'بيانات الدخول غير صحيحة');
+        if (result.attempts) {
+          setAttempts(result.attempts);
+        }
+        if (result.isBlocked) {
+          setIsBlocked(true);
+        }
       } else {
         setUsername('');
         setPassword('');
+        setAttempts(0);
+        setIsBlocked(false);
       }
       setIsSubmitting(false);
     }, 300);
@@ -91,8 +107,34 @@ export const SupervisorLoginModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Error Message */}
-          {errorMessage && (
+          {/* Blocked Alert (3rd attempt) */}
+          {isBlocked && (
+            <div className="p-3.5 rounded-xl bg-rose-950 border-2 border-rose-500 text-rose-100 text-xs space-y-1 animate-pulse">
+              <div className="flex items-center gap-2 font-bold text-rose-300">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>⛔ تم تفعيل الحظر الأمني المؤقت</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-rose-200">
+                تم حظر تسجيل الدخول مؤقتاً لتكرار المحاولات الخاطئة (3 محاولات فاشلة). تم قفل لوحة التحكم لحمايتها، يرجى الانتظار لحين انتهاء فترة الحظر.
+              </p>
+            </div>
+          )}
+
+          {/* Warning Banner after 2nd failed attempt */}
+          {!isBlocked && attempts === 2 && (
+            <div className="p-3.5 rounded-xl bg-amber-950/90 border-2 border-amber-500 text-amber-100 text-xs space-y-1 animate-pulse">
+              <div className="flex items-center gap-2 font-bold text-amber-300">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>⚠️ تنبيه أمني عاجل (المحاولة 2 من 3)</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-200">
+                لقد أدخلت كلمة المرور بشكل خاطئ مرتين. <strong>سيتم حظرك وقفل لوحة التحكم تماماً بعد المحاولة الثالثة القادمة!</strong>
+              </p>
+            </div>
+          )}
+
+          {/* Regular Error Message (1st attempt) */}
+          {!isBlocked && attempts < 2 && errorMessage && (
             <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
               <span>{errorMessage}</span>
@@ -111,12 +153,13 @@ export const SupervisorLoginModal: React.FC = () => {
               <input
                 type="email"
                 required
+                disabled={isBlocked}
                 autoFocus
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="thrayanabil2026@gmail.com"
                 dir="ltr"
-                className="w-full bg-[#051c30] border border-[#1b4b75] focus:border-[#dfa85b] rounded-xl pr-9 pl-3 py-2.5 text-xs text-white placeholder-gray-500 outline-none transition"
+                className="w-full bg-[#051c30] border border-[#1b4b75] focus:border-[#dfa85b] rounded-xl pr-9 pl-3 py-2.5 text-xs text-white placeholder-gray-500 outline-none transition disabled:opacity-40 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -133,16 +176,18 @@ export const SupervisorLoginModal: React.FC = () => {
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
+                disabled={isBlocked}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 dir="ltr"
-                className="w-full bg-[#051c30] border border-[#1b4b75] focus:border-[#dfa85b] rounded-xl pr-9 pl-10 py-2.5 text-xs text-white placeholder-gray-500 outline-none transition"
+                className="w-full bg-[#051c30] border border-[#1b4b75] focus:border-[#dfa85b] rounded-xl pr-9 pl-10 py-2.5 text-xs text-white placeholder-gray-500 outline-none transition disabled:opacity-40 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
+                disabled={isBlocked}
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#7ba4c7] hover:text-[#dfa85b] transition cursor-pointer"
+                className="absolute inset-y-0 left-0 pl-3 flex items-center text-[#7ba4c7] hover:text-[#dfa85b] transition cursor-pointer disabled:opacity-40"
                 title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -161,11 +206,11 @@ export const SupervisorLoginModal: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-2/3 py-2.5 px-4 bg-gradient-to-r from-[#dfa85b] to-[#c4924c] hover:from-[#c99547] hover:to-[#b0803c] text-[#07243c] font-black rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              disabled={isSubmitting || isBlocked}
+              className="w-2/3 py-2.5 px-4 bg-gradient-to-r from-[#dfa85b] to-[#c4924c] hover:from-[#c99547] hover:to-[#b0803c] text-[#07243c] font-black rounded-xl text-xs shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>{isSubmitting ? 'جارٍ التحقق...' : 'دخول المشرف'}</span>
+              <span>{isBlocked ? 'الدخول محظور مؤقتاً' : isSubmitting ? 'جارٍ التحقق...' : 'دخول المشرف'}</span>
             </button>
           </div>
 

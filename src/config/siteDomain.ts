@@ -1,16 +1,15 @@
 /**
  * Centralized Site Domain & Links Configuration
- * Official Base URL: zadtoo.com/nb
- * Configurable for future sub-domain transition (e.g. nb.zadtoo.com)
+ * Official Base URL: nb.zadtoo.com
  */
 
-export const DEFAULT_OFFICIAL_DOMAIN = 'zadtoo.com/nb';
-export const DEFAULT_OFFICIAL_URL = 'https://zadtoo.com/nb';
+export const DEFAULT_OFFICIAL_DOMAIN = 'nb.zadtoo.com';
+export const DEFAULT_OFFICIAL_URL = 'https://nb.zadtoo.com';
 
 export const getSiteDomain = (): string => {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('nabil_official_site_domain');
-    if (custom && custom.trim()) {
+    if (custom && custom.trim() && custom.trim() !== 'zadtoo.com/nb') {
       return custom.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
     }
   }

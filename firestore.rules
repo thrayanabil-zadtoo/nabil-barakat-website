@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /site_content/{contentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /books/{bookId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if request.resource.data.content is string;
+      allow update, delete: if true;
+    }
+
+    match /messages/{messageId} {
+      allow create: if request.resource.data.message is string;
+      allow read, update, delete: if true;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

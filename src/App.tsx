@@ -167,16 +167,7 @@ const MainContent: React.FC = () => {
                   <span>تسجيل خروج</span>
                 </button>
               </div>
-            ) : (
-              <button
-                onClick={() => setIsLoginModalOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#0d3b60] text-white hover:bg-[#124b7a] transition cursor-pointer"
-                title="تسجيل دخول المشرف الخاص بالموقع"
-              >
-                <Lock className="w-3 h-3 text-[#dfa85b]" />
-                <span>دخول المشرف (موقع خاص)</span>
-              </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

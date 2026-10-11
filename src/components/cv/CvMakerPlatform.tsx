@@ -657,7 +657,7 @@ export const CvMakerPlatform: React.FC = () => {
                             <QrCode className="w-14 h-14 text-[#07243c]" />
                           </div>
                           <span className="text-[9px] font-mono text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full mt-1.5 border border-sky-100 font-semibold dir-ltr">
-                            zadtoo.com/nb#cv-123
+                            nb.zadtoo.com#cv-123
                           </span>
                           <div className="mt-1 text-[9px] font-bold text-[#0b385e] flex items-center gap-1">
                             <span>اربط سيرتك برمز QR</span>

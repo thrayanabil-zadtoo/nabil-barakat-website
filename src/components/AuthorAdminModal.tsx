@@ -22,6 +22,7 @@ import {
   Download,
   FileUp,
   RefreshCw,
+  Cloud,
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getSiteDomain, setCustomSiteDomain, DEFAULT_OFFICIAL_DOMAIN } from '../config/siteDomain';
@@ -71,6 +72,8 @@ export const AuthorAdminModal: React.FC = () => {
     exportAllSiteData,
     importSiteData,
     showToast,
+    isCloudSynced,
+    syncAllToCloudNow,
   } = useApp();
 
   const [copiedMediaId, setCopiedMediaId] = useState<string | null>(null);
@@ -222,6 +225,18 @@ export const AuthorAdminModal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={syncAllToCloudNow}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-bold transition shadow-sm cursor-pointer ${
+                isCloudSynced
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-amber-600 hover:bg-amber-700 text-white'
+              }`}
+              title="مزامنة فورية وحفظ سحابي لجميع البيانات على Firebase لتظهر لكافة الزوار حول العالم"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>{isCloudSynced ? 'سحابي متصل' : 'مزامنة سحابية'}</span>
+            </button>
             <button
               onClick={logoutSupervisor}
               className="text-xs bg-rose-900/60 hover:bg-rose-900 text-rose-200 border border-rose-500/40 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
@@ -1190,7 +1205,7 @@ export const AuthorAdminModal: React.FC = () => {
                       رابط الموقع المعتمد ورموز الـ QR والسيرة الذاتية (Domain / Subdomain)
                     </h5>
                     <p className="text-[11px] text-slate-600 mt-0.5">
-                      النطاق المعتمد حالياً: <strong className="font-mono text-amber-800 dir-ltr inline-block">zadtoo.com/nb</strong> (ويمكنك تغييره مستقبلاً عند تفعيل Sub domain مثل <span className="font-mono">nb.zadtoo.com</span>)
+                      النطاق المعتمد الرسمي: <strong className="font-mono text-emerald-800 dir-ltr inline-block">nb.zadtoo.com</strong> (مرتبط بكافة رموز الـ QR والبطاقات والمشاركات)
                     </p>
                   </div>
                 </div>
@@ -1202,7 +1217,7 @@ export const AuthorAdminModal: React.FC = () => {
                       dir="ltr"
                       value={domainInput}
                       onChange={(e) => setDomainInput(e.target.value)}
-                      placeholder="zadtoo.com/nb"
+                      placeholder="nb.zadtoo.com"
                       className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
                     />
                   </div>
@@ -1221,28 +1236,17 @@ export const AuthorAdminModal: React.FC = () => {
 
                 {/* Quick Presets */}
                 <div className="flex items-center gap-2 flex-wrap pt-1 text-[11px]">
-                  <span className="text-slate-500">خيارات سريعة:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDomainInput('zadtoo.com/nb');
-                      setCustomSiteDomain('zadtoo.com/nb');
-                      showToast('تم اعتماد الرابط الرسمي: zadtoo.com/nb');
-                    }}
-                    className="px-2.5 py-1 bg-white hover:bg-amber-100/60 text-amber-900 border border-amber-300 rounded-md font-mono text-[10px] font-bold cursor-pointer transition"
-                  >
-                    zadtoo.com/nb (المعتمد الآن)
-                  </button>
+                  <span className="text-slate-500">النطاق المعتمد:</span>
                   <button
                     type="button"
                     onClick={() => {
                       setDomainInput('nb.zadtoo.com');
                       setCustomSiteDomain('nb.zadtoo.com');
-                      showToast('تم تجهيز واعتماد الـ Sub domain: nb.zadtoo.com');
+                      showToast('تم اعتماد الرابط الرسمي: nb.zadtoo.com');
                     }}
-                    className="px-2.5 py-1 bg-white hover:bg-amber-100/60 text-slate-700 border border-slate-300 rounded-md font-mono text-[10px] font-semibold cursor-pointer transition"
+                    className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-900 border border-emerald-400 rounded-md font-mono text-[10px] font-bold cursor-pointer transition shadow-2xs"
                   >
-                    nb.zadtoo.com (Sub domain لاحقاً)
+                    nb.zadtoo.com (المعتمد الرسمي الآن)
                   </button>
                 </div>
               </div>
