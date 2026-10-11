@@ -104,6 +104,22 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   }
 }
 
+// Deeply cleans an object/array to remove all `undefined` fields that Firestore rejects
+export function cleanUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined) return null as unknown as T;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(cleanUndefined).filter((item) => item !== undefined) as unknown as T;
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, any>)) {
+    if (value !== undefined) {
+      result[key] = cleanUndefined(value);
+    }
+  }
+  return result as T;
+}
+
 // Save all or partial site data to Firestore
 let syncTimeout: any = null;
 export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>): Promise<void> {
@@ -114,8 +130,9 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>): Promis
   return new Promise((resolve) => {
     syncTimeout = setTimeout(async () => {
       try {
+        const sanitizedData = cleanUndefined(data);
         const payload = {
-          ...data,
+          ...sanitizedData,
           updatedAt: new Date().toISOString(),
         };
 
@@ -126,11 +143,11 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>): Promis
         // 2. Also modularly save books and profile separately to avoid 1MB document limit
         if (data.books) {
           const booksDocRef = doc(db, CONTENT_DOC_PATH, 'books');
-          await setDoc(booksDocRef, { books: data.books, updatedAt: new Date().toISOString() });
+          await setDoc(booksDocRef, { books: cleanUndefined(data.books), updatedAt: new Date().toISOString() });
         }
         if (data.authorProfile) {
           const profileDocRef = doc(db, CONTENT_DOC_PATH, 'profile');
-          await setDoc(profileDocRef, { authorProfile: data.authorProfile, updatedAt: new Date().toISOString() });
+          await setDoc(profileDocRef, { authorProfile: cleanUndefined(data.authorProfile), updatedAt: new Date().toISOString() });
         }
 
         console.log('[Firestore] Site data successfully saved to cloud.');
