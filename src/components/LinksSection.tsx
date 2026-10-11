@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LinkItem } from '../types';
+import { ContentInteractionBar } from './ContentInteractionBar';
 import {
   Globe,
   Plus,
@@ -488,10 +489,23 @@ export const LinksSection: React.FC = () => {
                   <p className="text-xs text-[#475569] leading-relaxed line-clamp-2 mt-1">
                     {link.description}
                   </p>
+
+                  {/* Interaction Bar (المشاهدات، لايك قلب أحمر، التعليقات، والمشاركة) */}
+                  <div className="pt-1">
+                    <ContentInteractionBar
+                      itemId={link.id}
+                      itemTitle={`رابط: ${link.title}`}
+                      itemType="link"
+                      commentsCount={20}
+                      itemUrl={link.url}
+                      itemDescription={link.description}
+                      compact={true}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#edf2f7] flex items-center justify-between relative z-10">
+              <div className="pt-2 border-t border-[#edf2f7] flex items-center justify-between relative z-10">
                 <a
                   href={link.url}
                   target="_blank"

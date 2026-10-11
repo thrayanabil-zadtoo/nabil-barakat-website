@@ -399,6 +399,9 @@ export const AuthorAdminModal: React.FC = () => {
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
+                              if (file.size > 800 * 1024) {
+                                showToast('تنبيه: حجم الفيديو كبير. للحفظ السحابي الدائم لجميع الزوار، يُفضل استخدام رابط الفيديو (YouTube/Vimeo أو رابط MP4 مباشر).');
+                              }
                               const reader = new FileReader();
                               reader.onload = () => {
                                 setVUrl(reader.result as string);

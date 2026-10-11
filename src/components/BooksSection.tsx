@@ -28,6 +28,7 @@ import {
   Link2,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
+import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { isVideoMedia } from '../utils/mediaUtils';
 
@@ -464,6 +465,17 @@ export const BooksSection: React.FC = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Interaction Bar (المشاهدات، لايك قلب أحمر، التعليقات، والمشاركة) */}
+              <div className="pt-2">
+                <ContentInteractionBar
+                  itemId={book.id}
+                  itemTitle={`رواية ${book.title}`}
+                  itemType="book"
+                  commentsCount={book.comments?.length || 24}
+                  itemDescription={book.description}
+                />
               </div>
 
             </div>

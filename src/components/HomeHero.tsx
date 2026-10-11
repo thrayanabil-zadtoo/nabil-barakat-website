@@ -28,6 +28,8 @@ import { parseVideoUrl } from '../utils/videoUtils';
 import { BookReaderModal } from './BookReaderModal';
 import { HeaderPhotoModal } from './HeaderPhotoModal';
 import { HeaderAnnouncementBanner } from './HeaderAnnouncementBanner';
+import { SiteStatisticsHub } from './SiteStatisticsHub';
+import { ContentInteractionBar } from './ContentInteractionBar';
 import { Book, PhotoItem } from '../types';
 
 export const HomeHero: React.FC = () => {
@@ -161,17 +163,9 @@ export const HomeHero: React.FC = () => {
               </div>
             </div>
 
-            {/* Title / Eyebrow Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#dfa85b]/20 border border-[#dfa85b]/40 backdrop-blur-md">
-              <Sparkles className="w-3.5 h-3.5 text-[#f5cd72]" />
-              <span className="text-[#f5cd72] text-xs sm:text-sm font-bold tracking-wide">
-                {authorProfile.title || 'الكاتب والشاعر'} · الموقع الرسمي
-              </span>
-            </div>
-
             {/* Author Name */}
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight font-literary leading-tight drop-shadow-md">
-              {authorProfile.name}
+              {authorProfile.name || 'أ. نبيل بركات'}
             </h1>
 
             {/* Literary Divider */}
@@ -179,13 +173,18 @@ export const HomeHero: React.FC = () => {
 
             {/* Motto */}
             <p className="text-lg sm:text-2xl lg:text-3xl font-bold text-[#f5cd72] font-literary drop-shadow-md leading-snug">
-              {authorProfile.motto}
+              حروفي مرآتي وصمتي قصيدة
             </p>
 
-            {/* Bio Description */}
-            <p className="text-sm sm:text-base lg:text-lg text-white/90 leading-relaxed font-normal max-w-xl drop-shadow text-center lg:text-right">
-              {authorProfile.bio}
-            </p>
+            {/* Association & Role */}
+            <div className="space-y-1.5 text-center lg:text-right py-1">
+              <p className="text-base sm:text-lg lg:text-xl font-bold text-[#dfa85b] drop-shadow-md">
+                عضو الجمعية المصرية لكتاب القصة والرواية
+              </p>
+              <p className="text-sm sm:text-base lg:text-lg font-medium text-white/95 drop-shadow">
+                كاتب وروائي ومفكر
+              </p>
+            </div>
 
             {/* Action Buttons */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-3">
@@ -670,49 +669,16 @@ export const HomeHero: React.FC = () => {
                     {activeVideo.description}
                   </p>
 
-                  <div className="flex items-center justify-between pt-1 border-t border-[#edf2f7]">
-                    <div className="flex items-center gap-3 text-[11px] text-[#6f8291]">
-                      <span className="flex items-center gap-1">
-                        <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
-                        <span>{activeVideo.likesCount || '1.2K'}</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare className="w-3 h-3 text-[#07375a]" />
-                        <span>{activeVideo.commentsCount || '156'}</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() =>
-                          openShareModal({
-                            title: `فيديو: ${activeVideo.title}`,
-                            url: activeVideo.url,
-                            description: activeVideo.description,
-                            type: 'video',
-                          })
-                        }
-                        className="p-1.5 rounded-lg border border-[#dce8ef] hover:border-[#07375a] text-[#07375a] hover:bg-slate-50 transition-colors"
-                        title="مشاركة الفيديو"
-                      >
-                        <Share2 className="w-3.5 h-3.5 text-[#d8a83e]" />
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          openCommentModal({
-                            targetType: 'video',
-                            targetId: activeVideo.id,
-                            targetTitle: activeVideo.title,
-                          })
-                        }
-                        className="px-2.5 py-1 rounded-lg bg-[#07375a] hover:bg-[#062b47] text-white text-[11px] font-bold flex items-center gap-1 transition-colors"
-                        title="تعليق على الفيديو"
-                      >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>تعليق</span>
-                      </button>
-                    </div>
+                  <div className="pt-1 border-t border-[#edf2f7]">
+                    <ContentInteractionBar
+                      itemId={activeVideo.id}
+                      itemTitle={`فيديو: ${activeVideo.title}`}
+                      itemType="video"
+                      commentsCount={24}
+                      itemUrl={activeVideo.url}
+                      itemDescription={activeVideo.description}
+                      compact={true}
+                    />
                   </div>
                 </div>
               </div>
@@ -893,6 +859,9 @@ export const HomeHero: React.FC = () => {
         </div>
 
       </section>
+
+      {/* Dynamic Master Site Statistics Hub (مؤشرات وإحصائيات الموقع التفاعلية) */}
+      <SiteStatisticsHub />
 
       {/* 4. SCENIC QUOTE BANNER (Matching attached design: « الكتابة ليست مجرد حروف... بل حياة أخرى نعيشها ») */}
       <section className="rounded-xl p-6 text-center bg-gradient-to-r from-[#dcebf3] via-white to-[#fff8e7] border border-[#dce8ef] shadow-sm space-y-1.5">

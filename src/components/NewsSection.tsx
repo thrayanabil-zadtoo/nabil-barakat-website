@@ -21,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
+import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { parseVideoUrl } from '../utils/videoUtils';
 
@@ -578,9 +579,21 @@ export const NewsSection: React.FC = () => {
                   <p className="text-xs text-[#475569] leading-relaxed line-clamp-3">
                     {item.excerpt || item.content}
                   </p>
+
+                  {/* Interaction Bar (المشاهدات، لايك قلب أحمر، التعليقات، والمشاركة) */}
+                  <div className="pt-1">
+                    <ContentInteractionBar
+                      itemId={item.id}
+                      itemTitle={`خبر: ${item.title}`}
+                      itemType="news"
+                      commentsCount={23}
+                      itemDescription={item.excerpt || item.content}
+                      compact={true}
+                    />
+                  </div>
                 </div>
 
-                <div className="pt-3 border-t border-[#edf2f7] space-y-2.5">
+                <div className="pt-2 border-t border-[#edf2f7] space-y-2.5">
                   <div className="flex items-center justify-between text-[11px] text-[#64748b]">
                     <span className="font-semibold text-[#0b385e]">{item.source || 'المكتب الإعلامي'}</span>
                     <button

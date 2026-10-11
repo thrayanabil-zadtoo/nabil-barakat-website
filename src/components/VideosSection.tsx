@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
+import { ContentInteractionBar } from './ContentInteractionBar';
 
 export const VideosSection: React.FC = () => {
   const {
@@ -61,9 +62,8 @@ export const VideosSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 80 * 1024 * 1024) {
-      showToast('حجم الفيديو أكبر من 80 ميجابايت. يُرجى اختيار ملف فيديو أصغر أو مضغوط.');
-      return;
+    if (file.size > 800 * 1024) {
+      showToast('تنبيه: حجم ملف الفيديو كبير. للحفظ السحابي الدائم لجميع الزوار، يُفضل إدخال رابط الفيديو (YouTube أو Vimeo أو رابط MP4 مباشر).');
     }
 
     try {
@@ -396,51 +396,23 @@ export const VideosSection: React.FC = () => {
                     {video.description}
                   </p>
 
-                  <div className="flex items-center gap-4 text-xs text-[#64748b] pt-1">
-                    <span className="flex items-center gap-1">
-                      <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-                      <span>{video.likesCount || '1.2K'}</span>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MessageSquare className="w-3.5 h-3.5 text-[#0b385e]" />
-                      <span>{video.commentsCount || '156'}</span>
-                    </span>
+                  {/* Interaction Bar (المشاهدات، لايك قلب أحمر، التعليقات، والمشاركة) */}
+                  <div className="pt-2">
+                    <ContentInteractionBar
+                      itemId={video.id}
+                      itemTitle={`فيديو: ${video.title}`}
+                      itemType="video"
+                      commentsCount={24}
+                      itemUrl={video.url}
+                      itemDescription={video.description}
+                    />
                   </div>
                 </div>
 
-                {/* Footer Controls: Share & Comment & Supervisor Actions */}
-                <div className="pt-3 border-t border-[#edf2f7] flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() =>
-                        openShareModal({
-                          title: `فيديو: ${video.title}`,
-                          url: video.url,
-                          description: video.description,
-                          type: 'video',
-                        })
-                      }
-                      className="inline-flex items-center gap-1 text-[11px] text-[#0b385e] bg-[#f0f4f8] hover:bg-[#e2eaf2] px-2.5 py-1 rounded-lg transition font-medium cursor-pointer"
-                      title="مشاركة هذا الفيديو"
-                    >
-                      <Share2 className="w-3 h-3 text-[#c4924c]" />
-                      <span>مشاركة</span>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        openCommentModal({
-                          targetType: 'video',
-                          targetId: video.id,
-                          targetTitle: video.title,
-                        })
-                      }
-                      className="inline-flex items-center gap-1 text-[11px] text-[#0b385e] bg-[#f0f4f8] hover:bg-[#e2eaf2] px-2.5 py-1 rounded-lg transition font-medium cursor-pointer"
-                      title="تعليق على هذا الفيديو"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      <span>تعليق</span>
-                    </button>
+                {/* Footer Controls: Supervisor Actions */}
+                <div className="pt-2 border-t border-[#edf2f7] flex items-center justify-between">
+                  <div className="text-[11px] text-[#64748b]">
+                    <span>تسجيل مرئي فكري وأدبي</span>
                   </div>
 
                   {/* Supervisor Edit & Delete */}

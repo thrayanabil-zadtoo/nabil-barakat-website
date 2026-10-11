@@ -4,6 +4,7 @@ import { PhotoItem } from '../types';
 import { Image as ImageIcon, Plus, X, MapPin, Trash2, Maximize2, Edit2, Share2, MessageSquare, Video, Play, Upload, Pin, Copy, Check } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
+import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 
 export const PhotosSection: React.FC = () => {
@@ -358,9 +359,21 @@ export const PhotosSection: React.FC = () => {
                 <p className="text-xs text-[#475569] leading-relaxed line-clamp-2">
                   {photo.caption}
                 </p>
+
+                {/* Interaction Bar (المشاهدات، لايك قلب أحمر، التعليقات، والمشاركة) */}
+                <div className="pt-1">
+                  <ContentInteractionBar
+                    itemId={photo.id}
+                    itemTitle={`صورة: ${photo.title}`}
+                    itemType="photo"
+                    commentsCount={22}
+                    itemDescription={photo.caption}
+                    compact={true}
+                  />
+                </div>
               </div>
 
-              <div className="pt-3 border-t border-[#edf2f7] flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748b]">
+              <div className="pt-2 border-t border-[#edf2f7] flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748b]">
                 <div className="flex items-center gap-1.5">
                   {/* Share Button */}
                   <button

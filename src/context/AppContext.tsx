@@ -317,8 +317,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         coverImage: finalCover,
         galleryImages: cleanedGallery,
         samplePages: repairedSamplePages,
-        pdfUrl: undefined,
-        pdfFileName: undefined,
       };
     });
   });
@@ -369,45 +367,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = subscribeToCloudSiteData((cloudData) => {
       if (cloudData && Object.keys(cloudData).length > 0) {
         if (cloudData.authorProfile) {
-          setAuthorProfile((prev) => ({ ...prev, ...cloudData.authorProfile }));
+          setAuthorProfile((prev) => {
+            const next = { ...prev, ...cloudData.authorProfile };
+            safeSetItem('nabil_author_v4_profile', next);
+            return next;
+          });
         }
         if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
           setBooks(cloudData.books);
+          safeSetItem('nabil_author_v4_books', cloudData.books);
         }
         if (cloudData.videos && Array.isArray(cloudData.videos)) {
           setVideos(cloudData.videos);
+          safeSetItem('nabil_author_v4_videos', cloudData.videos);
         }
         if (cloudData.photos && Array.isArray(cloudData.photos)) {
           setPhotos(cloudData.photos);
+          safeSetItem('nabil_author_v4_photos', cloudData.photos);
         }
         if (cloudData.news && Array.isArray(cloudData.news)) {
           setNews(cloudData.news);
+          safeSetItem('nabil_author_v4_news', cloudData.news);
         }
         if (cloudData.links && Array.isArray(cloudData.links)) {
           setLinks(cloudData.links);
+          safeSetItem('nabil_author_v4_links', cloudData.links);
         }
         if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
           setAnnouncements(cloudData.announcements);
+          safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
         }
         if (cloudData.comments && Array.isArray(cloudData.comments)) {
           setComments(cloudData.comments);
+          safeSetItem('nabil_author_v4_comments', cloudData.comments);
         }
         if (cloudData.messages && Array.isArray(cloudData.messages)) {
           setMessages(cloudData.messages);
+          safeSetItem('nabil_author_v4_messages', cloudData.messages);
         }
         setIsCloudSynced(true);
-        isCloudHydrated.current = true;
-      } else {
-        // First initialization: seed baseline data to Firestore
-        saveSiteDataToCloud({
-          authorProfile,
-          books,
-          videos,
-          photos,
-          news,
-          links,
-          announcements,
-        });
         isCloudHydrated.current = true;
       }
     });
@@ -418,7 +416,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const syncAllToCloudNow = async () => {
     try {
       showToast('جاري حفظ ومزامنة كافة بيانات وكتب الموقع سحابياً على Firebase...');
-      await saveSiteDataToCloud({
+      const ok = await saveSiteDataToCloud({
         authorProfile,
         books,
         videos,
@@ -428,10 +426,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         announcements,
         comments,
         messages,
-      });
-      setIsCloudSynced(true);
-      isCloudHydrated.current = true;
-      showToast('تم الحفظ السحابي بنجاح! التعديلات ظاهرة الآن لجميع زوار الموقع حول العالم.');
+      }, true);
+      if (ok) {
+        setIsCloudSynced(true);
+        isCloudHydrated.current = true;
+        showToast('تم الحفظ السحابي بنجاح! التعديلات ظاهرة الآن لجميع زوار الموقع حول العالم.');
+      } else {
+        showToast('تعذر الحفظ السحابي، يُرجى التحقق من الاتصال بالإنترنت.');
+      }
     } catch (e) {
       console.error(e);
       showToast('حدث خطأ أثناء الحفظ السحابي.');

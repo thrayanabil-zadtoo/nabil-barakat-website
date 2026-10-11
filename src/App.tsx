@@ -127,7 +127,7 @@ const MainContent: React.FC = () => {
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5 text-[#dfa85b]" />
-            <span>الموقع الرسمي للكاتب أ. نبيل بركات · فضاء خاص ومحمي</span>
+            <span>الموقع الرسمي للكاتب أ. نبيل بركات · عضو الجمعية المصرية لكتاب القصة والرواية</span>
           </div>
 
           <div className="flex items-center gap-3">
