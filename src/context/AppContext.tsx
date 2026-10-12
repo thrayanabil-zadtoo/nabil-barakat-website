@@ -786,14 +786,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       const uploadedUrl = await uploadImageToCloud(file, 'books', (progress, stageText) => {
-        setUploadStatus({
+        setUploadStatus((prev) => ({
           isUploading: progress < 100,
           progress,
           fileName,
           stage: progress < 100 ? 'saving_cloud' : 'completed',
           stageText,
-          resultUrl: progress === 100 ? null : null,
-        });
+          resultUrl: prev?.resultUrl || null,
+        }));
       });
 
       const isBookRelated =
