@@ -24,6 +24,7 @@ import {
 } from '../data/initialData';
 import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/storageManager';
 import { compressImage } from '../utils/imageCompressor';
+import { uploadImageToCloud } from '../utils/cloudStorageHelper';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { subscribeToCloudSiteData, saveSiteDataToCloud } from '../utils/firebaseSync';
 
@@ -292,10 +293,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? '/src/assets/images/book_cover_heritage_1790501223547.jpg'
         : b.coverImage;
 
+      // Guard: If cover was accidentally corrupted into a video URL, restore a proper literary cover
+      if (
+        !finalCover ||
+        isVideoMedia(finalCover) ||
+        finalCover.includes('.mp4') ||
+        finalCover.includes('.webm') ||
+        finalCover.includes('mixkit')
+      ) {
+        finalCover =
+          b.id === 'book-1'
+            ? '/src/assets/images/book_cover_whispers_1790501236880.jpg'
+            : '/src/assets/images/book_cover_heritage_1790501223547.jpg';
+      }
+
       // If the book has an uploaded image in gallery and current cover is generic heritage, adopt it as the cover!
-      if (cleanedGallery.length > 0 && (finalCover.includes('book_cover_heritage') || finalCover.includes('book_reality_dream'))) {
+      if (
+        cleanedGallery.length > 0 &&
+        (finalCover.includes('book_cover_heritage') || finalCover.includes('book_reality_dream'))
+      ) {
         const customUpload = cleanedGallery.find(
-          (img) => img.startsWith('data:') || img.startsWith('blob:') || !img.includes('assets/images')
+          (img) =>
+            !isVideoMedia(img) &&
+            !img.includes('.mp4') &&
+            !img.includes('.webm') &&
+            !img.includes('mixkit') &&
+            (img.startsWith('data:image/') || img.startsWith('blob:') || !img.includes('assets/images'))
         );
         if (customUpload) {
           finalCover = customUpload;
@@ -345,6 +368,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
   });
+
+  const booksRef = React.useRef<Book[]>(books);
+  useEffect(() => {
+    booksRef.current = books;
+  }, [books]);
   const [videos, setVideos] = useState<VideoItem[]>(() => loadState('videos', initialVideos));
   const [photos, setPhotos] = useState<PhotoItem[]>(() => loadState('photos', initialPhotos));
   const [news, setNews] = useState<NewsItem[]>(() => loadState('news', initialNews));
@@ -621,7 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         portraitImage: optimizedPortrait || prev.portraitImage,
       };
       safeSetItem('nabil_author_v4_profile', next);
-      saveSiteDataToCloud({ authorProfile: next });
+      saveSiteDataToCloud({ authorProfile: next }, true);
       return next;
     });
     showToast('تم تحديث صورة وبيانات الهيدر وحفظها سحابياً!');
@@ -705,7 +733,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthorProfile((prev) => {
       const next = { ...prev, ...profile };
       safeSetItem('nabil_author_v4_profile', next);
-      saveSiteDataToCloud({ authorProfile: next });
+      saveSiteDataToCloud({ authorProfile: next }, true);
       return next;
     });
     showToast('تم تحديث البيانات الشخصية للكاتب وحفظها سحابياً');
@@ -729,12 +757,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       const nextPhotos = [newPhotoItem, ...prev];
       safeSetItem('nabil_author_v4_photos', nextPhotos);
-      saveSiteDataToCloud({ photos: nextPhotos });
+      saveSiteDataToCloud({ photos: nextPhotos }, true);
       return nextPhotos;
     });
   };
 
-  // Visual upload helper with progress, compression, and cloud link generation
+  // Visual upload helper with progress, cloud storage, and copyable link generation
   const processAndUploadImage = async (
     file: File,
     options?: {
@@ -749,31 +777,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const fileName = file.name || 'image.jpg';
     setUploadStatus({
       isUploading: true,
-      progress: 25,
+      progress: 20,
       fileName,
       stage: 'processing',
-      stageText: 'جاري قراءة وضغط الصورة بدقة للحفظ السحابي...',
+      stageText: 'جاري تهيئة الصورة ورفعها سحابياً إلى Firebase...',
       resultUrl: null,
     });
 
     try {
-      const maxWidth = options?.maxWidth || 1200;
-      const maxHeight = options?.maxHeight || 1200;
-      const quality = options?.quality || 0.82;
-      const compressedUrl = await compressImage(file, maxWidth, maxHeight, quality);
-
-      setUploadStatus({
-        isUploading: true,
-        progress: 75,
-        fileName,
-        stage: 'saving_cloud',
-        stageText: 'جاري الحفظ والمزامنة السحابية على Firebase...',
-        resultUrl: compressedUrl,
+      const uploadedUrl = await uploadImageToCloud(file, 'books', (progress, stageText) => {
+        setUploadStatus({
+          isUploading: progress < 100,
+          progress,
+          fileName,
+          stage: progress < 100 ? 'saving_cloud' : 'completed',
+          stageText,
+          resultUrl: progress === 100 ? null : null,
+        });
       });
 
-      const isBookRelated = options?.bookId || options?.category === 'المؤلفات والكتب' || options?.contextTitle?.includes('كتاب');
+      const isBookRelated =
+        options?.bookId || options?.category === 'المؤلفات والكتب' || options?.contextTitle?.includes('كتاب');
       if (isBookRelated) {
-        ensureBookImageInGallery(options?.contextTitle || 'أحد المؤلفات', compressedUrl);
+        ensureBookImageInGallery(options?.contextTitle || 'أحد المؤلفات', uploadedUrl);
       }
 
       setUploadStatus({
@@ -781,12 +807,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         progress: 100,
         fileName,
         stage: 'completed',
-        stageText: 'اكتمل الرفع والحفظ السحابي بنجاح! الرابط جاهز للمشرف.',
-        resultUrl: compressedUrl,
+        stageText: 'اكتمل الرفع والحفظ السحابي بنجاح! الرابط متاح للمشرف.',
+        resultUrl: uploadedUrl,
       });
 
-      showToast('اكتمل رفع وحفظ الصورة سحابياً بنجاح! تم نسخ الرابط أو إتاحته للمشرف');
-      return compressedUrl;
+      showToast('اكتمل رفع وحفظ الصورة سحابياً بنجاح! تم حفظها في السحابة وإتاحة الرابط للمشرف');
+      return uploadedUrl;
     } catch (err) {
       console.error('processAndUploadImage error:', err);
       setUploadStatus({
@@ -803,35 +829,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Books
-  const addBook = (bookData: Omit<Book, 'id' | 'comments'>) => {
+  const addBook = async (bookData: Omit<Book, 'id' | 'comments'>) => {
     const newBook: Book = {
       ...bookData,
       id: `book-${Date.now()}`,
       comments: [],
     };
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = [newBook, ...prev];
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
-    });
+    const nextBooksList = [newBook, ...booksRef.current];
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+
     if (newBook.coverImage) {
       ensureBookImageInGallery(newBook.title, newBook.coverImage);
     }
-    saveSiteDataToCloud({ books: nextBooksList }, true);
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب وحفظه سحابياً وفي معرض الصور');
   };
 
-  const updateBook = (id: string, updated: Partial<Book>) => {
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = prev.map((b) => (b.id === id ? { ...b, ...updated } : b));
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
-    });
-    const target = books.find((b) => b.id === id);
+  const updateBook = async (id: string, updated: Partial<Book>) => {
+    const currentBooks = booksRef.current;
+    const nextBooksList = currentBooks.map((b) => (b.id === id ? { ...b, ...updated } : b));
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+
+    const target = currentBooks.find((b) => b.id === id);
     const title = updated.title || target?.title || 'أحد المؤلفات';
     if (updated.coverImage) {
       ensureBookImageInGallery(title, updated.coverImage);
@@ -841,19 +864,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isVideoMedia(img)) ensureBookImageInGallery(title, img);
       });
     }
-    saveSiteDataToCloud({ books: nextBooksList }, true);
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حفظ تعديلات الكتاب في قاعدة البيانات سحابياً');
   };
 
-  const deleteBook = (id: string) => {
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = prev.filter((b) => b.id !== id);
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
-    });
-    saveSiteDataToCloud({ books: nextBooksList }, true);
+  const deleteBook = async (id: string) => {
+    const nextBooksList = booksRef.current.filter((b) => b.id !== id);
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حذف الكتاب من القائمة وتحديث السحابة');
   };
 
@@ -863,92 +883,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setBookCover = async (bookId: string, coverImage: string) => {
-    const targetBook = books.find((b) => b.id === bookId);
+    const currentBooks = booksRef.current;
+    const targetBook = currentBooks.find((b) => b.id === bookId);
     const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
-    const optimizedCover = await compressImage(coverImage, 640, 860, 0.75);
 
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = prev.map((b) => {
-        if (b.id !== bookId) return b;
-        const cleanedGallery = (b.galleryImages || []).filter(
-          (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-        );
-        const hasCover = cleanedGallery.includes(optimizedCover);
-        const newGallery = hasCover ? cleanedGallery : [optimizedCover, ...cleanedGallery];
-        return {
-          ...b,
-          coverImage: optimizedCover,
-          galleryImages: newGallery,
-        };
-      });
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
+    const nextBooksList = currentBooks.map((b) => {
+      if (b.id !== bookId) return b;
+      const cleanedGallery = (b.galleryImages || []).filter(
+        (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+      );
+      const hasCover = cleanedGallery.includes(coverImage);
+      const newGallery = hasCover ? cleanedGallery : [coverImage, ...cleanedGallery];
+      return {
+        ...b,
+        coverImage,
+        galleryImages: newGallery,
+      };
     });
 
-    ensureBookImageInGallery(bookTitle, optimizedCover);
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+
+    ensureBookImageInGallery(bookTitle, coverImage);
     await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح وحفظها سحابياً وفي معرض الصور');
   };
 
-  const deleteBookGalleryImage = (bookId: string, imageIndex: number) => {
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = prev.map((b) => {
-        if (b.id !== bookId) return b;
-        const newGallery = [...(b.galleryImages || [])];
-        const removed = newGallery.splice(imageIndex, 1)[0];
-        let newCover = b.coverImage;
-        if (b.coverImage === removed) {
-          const firstImage = newGallery.find((m) => !isVideoMedia(m));
-          newCover = firstImage || '/src/assets/images/book_cover_heritage_1790501223547.jpg';
-        }
-        return {
-          ...b,
-          coverImage: newCover,
-          galleryImages: newGallery,
-        };
-      });
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
+  const deleteBookGalleryImage = async (bookId: string, imageIndex: number) => {
+    const currentBooks = booksRef.current;
+    const nextBooksList = currentBooks.map((b) => {
+      if (b.id !== bookId) return b;
+      const newGallery = [...(b.galleryImages || [])];
+      const removed = newGallery.splice(imageIndex, 1)[0];
+      let newCover = b.coverImage;
+      if (b.coverImage === removed) {
+        const firstImage = newGallery.find((m) => !isVideoMedia(m));
+        newCover = firstImage || '/src/assets/images/book_cover_heritage_1790501223547.jpg';
+      }
+      return {
+        ...b,
+        coverImage: newCover,
+        galleryImages: newGallery,
+      };
     });
-    saveSiteDataToCloud({ books: nextBooksList }, true);
+
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حذف العنصر من معرض الكتاب بنجاح');
   };
 
   const addBookGalleryImage = async (bookId: string, mediaUrl: string) => {
     if (!mediaUrl) return;
-    const targetBook = books.find((b) => b.id === bookId);
+    const currentBooks = booksRef.current;
+    const targetBook = currentBooks.find((b) => b.id === bookId);
     const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
     const isVideo = isVideoMedia(mediaUrl);
-    let finalMedia = mediaUrl;
-    if (!isVideo) {
-      finalMedia = await compressImage(mediaUrl, 800, 800, 0.75);
-    }
-    let nextBooksList: Book[] = [];
-    setBooks((prev) => {
-      const next = prev.map((b) => {
-        if (b.id !== bookId) return b;
-        const current = (b.galleryImages || []).filter(
-          (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-        );
-        return {
-          ...b,
-          galleryImages: [...current, finalMedia],
-        };
-      });
-      nextBooksList = next;
-      safeSetItem('nabil_author_v4_books', next);
-      return next;
+
+    const nextBooksList = currentBooks.map((b) => {
+      if (b.id !== bookId) return b;
+      const current = (b.galleryImages || []).filter(
+        (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+      );
+      if (current.includes(mediaUrl)) return b;
+      return {
+        ...b,
+        galleryImages: [...current, mediaUrl],
+      };
     });
 
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+
     if (!isVideo) {
-      ensureBookImageInGallery(bookTitle, finalMedia);
+      ensureBookImageInGallery(bookTitle, mediaUrl);
     }
     await saveSiteDataToCloud({ books: nextBooksList }, true);
-    showToast(isVideo ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً' : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً وفي المعرض');
+    showToast(
+      isVideo
+        ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً'
+        : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً وفي المعرض'
+    );
   };
 
   const addBookComment = (bookId: string, commentData: Omit<BookComment, 'id' | 'date'>) => {
@@ -957,66 +975,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `bc-${Date.now()}`,
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
     };
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === bookId ? { ...b, comments: [newComment, ...b.comments] } : b
-      )
+    const next = booksRef.current.map((b) =>
+      b.id === bookId ? { ...b, comments: [newComment, ...(b.comments || [])] } : b
     );
+    booksRef.current = next;
+    setBooks(next);
+    safeSetItem('nabil_author_v4_books', next);
+    saveSiteDataToCloud({ books: next }, true);
     showToast('شكراً لك! تم نشر تعليقك ومراجعتك للكتاب');
   };
 
   const deleteBookComment = (bookId: string, commentId: string) => {
-    setBooks((prev) =>
-      prev.map((b) =>
-        b.id === bookId
-          ? { ...b, comments: (b.comments || []).filter((c) => c.id !== commentId) }
-          : b
-      )
+    const next = booksRef.current.map((b) =>
+      b.id === bookId ? { ...b, comments: (b.comments || []).filter((c) => c.id !== commentId) } : b
     );
+    booksRef.current = next;
+    setBooks(next);
+    safeSetItem('nabil_author_v4_books', next);
+    saveSiteDataToCloud({ books: next }, true);
     showToast('تم حذف التعليق من الكتاب بنجاح');
   };
 
   const togglePinBook = (id: string) => {
-    setBooks((prev) => {
-      const idx = prev.findIndex((b) => b.id === id);
-      if (idx === -1) return prev;
-      const target = prev[idx];
-      const isNowPinned = !target.isPinned;
-      const updated = { ...target, isPinned: isNowPinned };
-      const rest = prev.filter((b) => b.id !== id);
-      const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
-      showToast(isNowPinned ? `تم تثبيت كتاب "${target.title}" في المقدمة 📌` : `تم إلغاء تثبيت كتاب "${target.title}"`);
-      return next;
-    });
+    const prev = booksRef.current;
+    const idx = prev.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const target = prev[idx];
+    const isNowPinned = !target.isPinned;
+    const updated = { ...target, isPinned: isNowPinned };
+    const rest = prev.filter((b) => b.id !== id);
+    const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
+    booksRef.current = next;
+    setBooks(next);
+    safeSetItem('nabil_author_v4_books', next);
+    saveSiteDataToCloud({ books: next }, true);
+    showToast(isNowPinned ? `تم تثبيت كتاب "${target.title}" في المقدمة 📌` : `تم إلغاء تثبيت كتاب "${target.title}"`);
   };
 
   const moveBookOrder = (id: string, direction: 'up' | 'down') => {
-    setBooks((prev) => {
-      const idx = prev.findIndex((b) => b.id === id);
-      if (idx === -1) return prev;
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
-      const next = [...prev];
-      const temp = next[idx];
-      next[idx] = next[targetIdx];
-      next[targetIdx] = temp;
-      showToast(`تم تغيير ترتيب "${temp.title}" إلى المركز (${targetIdx + 1})`);
-      return next;
-    });
+    const prev = booksRef.current;
+    const idx = prev.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= prev.length) return;
+    const next = [...prev];
+    const temp = next[idx];
+    next[idx] = next[targetIdx];
+    next[targetIdx] = temp;
+    booksRef.current = next;
+    setBooks(next);
+    safeSetItem('nabil_author_v4_books', next);
+    saveSiteDataToCloud({ books: next }, true);
+    showToast(`تم تغيير ترتيب "${temp.title}" إلى المركز (${targetIdx + 1})`);
   };
 
   const setBookPosition = (id: string, newPosition: number) => {
-    setBooks((prev) => {
-      const idx = prev.findIndex((b) => b.id === id);
-      if (idx === -1) return prev;
-      const targetIdx = Math.max(0, Math.min(prev.length - 1, newPosition - 1));
-      if (targetIdx === idx) return prev;
-      const next = [...prev];
-      const [item] = next.splice(idx, 1);
-      next.splice(targetIdx, 0, item);
-      showToast(`تم تغيير ترتيب "${item.title}" ليصبح في المركز (${targetIdx + 1})`);
-      return next;
-    });
+    const prev = booksRef.current;
+    const idx = prev.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const targetIdx = Math.max(0, Math.min(prev.length - 1, newPosition - 1));
+    if (targetIdx === idx) return;
+    const next = [...prev];
+    const [item] = next.splice(idx, 1);
+    next.splice(targetIdx, 0, item);
+    booksRef.current = next;
+    setBooks(next);
+    safeSetItem('nabil_author_v4_books', next);
+    saveSiteDataToCloud({ books: next }, true);
+    showToast(`تم تغيير ترتيب "${item.title}" ليصبح في المركز (${targetIdx + 1})`);
   };
 
   // Videos
@@ -1118,7 +1144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPhotos((prev) => {
       const next = [newPhoto, ...prev];
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next });
+      saveSiteDataToCloud({ photos: next }, true);
       return next;
     });
     showToast('تمت إضافة الصورة إلى الألبوم وحفظها سحابياً');
@@ -1128,7 +1154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPhotos((prev) => {
       const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next });
+      saveSiteDataToCloud({ photos: next }, true);
       return next;
     });
     showToast('تم تحديث بيانات الصورة وحفظها سحابياً');
@@ -1138,7 +1164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPhotos((prev) => {
       const next = prev.filter((p) => p.id !== id);
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next });
+      saveSiteDataToCloud({ photos: next }, true);
       return next;
     });
     showToast('تم حذف الصورة من الألبوم وتحديث السحابة');

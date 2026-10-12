@@ -112,37 +112,21 @@ export function cleanUndefined<T>(obj: T): T {
 
 /**
  * Subscribes to real-time cloud updates from Firestore.
- * Listens to both the aggregate document and modular documents for maximum resilience.
+ * Listens to each modular collection/document directly to prevent race conditions and 1MB size limits.
  */
 export function subscribeToCloudSiteData(
   onUpdate: (data: Partial<SyncedSiteData>, source?: string) => void
 ): () => void {
   const unsubs: Unsubscribe[] = [];
 
-  // 1. Listen to aggregate 'main' document
-  const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
-  const mainUnsub = onSnapshot(
-    mainDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as SyncedSiteData;
-        onUpdate({ ...data, _isSeeded: true }, 'main');
-      }
-    },
-    (err) => {
-      console.warn('[Firestore] Main doc sync notification:', err.message);
-    }
-  );
-  unsubs.push(mainUnsub);
-
-  // 2. Listen to modular 'books' document
+  // 1. Listen to modular 'books' document
   const booksDocRef = doc(db, COLLECTION_NAME, 'books');
   const booksUnsub = onSnapshot(
     booksDocRef,
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data?.books && Array.isArray(data.books)) {
+        if (data?.books && Array.isArray(data.books) && data.books.length > 0) {
           onUpdate({ books: data.books, _isSeeded: true }, 'books');
         }
       }
@@ -151,7 +135,7 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(booksUnsub);
 
-  // 3. Listen to modular 'profile' document
+  // 2. Listen to modular 'profile' document
   const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
   const profileUnsub = onSnapshot(
     profileDocRef,
@@ -167,7 +151,7 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(profileUnsub);
 
-  // 4. Listen to modular 'videos' document
+  // 3. Listen to modular 'videos' document
   const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
   const videosUnsub = onSnapshot(
     videosDocRef,
@@ -183,7 +167,7 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(videosUnsub);
 
-  // 5. Listen to modular 'photos' document
+  // 4. Listen to modular 'photos' document
   const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
   const photosUnsub = onSnapshot(
     photosDocRef,
@@ -199,7 +183,7 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(photosUnsub);
 
-  // 6. Listen to modular 'news' document
+  // 5. Listen to modular 'news' document
   const newsDocRef = doc(db, COLLECTION_NAME, 'news');
   const newsUnsub = onSnapshot(
     newsDocRef,
@@ -215,7 +199,39 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(newsUnsub);
 
-  // 7. Listen to modular 'comments' document
+  // 6. Listen to modular 'links' document
+  const linksDocRef = doc(db, COLLECTION_NAME, 'links');
+  const linksUnsub = onSnapshot(
+    linksDocRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data?.links && Array.isArray(data.links)) {
+          onUpdate({ links: data.links, _isSeeded: true }, 'links');
+        }
+      }
+    },
+    (err) => console.warn('[Firestore] Links modular sync notification:', err.message)
+  );
+  unsubs.push(linksUnsub);
+
+  // 7. Listen to modular 'announcements' document
+  const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
+  const annUnsub = onSnapshot(
+    annDocRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data?.announcements && Array.isArray(data.announcements)) {
+          onUpdate({ announcements: data.announcements, _isSeeded: true }, 'announcements');
+        }
+      }
+    },
+    (err) => console.warn('[Firestore] Announcements sync notification:', err.message)
+  );
+  unsubs.push(annUnsub);
+
+  // 8. Listen to modular 'comments' document
   const commentsDocRef = doc(db, COLLECTION_NAME, 'comments');
   const commentsUnsub = onSnapshot(
     commentsDocRef,
@@ -231,7 +247,7 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(commentsUnsub);
 
-  // 8. Listen to modular 'messages' document
+  // 9. Listen to modular 'messages' document
   const messagesDocRef = doc(db, COLLECTION_NAME, 'messages');
   const messagesUnsub = onSnapshot(
     messagesDocRef,
@@ -270,65 +286,79 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
 }
 
 let syncDebounceTimer: any = null;
+let pendingSyncPayload: Partial<SyncedSiteData> = {};
 
 /**
  * Atomically saves site data to Firestore across both modular documents and the main document.
  * Guaranteed to never fail silently: throws or logs clearly.
  */
 export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immediate = false): Promise<boolean> {
-  if (syncDebounceTimer) {
-    clearTimeout(syncDebounceTimer);
-  }
+  // Accumulate all incoming data into pendingSyncPayload so no field is ever lost across concurrent/rapid calls
+  pendingSyncPayload = {
+    ...pendingSyncPayload,
+    ...data,
+  };
 
   const performSave = async (): Promise<boolean> => {
+    // Clone and clear the pending payload
+    const dataToSave = { ...pendingSyncPayload };
+    pendingSyncPayload = {};
+
     try {
-      const sanitized = cleanUndefined(data);
+      const sanitized = cleanUndefined(dataToSave);
       const nowIso = new Date().toISOString();
 
       // 1. Save specific modular docs first (each is well under 1MB)
       const savePromises: Promise<any>[] = [];
 
-      if (sanitized.books) {
+      if (sanitized.books && Array.isArray(sanitized.books) && sanitized.books.length > 0) {
         const booksDocRef = doc(db, COLLECTION_NAME, 'books');
         savePromises.push(setDoc(booksDocRef, { books: sanitized.books, updatedAt: nowIso }, { merge: true }));
+        // Also write each book individually into the 'books' collection for direct single-doc access
+        sanitized.books.forEach((b: any) => {
+          if (b.id) {
+            savePromises.push(setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true }));
+          }
+        });
       }
 
       if (sanitized.authorProfile) {
         const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
         savePromises.push(setDoc(profileDocRef, { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.videos) {
+      if (sanitized.videos && Array.isArray(sanitized.videos) && sanitized.videos.length > 0) {
         const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
         savePromises.push(setDoc(videosDocRef, { videos: sanitized.videos, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.photos) {
+      if (sanitized.photos && Array.isArray(sanitized.photos) && sanitized.photos.length > 0) {
         const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
         savePromises.push(setDoc(photosDocRef, { photos: sanitized.photos, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.news) {
+      if (sanitized.news && Array.isArray(sanitized.news) && sanitized.news.length > 0) {
         const newsDocRef = doc(db, COLLECTION_NAME, 'news');
         savePromises.push(setDoc(newsDocRef, { news: sanitized.news, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.links) {
+      if (sanitized.links && Array.isArray(sanitized.links) && sanitized.links.length > 0) {
         const linksDocRef = doc(db, COLLECTION_NAME, 'links');
         savePromises.push(setDoc(linksDocRef, { links: sanitized.links, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.announcements) {
+      if (sanitized.announcements && Array.isArray(sanitized.announcements) && sanitized.announcements.length > 0) {
         const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
         savePromises.push(setDoc(annDocRef, { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.comments) {
+      if (sanitized.comments && Array.isArray(sanitized.comments)) {
         const commentsDocRef = doc(db, COLLECTION_NAME, 'comments');
         savePromises.push(setDoc(commentsDocRef, { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.messages) {
+      if (sanitized.messages && Array.isArray(sanitized.messages)) {
         const messagesDocRef = doc(db, COLLECTION_NAME, 'messages');
         savePromises.push(setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }));
       }
@@ -360,11 +390,19 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
   };
 
   if (immediate) {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
     return performSave();
   }
 
   return new Promise((resolve) => {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+    }
     syncDebounceTimer = setTimeout(async () => {
+      syncDebounceTimer = null;
       const ok = await performSave();
       resolve(ok);
     }, 150);

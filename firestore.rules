@@ -5,6 +5,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /uploaded_images/{imageId} {
+      allow read, write: if true;
+    }
+
     match /books/{bookId} {
       allow read, write: if true;
     }
@@ -26,3 +30,4 @@ service cloud.firestore {
     }
   }
 }
+
