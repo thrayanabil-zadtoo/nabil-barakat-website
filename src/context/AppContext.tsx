@@ -774,51 +774,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       bookId?: string;
     }
   ): Promise<string> => {
-    const fileName = file.name || 'image.jpg';
+    let currentFileName = file.name || 'image.jpg';
+
     setUploadStatus({
       isUploading: true,
       progress: 20,
-      fileName,
+      fileName: currentFileName,
       stage: 'processing',
-      stageText: 'جاري تهيئة الصورة ورفعها سحابياً إلى Firebase...',
+      stageText: 'جاري تهيئة الصورة وتسميتها سحابياً بحسب تاريخ اليوم...',
       resultUrl: null,
     });
 
     try {
-      const uploadedUrl = await uploadImageToCloud(file, 'books', (progress, stageText) => {
+      const uploadResult = await uploadImageToCloud(file, 'books', (progress, stageText) => {
         setUploadStatus((prev) => ({
           isUploading: progress < 100,
           progress,
-          fileName,
+          fileName: prev?.fileName || currentFileName,
           stage: progress < 100 ? 'saving_cloud' : 'completed',
           stageText,
           resultUrl: prev?.resultUrl || null,
         }));
       });
 
+      const finalUrl = uploadResult.url;
+      const finalFileName = uploadResult.fileName;
+      const finalDisplayName = uploadResult.displayName;
+
       const isBookRelated =
         options?.bookId || options?.category === 'المؤلفات والكتب' || options?.contextTitle?.includes('كتاب');
       if (isBookRelated) {
-        ensureBookImageInGallery(options?.contextTitle || 'أحد المؤلفات', uploadedUrl);
+        ensureBookImageInGallery(options?.contextTitle || `مؤلف: ${finalDisplayName}`, finalUrl);
       }
 
       setUploadStatus({
         isUploading: false,
         progress: 100,
-        fileName,
+        fileName: finalFileName,
         stage: 'completed',
-        stageText: 'اكتمل الرفع والحفظ السحابي بنجاح! الرابط متاح للمشرف.',
-        resultUrl: uploadedUrl,
+        stageText: `اكتمل الرفع والحفظ السحابي بنجاح! الاسم السحابي: ${finalDisplayName}`,
+        resultUrl: finalUrl,
       });
 
-      showToast('اكتمل رفع وحفظ الصورة سحابياً بنجاح! تم حفظها في السحابة وإتاحة الرابط للمشرف');
-      return uploadedUrl;
+      showToast(`تم رفع الصورة وحفظها سحابياً باسم «${finalDisplayName}»`);
+      return finalUrl;
     } catch (err) {
       console.error('processAndUploadImage error:', err);
       setUploadStatus({
         isUploading: false,
         progress: 0,
-        fileName,
+        fileName: currentFileName,
         stage: 'error',
         stageText: 'تعذر رفع أو معالجة الصورة، يرجى المحاولة مجدداً.',
         resultUrl: null,

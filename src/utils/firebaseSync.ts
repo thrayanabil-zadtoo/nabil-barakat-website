@@ -363,7 +363,11 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         savePromises.push(setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }));
       }
 
-      await Promise.all(savePromises);
+      // Save modular docs with a safety timeout so long-polling latency never stalls the UI
+      await Promise.race([
+        Promise.all(savePromises),
+        new Promise((r) => setTimeout(r, 1200)),
+      ]);
 
       // 2. Also save to main aggregate document as a combined cache
       try {
