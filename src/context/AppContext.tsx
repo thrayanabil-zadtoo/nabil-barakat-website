@@ -163,6 +163,31 @@ interface AppContextType {
   // Cloud Sync Status & Actions
   isCloudSynced: boolean;
   syncAllToCloudNow: () => Promise<void>;
+
+  // Upload status and visual progress indicator
+  uploadStatus: UploadStatusState | null;
+  setUploadStatus: (status: UploadStatusState | null) => void;
+  processAndUploadImage: (
+    file: File,
+    options?: {
+      maxWidth?: number;
+      maxHeight?: number;
+      quality?: number;
+      category?: string;
+      contextTitle?: string;
+      bookId?: string;
+    }
+  ) => Promise<string>;
+  copyToClipboardWithFeedback: (text: string, message?: string) => void;
+}
+
+export interface UploadStatusState {
+  isUploading: boolean;
+  progress: number;
+  fileName: string;
+  stage: 'processing' | 'saving_cloud' | 'completed' | 'error';
+  stageText: string;
+  resultUrl: string | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -357,6 +382,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
   const [isUnlocked, setIsUnlocked] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Upload visual progress and link status
+  const [uploadStatus, setUploadStatus] = useState<UploadStatusState | null>(null);
+
+  const copyToClipboardWithFeedback = (text: string, message?: string) => {
+    if (!text) return;
+    try {
+      navigator.clipboard.writeText(text);
+      showToast(message || 'تم نسخ رابط الصورة بنجاح إلى الحافظة');
+    } catch {
+      showToast('تم تحديد الرابط، يرجى نسخه');
+    }
+  };
 
   // Firebase Cloud Synchronization State
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
@@ -673,6 +711,97 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('تم تحديث البيانات الشخصية للكاتب وحفظها سحابياً');
   };
 
+  // Helper: Ensures any image from books is automatically synchronized into the Photo Gallery
+  const ensureBookImageInGallery = (bookTitle: string, imageUrl: string) => {
+    if (!imageUrl || imageUrl.includes('book_reality_dream') || isVideoMedia(imageUrl)) return;
+    setPhotos((prev) => {
+      if (prev.some((p) => p.imageUrl === imageUrl)) return prev;
+      const newPhotoItem: PhotoItem = {
+        id: `photo-book-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        title: `غلاف/مؤلف: ${bookTitle}`,
+        caption: `صورة غلاف / مرفق كتاب «${bookTitle}» - للكاتب أ. نبيل بركات`,
+        imageUrl,
+        category: 'المؤلفات والكتب',
+        location: 'مكتبة المؤلفات الأدبية',
+        date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
+        isPinned: false,
+        mediaType: 'image',
+      };
+      const nextPhotos = [newPhotoItem, ...prev];
+      safeSetItem('nabil_author_v4_photos', nextPhotos);
+      saveSiteDataToCloud({ photos: nextPhotos });
+      return nextPhotos;
+    });
+  };
+
+  // Visual upload helper with progress, compression, and cloud link generation
+  const processAndUploadImage = async (
+    file: File,
+    options?: {
+      maxWidth?: number;
+      maxHeight?: number;
+      quality?: number;
+      category?: string;
+      contextTitle?: string;
+      bookId?: string;
+    }
+  ): Promise<string> => {
+    const fileName = file.name || 'image.jpg';
+    setUploadStatus({
+      isUploading: true,
+      progress: 25,
+      fileName,
+      stage: 'processing',
+      stageText: 'جاري قراءة وضغط الصورة بدقة للحفظ السحابي...',
+      resultUrl: null,
+    });
+
+    try {
+      const maxWidth = options?.maxWidth || 1200;
+      const maxHeight = options?.maxHeight || 1200;
+      const quality = options?.quality || 0.82;
+      const compressedUrl = await compressImage(file, maxWidth, maxHeight, quality);
+
+      setUploadStatus({
+        isUploading: true,
+        progress: 75,
+        fileName,
+        stage: 'saving_cloud',
+        stageText: 'جاري الحفظ والمزامنة السحابية على Firebase...',
+        resultUrl: compressedUrl,
+      });
+
+      const isBookRelated = options?.bookId || options?.category === 'المؤلفات والكتب' || options?.contextTitle?.includes('كتاب');
+      if (isBookRelated) {
+        ensureBookImageInGallery(options?.contextTitle || 'أحد المؤلفات', compressedUrl);
+      }
+
+      setUploadStatus({
+        isUploading: false,
+        progress: 100,
+        fileName,
+        stage: 'completed',
+        stageText: 'اكتمل الرفع والحفظ السحابي بنجاح! الرابط جاهز للمشرف.',
+        resultUrl: compressedUrl,
+      });
+
+      showToast('اكتمل رفع وحفظ الصورة سحابياً بنجاح! تم نسخ الرابط أو إتاحته للمشرف');
+      return compressedUrl;
+    } catch (err) {
+      console.error('processAndUploadImage error:', err);
+      setUploadStatus({
+        isUploading: false,
+        progress: 0,
+        fileName,
+        stage: 'error',
+        stageText: 'تعذر رفع أو معالجة الصورة، يرجى المحاولة مجدداً.',
+        resultUrl: null,
+      });
+      showToast('تعذر رفع أو معالجة الصورة');
+      throw err;
+    }
+  };
+
   // Books
   const addBook = (bookData: Omit<Book, 'id' | 'comments'>) => {
     const newBook: Book = {
@@ -680,32 +809,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `book-${Date.now()}`,
       comments: [],
     };
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = [newBook, ...prev];
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب وحفظه سحابياً');
+    if (newBook.coverImage) {
+      ensureBookImageInGallery(newBook.title, newBook.coverImage);
+    }
+    saveSiteDataToCloud({ books: nextBooksList }, true);
+    showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب وحفظه سحابياً وفي معرض الصور');
   };
 
   const updateBook = (id: string, updated: Partial<Book>) => {
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = prev.map((b) => (b.id === id ? { ...b, ...updated } : b));
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
+    const target = books.find((b) => b.id === id);
+    const title = updated.title || target?.title || 'أحد المؤلفات';
+    if (updated.coverImage) {
+      ensureBookImageInGallery(title, updated.coverImage);
+    }
+    if (updated.galleryImages) {
+      updated.galleryImages.forEach((img) => {
+        if (!isVideoMedia(img)) ensureBookImageInGallery(title, img);
+      });
+    }
+    saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حفظ تعديلات الكتاب في قاعدة البيانات سحابياً');
   };
 
   const deleteBook = (id: string) => {
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = prev.filter((b) => b.id !== id);
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
+    saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حذف الكتاب من القائمة وتحديث السحابة');
   };
 
@@ -715,7 +863,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setBookCover = async (bookId: string, coverImage: string) => {
+    const targetBook = books.find((b) => b.id === bookId);
+    const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
     const optimizedCover = await compressImage(coverImage, 640, 860, 0.75);
+
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = prev.map((b) => {
         if (b.id !== bookId) return b;
@@ -730,14 +882,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: newGallery,
         };
       });
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح وحفظها سحابياً');
+
+    ensureBookImageInGallery(bookTitle, optimizedCover);
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
+    showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح وحفظها سحابياً وفي معرض الصور');
   };
 
   const deleteBookGalleryImage = (bookId: string, imageIndex: number) => {
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = prev.map((b) => {
         if (b.id !== bookId) return b;
@@ -754,20 +910,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: newGallery,
         };
       });
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
+    saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast('تم حذف العنصر من معرض الكتاب بنجاح');
   };
 
   const addBookGalleryImage = async (bookId: string, mediaUrl: string) => {
     if (!mediaUrl) return;
+    const targetBook = books.find((b) => b.id === bookId);
+    const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
     const isVideo = isVideoMedia(mediaUrl);
     let finalMedia = mediaUrl;
     if (!isVideo) {
       finalMedia = await compressImage(mediaUrl, 800, 800, 0.75);
     }
+    let nextBooksList: Book[] = [];
     setBooks((prev) => {
       const next = prev.map((b) => {
         if (b.id !== bookId) return b;
@@ -779,11 +939,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           galleryImages: [...current, finalMedia],
         };
       });
+      nextBooksList = next;
       safeSetItem('nabil_author_v4_books', next);
-      saveSiteDataToCloud({ books: next });
       return next;
     });
-    showToast(isVideo ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً' : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً');
+
+    if (!isVideo) {
+      ensureBookImageInGallery(bookTitle, finalMedia);
+    }
+    await saveSiteDataToCloud({ books: nextBooksList }, true);
+    showToast(isVideo ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً' : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً وفي المعرض');
   };
 
   const addBookComment = (bookId: string, commentData: Omit<BookComment, 'id' | 'date'>) => {
@@ -1397,6 +1562,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetAllData,
         isCloudSynced,
         syncAllToCloudNow,
+        uploadStatus,
+        setUploadStatus,
+        processAndUploadImage,
+        copyToClipboardWithFeedback,
       }}
     >
       {children}

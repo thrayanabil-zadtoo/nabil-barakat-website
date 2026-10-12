@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload } from 'lucide-react';
+import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 
 export const InlineEditModal: React.FC = () => {
@@ -20,6 +20,8 @@ export const InlineEditModal: React.FC = () => {
     editingLink,
     setEditingLink,
     updateLink,
+    processAndUploadImage,
+    copyToClipboardWithFeedback,
   } = useApp();
 
   // Video local edit state
@@ -353,14 +355,48 @@ export const InlineEditModal: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">رابط الصورة (URL)</label>
-                <input
-                  type="text"
-                  required
-                  value={pUrl}
-                  onChange={(e) => setPUrl(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 outline-none"
-                />
+                <label className="block text-gray-700 font-bold mb-1">رابط الصورة (URL أو رفع سحابي من الجهاز)</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="text"
+                    required
+                    value={pUrl}
+                    onChange={(e) => setPUrl(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 outline-none text-xs"
+                    placeholder="رابط الصورة أو مسارها..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboardWithFeedback(pUrl, 'تم نسخ رابط الصورة إلى الحافظة')}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-slate-700 cursor-pointer"
+                    title="نسخ الرابط"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <label className="cursor-pointer px-3 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-lg text-xs font-bold whitespace-nowrap">
+                    رفع صورة
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const uploaded = await processAndUploadImage(file, {
+                            maxWidth: 1280,
+                            maxHeight: 1280,
+                            quality: 0.82,
+                            contextTitle: pTitle || 'صورة في المعرض',
+                          });
+                          setPUrl(uploaded);
+                        } catch {
+                          // Handled
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -438,28 +474,45 @@ export const InlineEditModal: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-gray-700 font-bold mb-1">صورة الغلاف (رابط أو رفع من الجهاز)</label>
+                <label className="block text-gray-700 font-bold mb-1">صورة الغلاف (رابط أو رفع سحابي من الجهاز)</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="text"
                     required
                     value={bCover}
                     onChange={(e) => setBCover(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 outline-none text-xs"
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 outline-none text-xs"
                     placeholder="رابط الصورة أو مسارها"
                   />
-                  <label className="cursor-pointer px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold whitespace-nowrap text-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboardWithFeedback(bCover, 'تم نسخ رابط الغلاف إلى الحافظة')}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-slate-700 cursor-pointer"
+                    title="نسخ الرابط"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                  <label className="cursor-pointer px-3 py-2 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] border border-[#dfa85b] rounded-lg text-xs font-bold whitespace-nowrap">
                     رفع صورة
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => setBCover(reader.result as string);
-                        reader.readAsDataURL(file);
+                        try {
+                          const uploaded = await processAndUploadImage(file, {
+                            maxWidth: 900,
+                            maxHeight: 1200,
+                            quality: 0.82,
+                            category: 'المؤلفات والكتب',
+                            contextTitle: `غلاف: ${bTitle || 'كتاب'}`,
+                          });
+                          setBCover(uploaded);
+                        } catch {
+                          // Handled
+                        }
                       }}
                     />
                   </label>
@@ -478,6 +531,14 @@ export const InlineEditModal: React.FC = () => {
                           <img src={img} alt="" className="w-16 h-16 object-cover rounded-md border" />
                           <button
                             type="button"
+                            onClick={() => copyToClipboardWithFeedback(img, 'تم نسخ رابط الصورة')}
+                            className="absolute -bottom-1 -left-1 w-5 h-5 bg-[#0b385e] hover:bg-[#07243c] text-[#dfa85b] rounded-full flex items-center justify-center text-[10px] shadow cursor-pointer font-bold"
+                            title="نسخ الرابط"
+                          >
+                            <Copy className="w-2.5 h-2.5" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setBGalleryImages((prev) => prev.filter((_, idx) => idx !== i))}
                             className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-xs font-bold shadow cursor-pointer"
                             title="حذف هذه الصورة من الكتاب"
@@ -489,19 +550,27 @@ export const InlineEditModal: React.FC = () => {
                     </div>
                   )}
                   <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold text-slate-700">
-                    <span>+ إضافة صورة / لوحة إلى المعرض من الجهاز</span>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>+ إضافة صورة / لوحة إلى المعرض (رفع سحابي)</span>
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = () => {
-                          setBGalleryImages((prev) => [...prev, reader.result as string]);
-                        };
-                        reader.readAsDataURL(file);
+                        try {
+                          const uploaded = await processAndUploadImage(file, {
+                            maxWidth: 1200,
+                            maxHeight: 1200,
+                            quality: 0.82,
+                            category: 'المؤلفات والكتب',
+                            contextTitle: `لوحة / ملحق كتاب: ${bTitle || 'كتاب'}`,
+                          });
+                          setBGalleryImages((prev) => [...prev, uploaded]);
+                        } catch {
+                          // Handled
+                        }
                         e.target.value = '';
                       }}
                     />

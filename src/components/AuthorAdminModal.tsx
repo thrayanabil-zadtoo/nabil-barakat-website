@@ -74,6 +74,8 @@ export const AuthorAdminModal: React.FC = () => {
     showToast,
     isCloudSynced,
     syncAllToCloudNow,
+    processAndUploadImage,
+    copyToClipboardWithFeedback,
   } = useApp();
 
   const [copiedMediaId, setCopiedMediaId] = useState<string | null>(null);
@@ -649,14 +651,49 @@ export const AuthorAdminModal: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-1">رابط صورة الغلاف</label>
-                    <input
-                      type="text"
-                      required
-                      value={bCover}
-                      onChange={(e) => setBCover(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
-                    />
+                    <label className="block text-gray-700 font-semibold mb-1">صورة الغلاف (رابط أو رفع سحابي)</label>
+                    <div className="flex gap-1.5 items-center">
+                      <input
+                        type="text"
+                        required
+                        value={bCover}
+                        onChange={(e) => setBCover(e.target.value)}
+                        placeholder="رابط الصورة أو ارفعها..."
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-300 bg-white text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboardWithFeedback(bCover, 'تم نسخ رابط الغلاف')}
+                        className="p-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-slate-700 cursor-pointer"
+                        title="نسخ الرابط"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <label className="cursor-pointer px-3 py-2 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-bold text-xs rounded-lg whitespace-nowrap">
+                        رفع
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              const uploaded = await processAndUploadImage(file, {
+                                maxWidth: 900,
+                                maxHeight: 1200,
+                                quality: 0.82,
+                                category: 'المؤلفات والكتب',
+                                contextTitle: `غلاف: ${bTitle || 'كتاب جديد'}`,
+                              });
+                              setBCover(uploaded);
+                            } catch {
+                              // Handled
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -685,6 +722,17 @@ export const AuthorAdminModal: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            copyToClipboardWithFeedback(b.coverImage, `تم نسخ رابط غلاف كتاب «${b.title}»`);
+                          }}
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded flex items-center gap-1 font-semibold text-[11px] cursor-pointer"
+                          title="نسخ رابط الغلاف للمشرف"
+                        >
+                          <Copy className="w-3 h-3 text-[#c4924c]" />
+                          <span>نسخ الغلاف</span>
+                        </button>
                         <button
                           onClick={() => setEditingBook(b)}
                           className="px-3 py-1.5 bg-[#edf4fb] text-[#0b385e] hover:bg-[#d9e8f6] font-bold rounded-lg flex items-center gap-1"

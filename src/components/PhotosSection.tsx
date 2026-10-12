@@ -20,6 +20,8 @@ export const PhotosSection: React.FC = () => {
     togglePinPhoto,
     movePhotoOrder,
     setPhotoPosition,
+    processAndUploadImage,
+    copyToClipboardWithFeedback,
   } = useApp();
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -183,9 +185,9 @@ export const PhotosSection: React.FC = () => {
                     placeholder="/src/assets/images/... أو رابط خارجي"
                     className="flex-1 px-3 py-2 text-xs rounded-lg bg-[#f8fafc] border border-[#cbd5e1] text-gray-900 focus:outline-none focus:border-[#0b385e]"
                   />
-                  <label className="cursor-pointer px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 whitespace-nowrap flex items-center gap-1">
+                    <label className="cursor-pointer px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 whitespace-nowrap flex items-center gap-1">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>رفع</span>
+                    <span>رفع سحابي</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -194,10 +196,16 @@ export const PhotosSection: React.FC = () => {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         try {
-                          const compressed = await compressImage(file, 1280, 1280, 0.82);
-                          setNewImageUrl(compressed);
+                          const uploaded = await processAndUploadImage(file, {
+                            maxWidth: 1280,
+                            maxHeight: 1280,
+                            quality: 0.82,
+                            category: newCategory,
+                            contextTitle: newTitle || 'صورة توثيقية في المعرض',
+                          });
+                          setNewImageUrl(uploaded);
                         } catch {
-                          // ignore
+                          // Handled by processAndUploadImage
                         }
                       }}
                     />
@@ -599,8 +607,22 @@ export const PhotosSection: React.FC = () => {
               <p className="text-[#475569] leading-relaxed max-w-2xl">
                 {activeLightboxPhoto.caption}
               </p>
-              <div className="font-mono text-[#64748b] shrink-0 tabular-nums">
-                {activeLightboxPhoto.date}
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const urlToCopy = activeLightboxPhoto.videoUrl || activeLightboxPhoto.imageUrl;
+                    copyToClipboardWithFeedback(urlToCopy, 'تم نسخ رابط الصورة إلى الحافظة بنجاح');
+                  }}
+                  className="px-3 py-1.5 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-lg font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  title="نسخ رابط الوسائط للمشرف"
+                >
+                  <Copy className="w-3.5 h-3.5 text-[#dfa85b]" />
+                  <span>نسخ رابط الصورة للمشرف</span>
+                </button>
+                <div className="font-mono text-[#64748b] tabular-nums">
+                  {activeLightboxPhoto.date}
+                </div>
               </div>
             </div>
 

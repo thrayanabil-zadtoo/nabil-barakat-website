@@ -20,6 +20,7 @@ import { ShareModal } from './components/ShareModal';
 import { UniversalCommentModal } from './components/UniversalCommentModal';
 import { SupervisorLoginModal } from './components/SupervisorLoginModal';
 import { Toast } from './components/Toast';
+import { UploadProgressModal } from './components/UploadProgressModal';
 import { PoeticMarquee } from './components/PoeticMarquee';
 import { HeaderAnnouncementBanner } from './components/HeaderAnnouncementBanner';
 import { ReadingResumeBanner } from './components/ReadingResumeBanner';
@@ -245,6 +246,9 @@ const MainContent: React.FC = () => {
 
       {/* Floating Feedback Toast */}
       <Toast />
+
+      {/* Cloud Upload Visual Progress Indicator */}
+      <UploadProgressModal />
 
       {/* Resume Reading Active Book Modal */}
       {activeResumeBook && (

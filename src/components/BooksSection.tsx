@@ -26,6 +26,8 @@ import {
   Play,
   Film,
   Link2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -49,6 +51,8 @@ export const BooksSection: React.FC = () => {
     togglePinBook,
     moveBookOrder,
     setBookPosition,
+    processAndUploadImage,
+    copyToClipboardWithFeedback,
   } = useApp();
   const [selectedBookForReading, setSelectedBookForReading] = useState<Book | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string>('all');
@@ -94,11 +98,19 @@ export const BooksSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !activeUploadBookId) return;
     try {
-      const dataUrl = await compressImage(file, 900, 1200, 0.82);
-      setBookCover(activeUploadBookId, dataUrl);
-      showToast('تم تحديث صورة غلاف الكتاب بنجاح!');
+      const book = books.find((b) => b.id === activeUploadBookId);
+      const bookTitle = book ? book.title : 'غلاف الكتاب';
+      const uploadedUrl = await processAndUploadImage(file, {
+        maxWidth: 900,
+        maxHeight: 1200,
+        quality: 0.82,
+        category: 'المؤلفات والكتب',
+        contextTitle: `غلاف مؤلف: ${bookTitle}`,
+        bookId: activeUploadBookId,
+      });
+      setBookCover(activeUploadBookId, uploadedUrl);
     } catch {
-      showToast('حدث خطأ أثناء معالجة الصورة، يرجى المحاولة مجدداً');
+      // Handled by processAndUploadImage
     }
     setActiveUploadBookId(null);
     e.target.value = '';
@@ -108,10 +120,19 @@ export const BooksSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file || !activeGalleryUploadBookId) return;
     try {
-      const dataUrl = await compressImage(file, 1200, 1200, 0.82);
-      addBookGalleryImage(activeGalleryUploadBookId, dataUrl);
+      const book = books.find((b) => b.id === activeGalleryUploadBookId);
+      const bookTitle = book ? book.title : 'معرض الكتاب';
+      const uploadedUrl = await processAndUploadImage(file, {
+        maxWidth: 1200,
+        maxHeight: 1200,
+        quality: 0.82,
+        category: 'المؤلفات والكتب',
+        contextTitle: `معرض مؤلف: ${bookTitle}`,
+        bookId: activeGalleryUploadBookId,
+      });
+      addBookGalleryImage(activeGalleryUploadBookId, uploadedUrl);
     } catch {
-      showToast('حدث خطأ أثناء معالجة الصورة، يرجى المحاولة مجدداً');
+      // Handled by processAndUploadImage
     }
     setActiveGalleryUploadBookId(null);
     e.target.value = '';
@@ -262,17 +283,34 @@ export const BooksSection: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Cover Change Button - Supervisor only */}
+                  {/* Cover Change Button & Copy Link - Supervisor only */}
                   {isAuthorMode && (
-                    <button
-                      type="button"
-                      onClick={() => handleCoverUploadForBook(book.id)}
-                      className="mt-2 w-full text-[11px] font-bold text-[#c4924c] hover:text-[#0b385e] flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-[#c4924c]/60 bg-[#fffdf9] hover:bg-[#fef9ec] transition cursor-pointer shadow-2xs"
-                      title="إضافة أو تغيير صورة الغلاف لهذا الكتاب"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>تغيير صورة الغلاف</span>
-                    </button>
+                    <div className="mt-2 space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => handleCoverUploadForBook(book.id)}
+                        className="w-full text-[11px] font-bold text-[#c4924c] hover:text-[#0b385e] flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-[#c4924c]/60 bg-[#fffdf9] hover:bg-[#fef9ec] transition cursor-pointer shadow-2xs"
+                        title="إضافة أو تغيير صورة الغلاف لهذا الكتاب"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>تغيير صورة الغلاف</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyToClipboardWithFeedback(
+                            book.coverImage,
+                            `تم نسخ رابط غلاف كتاب «${book.title}» إلى الحافظة بنجاح`
+                          )
+                        }
+                        className="w-full text-[10px] font-bold text-[#0b385e] hover:bg-[#eaf1f8] flex items-center justify-center gap-1 py-1 rounded-lg border border-[#cbd5e1] bg-white transition cursor-pointer"
+                        title="نسخ رابط صورة الغلاف للمشرف"
+                      >
+                        <Copy className="w-3 h-3 text-[#c4924c]" />
+                        <span>نسخ رابط الغلاف للمشرف</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -366,18 +404,31 @@ export const BooksSection: React.FC = () => {
                               )}
                             </div>
 
-                            {/* Supervisor only: Delete button */}
+                            {/* Supervisor only: Copy Link & Delete button */}
                             {isAuthorMode && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteBookGalleryImage(book.id, i);
-                                }}
-                                className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[10px] shadow transition cursor-pointer font-bold z-10"
-                                title="حذف هذا العنصر من المعرض"
-                              >
-                                ✕
-                              </button>
+                              <div className="absolute -top-1.5 -left-1.5 flex items-center gap-1 z-10">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboardWithFeedback(mediaUrl, 'تم نسخ رابط الوسائط إلى الحافظة بنجاح');
+                                  }}
+                                  className="w-5 h-5 bg-[#0b385e] hover:bg-[#07243c] text-[#dfa85b] rounded-full flex items-center justify-center text-[10px] shadow transition cursor-pointer font-bold"
+                                  title="نسخ رابط هذه الصورة للمشرف"
+                                >
+                                  <Copy className="w-2.5 h-2.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteBookGalleryImage(book.id, i);
+                                  }}
+                                  className="w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[10px] shadow transition cursor-pointer font-bold"
+                                  title="حذف هذا العنصر من المعرض"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             )}
                           </div>
                         );
@@ -690,6 +741,24 @@ export const BooksSection: React.FC = () => {
                   >
                     <Star className="w-4 h-4 fill-current" />
                     <span>تعيين هذه الصورة كغلاف أساسي للكتاب ★</span>
+                  </button>
+                )}
+
+                {/* Copy Image URL for Supervisor */}
+                {isAuthorMode && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyToClipboardWithFeedback(
+                        enlargedImage.imageUrl,
+                        `تم نسخ رابط الصورة إلى الحافظة بنجاح`
+                      )
+                    }
+                    className="px-3.5 py-2 bg-[#dfa85b]/20 hover:bg-[#dfa85b]/30 text-[#dfa85b] font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-[#dfa85b]/40"
+                    title="نسخ رابط هذه الصورة"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[#dfa85b]" />
+                    <span>نسخ رابط الصورة للمشرف</span>
                   </button>
                 )}
 
