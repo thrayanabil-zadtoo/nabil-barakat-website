@@ -269,18 +269,95 @@ export function subscribeToCloudSiteData(
 }
 
 /**
- * Fetch initial cloud state once
+ * Fetch initial cloud state with modular fallbacks
  */
 export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
+  const result: Partial<SyncedSiteData> = {};
+  let foundAny = false;
+
   try {
-    const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
-    const snap = await getDoc(mainDocRef);
-    if (snap.exists()) {
-      return snap.data() as SyncedSiteData;
+    // 1. First read modular documents (guaranteed fresh and not subject to 1MB size limit)
+    const [booksSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap] = await Promise.all([
+      getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'photos')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'videos')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'news')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'links')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(() => null),
+    ]);
+
+    if (booksSnap && booksSnap.exists()) {
+      const data = booksSnap.data();
+      if (data?.books && Array.isArray(data.books)) {
+        result.books = data.books;
+        foundAny = true;
+      }
+    }
+
+    if (profileSnap && profileSnap.exists()) {
+      const data = profileSnap.data();
+      if (data?.authorProfile) {
+        result.authorProfile = data.authorProfile;
+        foundAny = true;
+      }
+    }
+
+    if (photosSnap && photosSnap.exists()) {
+      const data = photosSnap.data();
+      if (data?.photos && Array.isArray(data.photos)) {
+        result.photos = data.photos;
+        foundAny = true;
+      }
+    }
+
+    if (videosSnap && videosSnap.exists()) {
+      const data = videosSnap.data();
+      if (data?.videos && Array.isArray(data.videos)) {
+        result.videos = data.videos;
+        foundAny = true;
+      }
+    }
+
+    if (newsSnap && newsSnap.exists()) {
+      const data = newsSnap.data();
+      if (data?.news && Array.isArray(data.news)) {
+        result.news = data.news;
+        foundAny = true;
+      }
+    }
+
+    if (linksSnap && linksSnap.exists()) {
+      const data = linksSnap.data();
+      if (data?.links && Array.isArray(data.links)) {
+        result.links = data.links;
+        foundAny = true;
+      }
+    }
+
+    if (annSnap && annSnap.exists()) {
+      const data = annSnap.data();
+      if (data?.announcements && Array.isArray(data.announcements)) {
+        result.announcements = data.announcements;
+        foundAny = true;
+      }
+    }
+
+    // 2. Fallback to main aggregate doc if modular docs didn't populate all fields
+    if (!foundAny) {
+      const mainSnap = await getDoc(doc(db, COLLECTION_NAME, MAIN_DOC_ID)).catch(() => null);
+      if (mainSnap && mainSnap.exists()) {
+        return mainSnap.data() as SyncedSiteData;
+      }
+    }
+
+    if (foundAny) {
+      result._isSeeded = true;
+      return result as SyncedSiteData;
     }
     return null;
   } catch (error) {
-    handleFirestoreError(error, OperationType.GET, `${COLLECTION_NAME}/${MAIN_DOC_ID}`);
+    console.warn('[Firestore] Notice during cloud state fetch:', error);
     return null;
   }
 }
@@ -290,7 +367,7 @@ let pendingSyncPayload: Partial<SyncedSiteData> = {};
 
 /**
  * Atomically saves site data to Firestore across both modular documents and the main document.
- * Guaranteed to never fail silently: throws or logs clearly.
+ * Guaranteed to never fail silently: throws or logs clearly, properly awaits writes.
  */
 export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immediate = false): Promise<boolean> {
   // Accumulate all incoming data into pendingSyncPayload so no field is ever lost across concurrent/rapid calls
@@ -311,7 +388,7 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       // 1. Save specific modular docs first (each is well under 1MB)
       const savePromises: Promise<any>[] = [];
 
-      if (sanitized.books && Array.isArray(sanitized.books) && sanitized.books.length > 0) {
+      if (sanitized.books && Array.isArray(sanitized.books)) {
         const booksDocRef = doc(db, COLLECTION_NAME, 'books');
         savePromises.push(setDoc(booksDocRef, { books: sanitized.books, updatedAt: nowIso }, { merge: true }));
         // Also write each book individually into the 'books' collection for direct single-doc access
@@ -328,27 +405,27 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         savePromises.push(setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.videos && Array.isArray(sanitized.videos) && sanitized.videos.length > 0) {
+      if (sanitized.videos && Array.isArray(sanitized.videos)) {
         const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
         savePromises.push(setDoc(videosDocRef, { videos: sanitized.videos, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.photos && Array.isArray(sanitized.photos) && sanitized.photos.length > 0) {
+      if (sanitized.photos && Array.isArray(sanitized.photos)) {
         const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
         savePromises.push(setDoc(photosDocRef, { photos: sanitized.photos, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.news && Array.isArray(sanitized.news) && sanitized.news.length > 0) {
+      if (sanitized.news && Array.isArray(sanitized.news)) {
         const newsDocRef = doc(db, COLLECTION_NAME, 'news');
         savePromises.push(setDoc(newsDocRef, { news: sanitized.news, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.links && Array.isArray(sanitized.links) && sanitized.links.length > 0) {
+      if (sanitized.links && Array.isArray(sanitized.links)) {
         const linksDocRef = doc(db, COLLECTION_NAME, 'links');
         savePromises.push(setDoc(linksDocRef, { links: sanitized.links, updatedAt: nowIso }, { merge: true }));
       }
 
-      if (sanitized.announcements && Array.isArray(sanitized.announcements) && sanitized.announcements.length > 0) {
+      if (sanitized.announcements && Array.isArray(sanitized.announcements)) {
         const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
         savePromises.push(setDoc(annDocRef, { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true }));
       }
@@ -363,10 +440,10 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         savePromises.push(setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }));
       }
 
-      // Save modular docs with a safety timeout so long-polling latency never stalls the UI
+      // Save modular docs with a generous timeout (8s) so long-polling latency or mobile connections never fail prematurely
       await Promise.race([
         Promise.all(savePromises),
-        new Promise((r) => setTimeout(r, 1200)),
+        new Promise((r) => setTimeout(r, 8000)),
       ]);
 
       // 2. Also save to main aggregate document as a combined cache

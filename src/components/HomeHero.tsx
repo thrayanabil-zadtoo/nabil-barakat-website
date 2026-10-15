@@ -270,7 +270,7 @@ export const HomeHero: React.FC = () => {
           </div>
         </button>
 
-        {/* ▶ فيديوهاتي */}
+        {/* ▶ فيديو يجسد الروايات */}
         <button
           onClick={() => setActiveSection('videos')}
           className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
@@ -279,8 +279,8 @@ export const HomeHero: React.FC = () => {
             <Play className="w-5 h-5 text-[#07375a]" />
           </div>
           <div>
-            <div className="text-sm font-bold">فيديوهاتي</div>
-            <div className="text-[11px] text-[#6f8291]">مقاطع TikTok</div>
+            <div className="text-sm font-bold">فيديو يجسد الروايات</div>
+            <div className="text-[11px] text-[#6f8291]">فصول الروايات المرئية</div>
           </div>
         </button>
 
@@ -605,12 +605,12 @@ export const HomeHero: React.FC = () => {
             </div>
           </div>
 
-          {/* Section: أحدث الفيديوهات */}
+          {/* Section: فيديو يجسد الروايات */}
           <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
               <div className="flex items-center gap-2">
                 <Play className="w-4 h-4 text-[#07375a]" />
-                <h3 className="text-sm font-bold text-[#07375a]">أحدث الفيديوهات</h3>
+                <h3 className="text-sm font-bold text-[#07375a]">فيديو يجسد الروايات</h3>
               </div>
               <div className="flex items-center gap-2">
                 {isAuthorMode && (
@@ -618,14 +618,14 @@ export const HomeHero: React.FC = () => {
                     onClick={() => setIsAuthorMode(true)}
                     className="text-[11px] bg-[#07375a] text-white px-2 py-0.5 rounded hover:bg-[#062b47]"
                   >
-                    + إضافة فيديو
+                    + إضافة مشهد
                   </button>
                 )}
                 <button
                   onClick={() => setActiveSection('videos')}
                   className="text-xs text-[#50738b] hover:text-[#07375a] flex items-center gap-0.5 font-medium"
                 >
-                  <span>عرض جميع الفيديوهات</span>
+                  <span>عرض جميع الفصول</span>
                   <span>←</span>
                 </button>
               </div>
@@ -636,14 +636,31 @@ export const HomeHero: React.FC = () => {
                 {(() => {
                   const videoSrc = activeVideo.videoFileUrl || activeVideo.url;
                   return (
-                    <div className="relative aspect-[16/9] w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#1e293b] shadow">
+                    <div
+                      className="relative aspect-[16/9] w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#1e293b] shadow select-none"
+                      onContextMenu={(e) => e.preventDefault()}
+                    >
                       <video
                         src={videoSrc}
                         controls
+                        controlsList="nodownload noplaybackrate"
+                        disablePictureInPicture
                         playsInline
                         preload="metadata"
                         className="w-full h-full object-contain bg-black"
                       />
+
+                      {/* Copyright Watermark Badge on live playback */}
+                      <div
+                        aria-hidden="true"
+                        className="absolute top-2.5 right-2.5 pointer-events-none select-none z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-xs border border-white/15 text-white/90 shadow-md"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#dfa85b] animate-ping" />
+                        <span className="text-[10px] font-bold tracking-tight">
+                          حقوق النشر محفوظة · أ. نبيل بركات ©
+                        </span>
+                      </div>
+
                       <div className="absolute bottom-2.5 left-2.5 bg-black/70 backdrop-blur-sm text-white px-2 py-0.5 rounded text-[10px] font-mono tabular-nums pointer-events-none">
                         {activeVideo.duration || '01:28'}
                       </div>

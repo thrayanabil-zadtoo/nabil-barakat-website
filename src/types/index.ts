@@ -55,6 +55,10 @@ export interface VideoItem {
   commentsCount?: string;
   isPinned?: boolean;
   order?: number;
+  bookId?: string;
+  bookTitle?: string;
+  chapterNumber?: number;
+  chapterTitle?: string;
 }
 
 export interface PhotoItem {

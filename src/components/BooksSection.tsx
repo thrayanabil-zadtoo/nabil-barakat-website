@@ -101,14 +101,14 @@ export const BooksSection: React.FC = () => {
       const book = books.find((b) => b.id === activeUploadBookId);
       const bookTitle = book ? book.title : 'غلاف الكتاب';
       const uploadedUrl = await processAndUploadImage(file, {
-        maxWidth: 900,
-        maxHeight: 1200,
+        maxWidth: 800,
+        maxHeight: 1100,
         quality: 0.82,
         category: 'المؤلفات والكتب',
         contextTitle: `غلاف مؤلف: ${bookTitle}`,
         bookId: activeUploadBookId,
       });
-      setBookCover(activeUploadBookId, uploadedUrl);
+      await setBookCover(activeUploadBookId, uploadedUrl);
     } catch {
       // Handled by processAndUploadImage
     }
@@ -123,14 +123,14 @@ export const BooksSection: React.FC = () => {
       const book = books.find((b) => b.id === activeGalleryUploadBookId);
       const bookTitle = book ? book.title : 'معرض الكتاب';
       const uploadedUrl = await processAndUploadImage(file, {
-        maxWidth: 1200,
-        maxHeight: 1200,
+        maxWidth: 1000,
+        maxHeight: 1100,
         quality: 0.82,
         category: 'المؤلفات والكتب',
         contextTitle: `معرض مؤلف: ${bookTitle}`,
         bookId: activeGalleryUploadBookId,
       });
-      addBookGalleryImage(activeGalleryUploadBookId, uploadedUrl);
+      await addBookGalleryImage(activeGalleryUploadBookId, uploadedUrl);
     } catch {
       // Handled by processAndUploadImage
     }

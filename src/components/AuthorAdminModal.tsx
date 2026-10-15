@@ -23,6 +23,8 @@ import {
   FileUp,
   RefreshCw,
   Cloud,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getSiteDomain, setCustomSiteDomain, DEFAULT_OFFICIAL_DOMAIN } from '../config/siteDomain';
@@ -74,6 +76,7 @@ export const AuthorAdminModal: React.FC = () => {
     showToast,
     isCloudSynced,
     syncAllToCloudNow,
+    saveStatus,
     processAndUploadImage,
     copyToClipboardWithFeedback,
   } = useApp();
@@ -116,14 +119,17 @@ export const AuthorAdminModal: React.FC = () => {
   const [bGenre, setBGenre] = useState('رواية أدبية');
   const [bDesc, setBDesc] = useState('');
 
-  // Video State
+  // Video State (فيديو يجسد الروايات)
   const [vTitle, setVTitle] = useState('');
   const [vUrl, setVUrl] = useState('');
-  const [vCategory, setVCategory] = useState('خواطر أدبية');
+  const [vBookId, setVBookId] = useState<string>('book-1');
+  const [vChapterNumber, setVChapterNumber] = useState<number | ''>(1);
+  const [vChapterTitle, setVChapterTitle] = useState('');
+  const [vCategory, setVCategory] = useState('رواية وقعت في فخ شيماء');
   const [vDesc, setVDesc] = useState('');
-  const [vDuration, setVDuration] = useState('01:28');
-  const [vLikes, setVLikes] = useState('1.2K');
-  const [vComments, setVComments] = useState('156');
+  const [vDuration, setVDuration] = useState('02:30');
+  const [vLikes, setVLikes] = useState('1.5K');
+  const [vComments, setVComments] = useState('180');
 
   // Photo State
   const [pTitle, setPTitle] = useState('');
@@ -146,19 +152,29 @@ export const AuthorAdminModal: React.FC = () => {
     e.preventDefault();
     if (!vTitle.trim() || !vUrl.trim()) return;
     const parsed = parseVideoUrl(vUrl);
+    const assignedBook = books.find((b) => b.id === vBookId);
+    const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+
     addVideo({
       title: vTitle.trim(),
       url: parsed.cleanUrl || vUrl.trim(),
-      category: vCategory,
-      description: vDesc.trim() || 'مقطع أدبي وفكري للأستاذ نبيل بركات على تيكتوك',
-      platform: parsed.platform === 'youtube' ? 'youtube' : 'tiktok',
-      duration: vDuration || '01:28',
-      likesCount: vLikes || '1.2K',
-      commentsCount: vComments || '156',
+      videoFileUrl: vUrl.startsWith('data:') ? vUrl : undefined,
+      category: vCategory || `رواية ${bookTitle}`,
+      bookId: vBookId,
+      bookTitle,
+      chapterNumber: vChapterNumber ? Number(vChapterNumber) : undefined,
+      chapterTitle: vChapterTitle.trim() || undefined,
+      description: vDesc.trim() || `تجسيد درامي ومرئي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+      platform: 'direct',
+      duration: vDuration || '02:30',
+      likesCount: vLikes || '1.5K',
+      commentsCount: vComments || '180',
     });
     setVTitle('');
     setVUrl('');
     setVDesc('');
+    setVChapterTitle('');
+    showToast('تمت إضافة الفصل والمشهد المرئي بنجاح وحفظه سحابياً');
   };
 
   const handleAddPhoto = (e: React.FormEvent) => {
@@ -229,15 +245,41 @@ export const AuthorAdminModal: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={syncAllToCloudNow}
+              disabled={saveStatus === 'saving'}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-bold transition shadow-sm cursor-pointer ${
-                isCloudSynced
+                saveStatus === 'saving'
+                  ? 'bg-amber-600 text-white animate-pulse'
+                  : saveStatus === 'saved'
+                  ? 'bg-emerald-600 text-white'
+                  : saveStatus === 'error'
+                  ? 'bg-rose-600 text-white'
+                  : isCloudSynced
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   : 'bg-amber-600 hover:bg-amber-700 text-white'
               }`}
               title="مزامنة فورية وحفظ سحابي لجميع البيانات على Firebase لتظهر لكافة الزوار حول العالم"
             >
-              <Cloud className="w-3.5 h-3.5" />
-              <span>{isCloudSynced ? 'سحابي متصل' : 'مزامنة سحابية'}</span>
+              {saveStatus === 'saving' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>جارٍ الحفظ السحابي...</span>
+                </>
+              ) : saveStatus === 'saved' ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>تم الحفظ بنجاح ✓</span>
+                </>
+              ) : saveStatus === 'error' ? (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>فشل الحفظ ⚠️</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>{isCloudSynced ? 'سحابي متصل ✓' : 'مزامنة سحابية'}</span>
+                </>
+              )}
             </button>
             <button
               onClick={logoutSupervisor}
@@ -268,7 +310,7 @@ export const AuthorAdminModal: React.FC = () => {
             }`}
           >
             <Video className="w-3.5 h-3.5" />
-            <span>إدارة وتعديل الفيديوهات ({videos.length})</span>
+            <span>فيديو يجسد الروايات ({videos.length})</span>
           </button>
 
           <button
@@ -368,20 +410,76 @@ export const AuthorAdminModal: React.FC = () => {
               
               {/* Add Video Form */}
               <form onSubmit={handleAddVideo} className="p-5 rounded-xl bg-[#f8fafc] border border-[#d6e0ea] space-y-3">
-                <div className="font-bold text-[#0b385e] text-sm flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-[#dfa85b]" />
-                  <span>إضافة فيديو تيكتوك جديد</span>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="font-bold text-[#0b385e] text-sm flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-[#dfa85b]" />
+                    <span>إضافة وتجسيد فيديو جديد ضمن الروايات</span>
+                  </div>
+                  <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold">
+                    مشاهدة حصرية مباشرة · محمي بعلامة مائية
+                  </span>
+                </div>
+
+                {/* Novel and Chapter Selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-amber-50/50 p-3 rounded-lg border border-amber-200/60">
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">الرواية التابع لها المشهد:</label>
+                    <select
+                      value={vBookId}
+                      onChange={(e) => {
+                        const bId = e.target.value;
+                        setVBookId(bId);
+                        const found = books.find((b) => b.id === bId);
+                        if (found) {
+                          setVCategory(`رواية ${found.title}`);
+                          if (!vTitle) {
+                            setVTitle(`رواية ${found.title} · الفصل ${vChapterNumber || 1}`);
+                          }
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white font-bold text-[#0b385e]"
+                    >
+                      {books.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          رواية: {b.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">رقم الفصل:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={vChapterNumber}
+                      onChange={(e) => setVChapterNumber(e.target.value ? Number(e.target.value) : '')}
+                      placeholder="1"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white text-center font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">عنوان الفصل أو المشهد:</label>
+                    <input
+                      type="text"
+                      value={vChapterTitle}
+                      onChange={(e) => setVChapterTitle(e.target.value)}
+                      placeholder="مثال: البدايات الغامضة"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-1">عنوان الفيديو</label>
+                    <label className="block text-gray-700 font-semibold mb-1">عنوان الفيديو الكامل</label>
                     <input
                       type="text"
                       required
                       value={vTitle}
                       onChange={(e) => setVTitle(e.target.value)}
-                      placeholder="عنوان الخاطرة أو المقطع"
+                      placeholder="مثال: رواية وقعت في فخ شيماء · الفصل الأول"
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
                     />
                   </div>
@@ -401,12 +499,14 @@ export const AuthorAdminModal: React.FC = () => {
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 800 * 1024) {
-                                showToast('تنبيه: حجم الفيديو كبير. للحفظ السحابي الدائم لجميع الزوار، يُفضل استخدام رابط الفيديو (YouTube/Vimeo أو رابط MP4 مباشر).');
+                              if (file.size > 80 * 1024 * 1024) {
+                                showToast('حجم ملف الفيديو كبير جداً (أكبر من 80 ميجابايت).');
+                                return;
                               }
                               const reader = new FileReader();
                               reader.onload = () => {
                                 setVUrl(reader.result as string);
+                                showToast('تم تجهيز ملف الفيديو للمشاهدة وحفظ الحقوق بنجاح');
                               };
                               reader.readAsDataURL(file);
                             }
@@ -425,60 +525,74 @@ export const AuthorAdminModal: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-gray-700 font-semibold mb-1">التصنيف</label>
+                    <label className="block text-gray-700 font-semibold mb-1">المدة التقديرية</label>
                     <input
                       type="text"
-                      value={vCategory}
-                      onChange={(e) => setVCategory(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                      value={vDuration}
+                      onChange={(e) => setVDuration(e.target.value)}
+                      placeholder="02:30"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white font-mono"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-gray-700 font-semibold mb-1">الوصف</label>
+                  <label className="block text-gray-700 font-semibold mb-1">الوصف والمشهد الدرامي</label>
                   <input
                     type="text"
                     value={vDesc}
                     onChange={(e) => setVDesc(e.target.value)}
-                    placeholder="نبذة عن المقطع..."
+                    placeholder="نبذة عن تجسيد الفصل والأحداث الروائية..."
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
                   />
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-[11px] text-slate-500">
+                    * يتم بث الفيديو بعلامة مائية رقمية لحفظ حقوق الملكية الفكرية، مع تعطيل إمكانية التحميل لجميع الزوار.
+                  </div>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-[#0b385e] text-white font-bold rounded-lg hover:bg-[#082a47]"
+                    className="px-5 py-2 bg-[#0b385e] text-white font-bold rounded-lg hover:bg-[#082a47] cursor-pointer"
                   >
-                    إضافة الفيديو
+                    حفظ وتجسيد الفصل مرئياً
                   </button>
                 </div>
               </form>
 
               {/* Videos List with Direct Edit Buttons */}
               <div className="space-y-3">
-                <h4 className="font-bold text-[#0b385e] text-sm">الفيديوهات الحالية ({videos.length}):</h4>
+                <h4 className="font-bold text-[#0b385e] text-sm">فصول الروايات المرئية الحالية ({videos.length}):</h4>
                 <div className="divide-y divide-gray-200 border rounded-xl overflow-hidden bg-white">
                   {videos.map((v) => (
                     <div key={v.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50">
-                      <div>
-                        <div className="font-bold text-[#0b385e] text-sm">{v.title}</div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#07243c] font-black bg-[#dfa85b] px-2 py-0.5 rounded text-[10px]">
+                            {v.chapterNumber ? `الفصل ${v.chapterNumber}` : 'مشهد'}
+                          </span>
+                          <span className="font-bold text-[#0b385e] text-sm">{v.title}</span>
+                          <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            محمي بعلامة مائية ©
+                          </span>
+                        </div>
                         <div className="text-[11px] text-gray-500 font-mono truncate max-w-md">{v.url}</div>
-                        <div className="text-[11px] text-[#c4924c]">{v.category} · {v.date}</div>
+                        <div className="text-[11px] text-[#c4924c]">
+                          {v.bookTitle ? `رواية «${v.bookTitle}»` : v.category} · {v.date}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setEditingVideo(v)}
-                          className="px-3 py-1.5 bg-[#edf4fb] text-[#0b385e] hover:bg-[#d9e8f6] font-bold rounded-lg flex items-center gap-1"
+                          className="px-3 py-1.5 bg-[#edf4fb] text-[#0b385e] hover:bg-[#d9e8f6] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                           <span>تعديل</span>
                         </button>
                         <button
                           onClick={() => deleteVideo(v.id)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded"
+                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded cursor-pointer"
                           title="حذف"
                         >
                           <Trash2 className="w-4 h-4" />

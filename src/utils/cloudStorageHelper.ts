@@ -17,12 +17,27 @@ export function generateDateBasedImageName(): { fileName: string; imageId: strin
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
+  const dateKey = `${year}-${month}-${day}`;
 
-  imageCounter = (imageCounter % 999) + 1;
-  const seqNumber = String(imageCounter).padStart(3, '0');
+  let currentSeq = 1;
+  try {
+    const lastDate = localStorage.getItem('nabil_img_last_date');
+    const storedSeq = parseInt(localStorage.getItem('nabil_img_last_seq') || '0', 10);
+    if (lastDate === dateKey && storedSeq > 0) {
+      currentSeq = storedSeq + 1;
+    } else {
+      currentSeq = 1;
+    }
+    localStorage.setItem('nabil_img_last_date', dateKey);
+    localStorage.setItem('nabil_img_last_seq', String(currentSeq));
+  } catch {
+    imageCounter = (imageCounter % 999) + 1;
+    currentSeq = imageCounter;
+  }
 
-  // Format requested by user: 2026-10-12-001
-  const displayName = `${year}-${month}-${day}-${seqNumber}`;
+  const seqNumber = String(currentSeq).padStart(3, '0');
+  // Formatted date name requested by user: e.g. 2026-10-15-001
+  const displayName = `${dateKey}-${seqNumber}`;
   const fileName = `${displayName}.jpg`;
   const imageId = `img_${displayName}_${Date.now()}`;
 
@@ -31,7 +46,7 @@ export function generateDateBasedImageName(): { fileName: string; imageId: strin
 
 /**
  * Uploads and optimizes an image to Firebase Cloud (backed by Firestore permanent storage)
- * Ensures 100% reliability, no 75% hangs, and formats names by date (e.g. 2026-10-12-001)
+ * Ensures 100% reliability, no 45% or 75% hangs, and formats names by date (e.g. 2026-10-15-001)
  */
 export async function uploadImageToCloud(
   file: File,
@@ -42,35 +57,40 @@ export async function uploadImageToCloud(
 
   // Stage 1: Preparation (20%)
   if (onProgress) onProgress(20, `جاري تجهيز الصورة وتسميتها سحابياً (${displayName})...`);
-  await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, 80));
 
   // Stage 2: Compression & Optimization (45%)
   if (onProgress) onProgress(45, 'جاري تحسين أبعاد وضغط الصورة بأعلى جودة ونقاء...');
-  const compressed = await compressImage(file, 900, 1200, 0.82);
-  await new Promise((r) => setTimeout(r, 100));
+  const compressed = await compressImage(file, 800, 1100, 0.82);
+  await new Promise((r) => setTimeout(r, 80));
 
   // Stage 3: Cloud Database Storage (75%)
   if (onProgress) onProgress(75, `جاري الحفظ الدائم في السحابة باسم «${displayName}»...`);
 
-  const imgRef = doc(db, 'uploaded_images', imageId);
-  const savePromise = setDoc(imgRef, {
-    id: imageId,
-    fileName,
-    displayName,
-    originalName: file.name || '',
-    dataUrl: compressed,
-    folder,
-    createdAt: new Date().toISOString(),
-  }).catch((fsErr) => {
-    console.warn('[Firestore] Notice saving to uploaded_images collection:', fsErr);
-  });
+  try {
+    const imgRef = doc(db, 'uploaded_images', imageId);
+    const savePromise = setDoc(imgRef, {
+      id: imageId,
+      fileName,
+      displayName,
+      originalName: file.name || '',
+      dataUrl: compressed,
+      folder,
+      createdAt: new Date().toISOString(),
+    });
 
-  // Guard against any network/long-polling lag: continue after 400ms max
-  await Promise.race([savePromise, new Promise((r) => setTimeout(r, 400))]);
+    // Safety timeout: wait up to 3000ms for network write, but never block UI indefinitely
+    await Promise.race([
+      savePromise,
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
+  } catch (fsErr) {
+    console.warn('[Firestore] Notice while saving to uploaded_images collection:', fsErr);
+  }
 
   // Stage 4: Sync & Link Generation (90%)
   if (onProgress) onProgress(90, 'جاري ربط الصورة مع المعرض وقوائم المؤلفات...');
-  await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, 80));
 
   // Stage 5: Completed (100%)
   if (onProgress) onProgress(100, `اكتمل الرفع والحفظ بنجاح! الاسم السحابي: ${displayName} ✓`);

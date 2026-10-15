@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy } from 'lucide-react';
+import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy, Film } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 
 export const InlineEditModal: React.FC = () => {
@@ -20,6 +20,7 @@ export const InlineEditModal: React.FC = () => {
     editingLink,
     setEditingLink,
     updateLink,
+    books,
     processAndUploadImage,
     copyToClipboardWithFeedback,
   } = useApp();
@@ -32,6 +33,10 @@ export const InlineEditModal: React.FC = () => {
   const [vDuration, setVDuration] = useState('');
   const [vLikes, setVLikes] = useState('');
   const [vComments, setVComments] = useState('');
+  const [vBookId, setVBookId] = useState('');
+  const [vBookTitle, setVBookTitle] = useState('');
+  const [vChapterNumber, setVChapterNumber] = useState<number | ''>('');
+  const [vChapterTitle, setVChapterTitle] = useState('');
 
   // Photo local edit state
   const [pTitle, setPTitle] = useState('');
@@ -73,9 +78,13 @@ export const InlineEditModal: React.FC = () => {
       setVUrl(editingVideo.url);
       setVDesc(editingVideo.description);
       setVCategory(editingVideo.category);
-      setVDuration(editingVideo.duration || '01:28');
+      setVDuration(editingVideo.duration || '02:30');
       setVLikes(editingVideo.likesCount || '1.2K');
       setVComments(editingVideo.commentsCount || '156');
+      setVBookId(editingVideo.bookId || '');
+      setVBookTitle(editingVideo.bookTitle || '');
+      setVChapterNumber(editingVideo.chapterNumber ?? '');
+      setVChapterTitle(editingVideo.chapterTitle || '');
     }
   }, [editingVideo]);
 
@@ -150,6 +159,10 @@ export const InlineEditModal: React.FC = () => {
       duration: vDuration,
       likesCount: vLikes,
       commentsCount: vComments,
+      bookId: vBookId || undefined,
+      bookTitle: vBookTitle || undefined,
+      chapterNumber: vChapterNumber ? Number(vChapterNumber) : undefined,
+      chapterTitle: vChapterTitle.trim() || undefined,
     });
     setEditingVideo(null);
   };
@@ -238,8 +251,66 @@ export const InlineEditModal: React.FC = () => {
           {/* EDIT VIDEO */}
           {editingVideo && (
             <form onSubmit={handleSaveVideo} className="space-y-4">
+              <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+                <div className="font-bold text-[#0b385e] text-xs flex items-center gap-1.5">
+                  <Film className="w-4 h-4 text-[#dfa85b]" />
+                  <span>تخصيص المشهد ضمن روايات الكاتب (فيديو يجسد الروايات)</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">الرواية المرتبطة</label>
+                    <select
+                      value={vBookId}
+                      onChange={(e) => {
+                        const bId = e.target.value;
+                        setVBookId(bId);
+                        const found = books.find((b) => b.id === bId);
+                        if (found) {
+                          setVBookTitle(found.title);
+                          setVCategory(`رواية ${found.title}`);
+                        } else {
+                          setVBookTitle('');
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white font-bold text-[#0b385e] outline-none"
+                    >
+                      <option value="">-- عام / غير مرتبط برواية --</option>
+                      {books.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          رواية: {b.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">رقم الفصل</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={vChapterNumber}
+                      onChange={(e) => setVChapterNumber(e.target.value ? Number(e.target.value) : '')}
+                      placeholder="1"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white text-center font-bold outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-bold mb-1">عنوان الفصل أو المشهد</label>
+                    <input
+                      type="text"
+                      value={vChapterTitle}
+                      onChange={(e) => setVChapterTitle(e.target.value)}
+                      placeholder="مثال: البدايات الغامضة"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-gray-700 font-bold mb-1">عنوان الفيديو</label>
+                <label className="block text-gray-700 font-bold mb-1">عنوان الفيديو الكامل</label>
                 <input
                   type="text"
                   required

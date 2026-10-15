@@ -26,11 +26,14 @@ import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/s
 import { compressImage } from '../utils/imageCompressor';
 import { uploadImageToCloud } from '../utils/cloudStorageHelper';
 import { isVideoMedia } from '../utils/mediaUtils';
-import { subscribeToCloudSiteData, saveSiteDataToCloud } from '../utils/firebaseSync';
+import { subscribeToCloudSiteData, saveSiteDataToCloud, fetchCloudSiteData, SyncedSiteData } from '../utils/firebaseSync';
 
 interface AppContextType {
   authorProfile: AuthorProfile;
   updateAuthorProfile: (profile: Partial<AuthorProfile>) => void;
+
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  executeCloudSave: (payload: Partial<SyncedSiteData>, successMessage: string, actionDesc?: string) => Promise<boolean>;
 
   books: Book[];
   addBook: (book: Omit<Book, 'id' | 'comments'>) => void;
@@ -274,13 +277,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
     }
-    if (
-      !Array.isArray(loaded) ||
-      loaded.length < 4 ||
-      loaded[0]?.title === 'بين الواقع والحلم' ||
-      loaded[0]?.title.includes('المؤلف الأول') ||
-      !loaded[0]?.samplePages
-    ) {
+    if (!Array.isArray(loaded) || loaded.length === 0) {
       return initialBooks;
     }
     // Clean up any old placeholder images, fix broken page image paths, and purge deleted 'زهرة' page
@@ -427,9 +424,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Firebase Cloud Synchronization State
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(false);
   const isCloudHydrated = React.useRef<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  // Subscribe to real-time changes from Firebase Firestore
+  const executeCloudSave = async (
+    payload: Partial<SyncedSiteData>,
+    successMessage: string,
+    actionDesc = 'التعديلات'
+  ): Promise<boolean> => {
+    setSaveStatus('saving');
+    showToast(`جارٍ حفظ ${actionDesc} سحابياً على Firebase...`);
+    try {
+      const ok = await saveSiteDataToCloud(payload, true);
+      if (ok) {
+        setSaveStatus('saved');
+        setIsCloudSynced(true);
+        showToast(`✓ ${successMessage}`);
+        setTimeout(() => setSaveStatus('idle'), 3000);
+        return true;
+      } else {
+        setSaveStatus('error');
+        showToast(`⚠️ تعذر إتمام الحفظ السحابي لـ ${actionDesc}. يرجى التحقق من الاتصال بالإنترنت.`);
+        return false;
+      }
+    } catch (err: any) {
+      setSaveStatus('error');
+      console.error('executeCloudSave error:', err);
+      showToast(`❌ فشل الحفظ: ${err?.message || 'خطأ في الاتصال بالسحابة'}`);
+      return false;
+    }
+  };
+
+  // Subscribe to real-time changes from Firebase Firestore and load initial state
   useEffect(() => {
+    // 1. Initial direct fetch from Cloud Firestore (ensures instant hydration on any device or incognito)
+    fetchCloudSiteData()
+      .then((cloudData) => {
+        if (cloudData && Object.keys(cloudData).length > 0) {
+          if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
+            setBooks(cloudData.books);
+            booksRef.current = cloudData.books;
+            safeSetItem('nabil_author_v4_books', cloudData.books);
+          }
+          if (cloudData.authorProfile) {
+            setAuthorProfile((prev) => ({ ...prev, ...cloudData.authorProfile }));
+            safeSetItem('nabil_author_v4_profile', cloudData.authorProfile);
+          }
+          if (cloudData.photos && Array.isArray(cloudData.photos)) {
+            setPhotos(cloudData.photos);
+            safeSetItem('nabil_author_v4_photos', cloudData.photos);
+          }
+          if (cloudData.videos && Array.isArray(cloudData.videos)) {
+            setVideos(cloudData.videos);
+            safeSetItem('nabil_author_v4_videos', cloudData.videos);
+          }
+          if (cloudData.news && Array.isArray(cloudData.news)) {
+            setNews(cloudData.news);
+            safeSetItem('nabil_author_v4_news', cloudData.news);
+          }
+          if (cloudData.links && Array.isArray(cloudData.links)) {
+            setLinks(cloudData.links);
+            safeSetItem('nabil_author_v4_links', cloudData.links);
+          }
+          if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
+            setAnnouncements(cloudData.announcements);
+            safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
+          }
+          setIsCloudSynced(true);
+          isCloudHydrated.current = true;
+        }
+      })
+      .catch((err) => console.warn('Initial cloud state fetch notice:', err));
+
+    // 2. Real-time updates subscription
     const unsubscribe = subscribeToCloudSiteData((cloudData) => {
       if (cloudData && Object.keys(cloudData).length > 0) {
         if (cloudData.authorProfile) {
@@ -441,6 +507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
           setBooks(cloudData.books);
+          booksRef.current = cloudData.books;
           safeSetItem('nabil_author_v4_books', cloudData.books);
         }
         if (cloudData.videos && Array.isArray(cloudData.videos)) {
@@ -704,24 +771,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetItem('nabil_author_v4_announcements', announcements);
   }, [announcements]);
 
-  // Automatically sync and persist to Firebase Cloud when supervisor makes changes
-  useEffect(() => {
-    if (!isCloudHydrated.current) return;
-    if (isAuthorMode) {
-      saveSiteDataToCloud({
-        authorProfile,
-        books,
-        videos,
-        photos,
-        news,
-        links,
-        announcements,
-        comments,
-        messages,
-      });
-    }
-  }, [authorProfile, books, videos, photos, news, links, announcements, comments, messages, isAuthorMode]);
-
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -733,10 +782,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthorProfile((prev) => {
       const next = { ...prev, ...profile };
       safeSetItem('nabil_author_v4_profile', next);
-      saveSiteDataToCloud({ authorProfile: next }, true);
+      executeCloudSave({ authorProfile: next }, 'تم حفظ وتحديث البيانات الشخصية للكاتب سحابياً بنجاح', 'بيانات الكاتب');
       return next;
     });
-    showToast('تم تحديث البيانات الشخصية للكاتب وحفظها سحابياً');
   };
 
   // Helper: Ensures any image from books is automatically synchronized into the Photo Gallery
@@ -757,7 +805,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       const nextPhotos = [newPhotoItem, ...prev];
       safeSetItem('nabil_author_v4_photos', nextPhotos);
-      saveSiteDataToCloud({ photos: nextPhotos }, true);
+      executeCloudSave({ photos: nextPhotos }, 'تم حفظ وتضمين صورة الغلاف في المعرض سحابياً', 'معرض الصور');
       return nextPhotos;
     });
   };
@@ -848,8 +896,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (newBook.coverImage) {
       ensureBookImageInGallery(newBook.title, newBook.coverImage);
     }
-    await saveSiteDataToCloud({ books: nextBooksList }, true);
-    showToast('تمت إضافة مؤلّف جديد إلى قائمة الكتب وحفظه سحابياً وفي معرض الصور');
+    await executeCloudSave({ books: nextBooksList }, 'تمت إضافة الكتاب الجديد وحفظه سحابياً بنجاح', 'الكتاب الجديد');
   };
 
   const updateBook = async (id: string, updated: Partial<Book>) => {
@@ -869,8 +916,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!isVideoMedia(img)) ensureBookImageInGallery(title, img);
       });
     }
-    await saveSiteDataToCloud({ books: nextBooksList }, true);
-    showToast('تم حفظ تعديلات الكتاب في قاعدة البيانات سحابياً');
+    await executeCloudSave({ books: nextBooksList }, 'تم حفظ تعديلات الكتاب في قاعدة البيانات السحابية بنجاح', 'تعديلات الكتاب');
   };
 
   const deleteBook = async (id: string) => {
@@ -878,8 +924,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     booksRef.current = nextBooksList;
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
-    await saveSiteDataToCloud({ books: nextBooksList }, true);
-    showToast('تم حذف الكتاب من القائمة وتحديث السحابة');
+    await executeCloudSave({ books: nextBooksList }, 'تم حذف الكتاب وتحديث قاعدة البيانات السحابية بنجاح', 'حذف الكتاب');
   };
 
   const setBookPdf = (bookId: string, pdfUrl: string, pdfFileName?: string) => {
@@ -911,8 +956,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
     ensureBookImageInGallery(bookTitle, coverImage);
-    await saveSiteDataToCloud({ books: nextBooksList }, true);
-    showToast('تم اعتماد وتحديث صورة غلاف الكتاب بنجاح وحفظها سحابياً وفي معرض الصور');
+    await executeCloudSave({ books: nextBooksList }, 'تم اعتماد وتحديث صورة غلاف الكتاب سحابياً بنجاح', 'غلاف الكتاب');
   };
 
   const deleteBookGalleryImage = async (bookId: string, imageIndex: number) => {
@@ -1060,30 +1104,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVideos((prev) => {
       const next = [newVideo, ...prev];
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
+      executeCloudSave({ videos: next }, 'تمت إضافة مقطع الفيديو وحفظه سحابياً', 'الفيديو');
       return next;
     });
-    showToast('تمت إضافة مقطع الفيديو وحفظه سحابياً');
   };
 
   const updateVideo = (id: string, updated: Partial<VideoItem>) => {
     setVideos((prev) => {
       const next = prev.map((v) => (v.id === id ? { ...v, ...updated } : v));
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
+      executeCloudSave({ videos: next }, 'تم تحديث بيانات الفيديو وحفظها سحابياً', 'تعديل الفيديو');
       return next;
     });
-    showToast('تم تحديث بيانات الفيديو وحفظها سحابياً');
   };
 
   const deleteVideo = (id: string) => {
     setVideos((prev) => {
       const next = prev.filter((v) => v.id !== id);
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
+      executeCloudSave({ videos: next }, 'تم إزالة الفيديو وتحديث السحابة', 'حذف الفيديو');
       return next;
     });
-    showToast('تم إزالة الفيديو وتحديث السحابة');
   };
 
   const togglePinVideo = (id: string) => {
@@ -1093,11 +1134,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const target = prev[idx];
       const isNowPinned = !target.isPinned;
       const updated = { ...target, isPinned: isNowPinned };
-      const rest = prev.filter((v) => v.id !== id);
+      const rest = prev.filter((b) => b.id !== id);
       const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
-      showToast(isNowPinned ? `تم تثبيت مقطع الفيديو في المقدمة 📌` : `تم إلغاء تثبيت مقطع الفيديو`);
+      executeCloudSave({ videos: next }, isNowPinned ? `تم تثبيت مقطع الفيديو في المقدمة 📌` : `تم إلغاء تثبيت مقطع الفيديو`);
       return next;
     });
   };
@@ -1113,8 +1153,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       next[idx] = next[targetIdx];
       next[targetIdx] = temp;
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
-      showToast(`تم تغيير ترتيب الفيديو إلى المركز (${targetIdx + 1})`);
+      executeCloudSave({ videos: next }, `تم تغيير ترتيب الفيديو إلى المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1129,8 +1168,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const [item] = next.splice(idx, 1);
       next.splice(targetIdx, 0, item);
       safeSetItem('nabil_author_v4_videos', next);
-      saveSiteDataToCloud({ videos: next });
-      showToast(`تم تغيير ترتيب الفيديو ليصبح في المركز (${targetIdx + 1})`);
+      executeCloudSave({ videos: next }, `تم تغيير ترتيب الفيديو ليصبح في المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1149,30 +1187,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPhotos((prev) => {
       const next = [newPhoto, ...prev];
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next }, true);
+      executeCloudSave({ photos: next }, 'تمت إضافة الصورة إلى الألبوم وحفظها سحابياً', 'الصورة');
       return next;
     });
-    showToast('تمت إضافة الصورة إلى الألبوم وحفظها سحابياً');
   };
 
   const updatePhoto = (id: string, updated: Partial<PhotoItem>) => {
     setPhotos((prev) => {
       const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next }, true);
+      executeCloudSave({ photos: next }, 'تم تحديث بيانات الصورة وحفظها سحابياً', 'تعديل الصورة');
       return next;
     });
-    showToast('تم تحديث بيانات الصورة وحفظها سحابياً');
   };
 
   const deletePhoto = (id: string) => {
     setPhotos((prev) => {
       const next = prev.filter((p) => p.id !== id);
       safeSetItem('nabil_author_v4_photos', next);
-      saveSiteDataToCloud({ photos: next }, true);
+      executeCloudSave({ photos: next }, 'تم حذف الصورة من الألبوم وتحديث السحابة', 'حذف الصورة');
       return next;
     });
-    showToast('تم حذف الصورة من الألبوم وتحديث السحابة');
   };
 
   const togglePinPhoto = (id: string) => {
@@ -1184,7 +1219,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...target, isPinned: isNowPinned };
       const rest = prev.filter((p) => p.id !== id);
       const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
-      showToast(isNowPinned ? `تم تثبيت الصورة في المقدمة 📌` : `تم إلغاء تثبيت الصورة`);
+      safeSetItem('nabil_author_v4_photos', next);
+      executeCloudSave({ photos: next }, isNowPinned ? `تم تثبيت الصورة في المقدمة 📌` : `تم إلغاء تثبيت الصورة`);
       return next;
     });
   };
@@ -1199,7 +1235,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const temp = next[idx];
       next[idx] = next[targetIdx];
       next[targetIdx] = temp;
-      showToast(`تم تغيير ترتيب الصورة إلى المركز (${targetIdx + 1})`);
+      safeSetItem('nabil_author_v4_photos', next);
+      executeCloudSave({ photos: next }, `تم تغيير ترتيب الصورة إلى المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1213,7 +1250,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = [...prev];
       const [item] = next.splice(idx, 1);
       next.splice(targetIdx, 0, item);
-      showToast(`تم تغيير ترتيب الصورة ليصبح في المركز (${targetIdx + 1})`);
+      safeSetItem('nabil_author_v4_photos', next);
+      executeCloudSave({ photos: next }, `تم تغيير ترتيب الصورة ليصبح في المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1225,18 +1263,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `n-${Date.now()}`,
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
     };
-    setNews((prev) => [newItem, ...prev]);
-    showToast('تم نشر الخبر أو المقال الأدبي بنجاح');
+    setNews((prev) => {
+      const next = [newItem, ...prev];
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, 'تم نشر وحفظ المقال أو الخبر سحابياً بنجاح', 'الخبر الأدبي');
+      return next;
+    });
   };
 
   const updateNews = (id: string, updated: Partial<NewsItem>) => {
-    setNews((prev) => prev.map((n) => (n.id === id ? { ...n, ...updated } : n)));
-    showToast('تم تحديث الخبر');
+    setNews((prev) => {
+      const next = prev.map((n) => (n.id === id ? { ...n, ...updated } : n));
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, 'تم حفظ وتحديث المقال الأدبي سحابياً بنجاح', 'تعديل الخبر');
+      return next;
+    });
   };
 
   const deleteNews = (id: string) => {
-    setNews((prev) => prev.filter((n) => n.id !== id));
-    showToast('تم حذف الخبر أو المقال');
+    setNews((prev) => {
+      const next = prev.filter((n) => n.id !== id);
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, 'تم حذف المقال الأدبي وتحديث السحابة', 'حذف الخبر');
+      return next;
+    });
   };
 
   const togglePinNews = (id: string) => {
@@ -1248,7 +1298,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...target, isPinned: isNowPinned };
       const rest = prev.filter((n) => n.id !== id);
       const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
-      showToast(isNowPinned ? `تم تثبيت الخبر في المقدمة 📌` : `تم إلغاء تثبيت الخبر`);
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, isNowPinned ? `تم تثبيت الخبر في المقدمة 📌` : `تم إلغاء تثبيت الخبر`);
       return next;
     });
   };
@@ -1263,7 +1314,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const temp = next[idx];
       next[idx] = next[targetIdx];
       next[targetIdx] = temp;
-      showToast(`تم تغيير ترتيب الخبر إلى المركز (${targetIdx + 1})`);
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, `تم تغيير ترتيب الخبر إلى المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1277,7 +1329,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = [...prev];
       const [item] = next.splice(idx, 1);
       next.splice(targetIdx, 0, item);
-      showToast(`تم تغيير ترتيب الخبر ليصبح في المركز (${targetIdx + 1})`);
+      safeSetItem('nabil_author_v4_news', next);
+      executeCloudSave({ news: next }, `تم تغيير ترتيب الخبر ليصبح في المركز (${targetIdx + 1})`);
       return next;
     });
   };
@@ -1288,18 +1341,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...linkData,
       id: `l-${Date.now()}`,
     };
-    setLinks((prev) => [newLink, ...prev]);
-    showToast('تمت إضافة الرابط الجديد بنجاح');
+    setLinks((prev) => {
+      const next = [newLink, ...prev];
+      safeSetItem('nabil_author_v4_links', next);
+      executeCloudSave({ links: next }, 'تمت إضافة الرابط وحفظه سحابياً بنجاح', 'الرابط الجديد');
+      return next;
+    });
   };
 
   const updateLink = (id: string, updated: Partial<LinkItem>) => {
-    setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...updated } : l)));
-    showToast('تم تحديث الرابط');
+    setLinks((prev) => {
+      const next = prev.map((l) => (l.id === id ? { ...l, ...updated } : l));
+      safeSetItem('nabil_author_v4_links', next);
+      executeCloudSave({ links: next }, 'تم تحديث الرابط وحفظه سحابياً', 'تعديل الرابط');
+      return next;
+    });
   };
 
   const deleteLink = (id: string) => {
-    setLinks((prev) => prev.filter((l) => l.id !== id));
-    showToast('تم حذف الرابط');
+    setLinks((prev) => {
+      const next = prev.filter((l) => l.id !== id);
+      safeSetItem('nabil_author_v4_links', next);
+      executeCloudSave({ links: next }, 'تم حذف الرابط وتحديث السحابة', 'حذف الرابط');
+      return next;
+    });
   };
 
   // Announcements
@@ -1308,25 +1373,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...itemData,
       id: `ann-${Date.now()}`,
     };
-    setAnnouncements((prev) => [newItem, ...prev]);
-    showToast('تمت إضافة الإعلان الجديد بنجاح');
+    setAnnouncements((prev) => {
+      const next = [newItem, ...prev];
+      safeSetItem('nabil_author_v4_announcements', next);
+      executeCloudSave({ announcements: next }, 'تم نشر الإعلان الجديد وحفظه سحابياً', 'الإعلان');
+      return next;
+    });
   };
 
   const updateAnnouncement = (id: string, updated: Partial<AnnouncementItem>) => {
-    setAnnouncements((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
-    showToast('تم حفظ تعديلات الإعلان');
+    setAnnouncements((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, ...updated } : a));
+      safeSetItem('nabil_author_v4_announcements', next);
+      executeCloudSave({ announcements: next }, 'تم حفظ تعديلات الإعلان سحابياً', 'تعديل الإعلان');
+      return next;
+    });
   };
 
   const deleteAnnouncement = (id: string) => {
-    setAnnouncements((prev) => prev.filter((a) => a.id !== id));
-    showToast('تم حذف الإعلان بنجاح');
+    setAnnouncements((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      safeSetItem('nabil_author_v4_announcements', next);
+      executeCloudSave({ announcements: next }, 'تم حذف الإعلان وتحديث السحابة', 'حذف الإعلان');
+      return next;
+    });
   };
 
   const toggleAnnouncementActive = (id: string) => {
-    setAnnouncements((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, isActive: !a.isActive } : a))
-    );
-    showToast('تم تغيير حالة تفعيل الإعلان');
+    setAnnouncements((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, isActive: !a.isActive } : a));
+      safeSetItem('nabil_author_v4_announcements', next);
+      executeCloudSave({ announcements: next }, 'تم تغيير حالة تفعيل الإعلان سحابياً', 'حالة الإعلان');
+      return next;
+    });
   };
 
   // Messages
@@ -1593,6 +1672,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetAllData,
         isCloudSynced,
         syncAllToCloudNow,
+        saveStatus,
+        executeCloudSave,
         uploadStatus,
         setUploadStatus,
         processAndUploadImage,

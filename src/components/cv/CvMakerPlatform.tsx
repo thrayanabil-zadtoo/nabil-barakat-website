@@ -163,8 +163,8 @@ export const CvMakerPlatform: React.FC = () => {
   const authorSections = [
     { id: 'home', label: 'الرئيسية', icon: Home },
     { id: 'books', label: 'المؤلفات', icon: BookOpen },
-    { id: 'videos', label: 'الفيديوهات', icon: Video },
-    { id: 'photos', label: 'معرض الوسائط واللقطات', icon: ImageIcon },
+    { id: 'videos', label: 'فيديو يجسد الروايات', icon: Video },
+    { id: 'photos', label: 'معرض الصور واللوحات', icon: ImageIcon },
     { id: 'news', label: 'صورة في خبر', icon: Newspaper },
     { id: 'links', label: 'الروابط والمواقع', icon: Link2 },
     { id: 'contact', label: 'تواصل معي', icon: Mail },
