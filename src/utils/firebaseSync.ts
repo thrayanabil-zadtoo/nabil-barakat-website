@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import {
   AuthorProfile,
@@ -134,6 +134,27 @@ export function subscribeToCloudSiteData(
     (err) => console.warn('[Firestore] Books modular sync notification:', err.message)
   );
   unsubs.push(booksUnsub);
+
+  // 1b. Listen to individual books collection for atomic single-book updates
+  const booksCol = collection(db, 'books');
+  const booksColUnsub = onSnapshot(
+    booksCol,
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const loadedBooks: any[] = [];
+        snapshot.forEach((d) => {
+          if (d.id && !d.id.includes('test')) {
+            loadedBooks.push(d.data());
+          }
+        });
+        if (loadedBooks.length > 0) {
+          onUpdate({ books: loadedBooks, _isSeeded: true }, 'books');
+        }
+      }
+    },
+    (err) => console.warn('[Firestore] Books collection sync notice:', err.message)
+  );
+  unsubs.push(booksColUnsub);
 
   // 2. Listen to modular 'profile' document
   const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
@@ -276,9 +297,10 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   let foundAny = false;
 
   try {
-    // 1. First read modular documents (guaranteed fresh and not subject to 1MB size limit)
-    const [booksSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap] = await Promise.all([
+    // 1. First read modular documents and individual books collection (guaranteed fresh and not subject to 1MB size limit)
+    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap] = await Promise.all([
       getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
+      getDocs(collection(db, 'books')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'photos')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'videos')).catch(() => null),
@@ -287,12 +309,37 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(() => null),
     ]);
 
+    // Build books map from individual documents (authoritative single-doc source)
+    const individualBooksMap = new Map<string, any>();
+    if (booksColSnap && !booksColSnap.empty) {
+      booksColSnap.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          individualBooksMap.set(d.id, d.data());
+        }
+      });
+    }
+
     if (booksSnap && booksSnap.exists()) {
       const data = booksSnap.data();
       if (data?.books && Array.isArray(data.books)) {
-        result.books = data.books;
+        // Merge individual book docs so updated covers/details are 100% hydrated
+        const mergedBooks = data.books.map((b: any) => {
+          if (b.id && individualBooksMap.has(b.id)) {
+            return { ...b, ...individualBooksMap.get(b.id) };
+          }
+          return b;
+        });
+        individualBooksMap.forEach((colBook, colId) => {
+          if (!mergedBooks.some((mb: any) => mb.id === colId)) {
+            mergedBooks.push(colBook);
+          }
+        });
+        result.books = mergedBooks;
         foundAny = true;
       }
+    } else if (individualBooksMap.size > 0) {
+      result.books = Array.from(individualBooksMap.values());
+      foundAny = true;
     }
 
     if (profileSnap && profileSnap.exists()) {
@@ -389,14 +436,31 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       const savePromises: Promise<any>[] = [];
 
       if (sanitized.books && Array.isArray(sanitized.books)) {
-        const booksDocRef = doc(db, COLLECTION_NAME, 'books');
-        savePromises.push(setDoc(booksDocRef, { books: sanitized.books, updatedAt: nowIso }, { merge: true }));
-        // Also write each book individually into the 'books' collection for direct single-doc access
+        // 1. Write each book individually into the 'books' collection (where each book has its own 1MB limit)
         sanitized.books.forEach((b: any) => {
           if (b.id) {
-            savePromises.push(setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true }));
+            savePromises.push(
+              setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true })
+            );
           }
         });
+
+        // 2. Clean up any duplicate cover images from galleryImages before saving the aggregate index
+        const deduplicatedBooks = sanitized.books.map((b: any) => {
+          const cleanedGallery = (b.galleryImages || []).filter((img: string) => img !== b.coverImage);
+          return {
+            ...b,
+            galleryImages: cleanedGallery,
+          };
+        });
+
+        // 3. Save the aggregate books document safely with fallback
+        const booksDocRef = doc(db, COLLECTION_NAME, 'books');
+        savePromises.push(
+          setDoc(booksDocRef, { books: deduplicatedBooks, updatedAt: nowIso }, { merge: true }).catch((err) => {
+            console.warn('[Firestore] Note on aggregate books doc:', err?.message);
+          })
+        );
       }
 
       if (sanitized.authorProfile) {

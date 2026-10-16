@@ -101,9 +101,9 @@ export const BooksSection: React.FC = () => {
       const book = books.find((b) => b.id === activeUploadBookId);
       const bookTitle = book ? book.title : 'غلاف الكتاب';
       const uploadedUrl = await processAndUploadImage(file, {
-        maxWidth: 800,
-        maxHeight: 1100,
-        quality: 0.82,
+        maxWidth: 640,
+        maxHeight: 900,
+        quality: 0.72,
         category: 'المؤلفات والكتب',
         contextTitle: `غلاف مؤلف: ${bookTitle}`,
         bookId: activeUploadBookId,
@@ -123,9 +123,9 @@ export const BooksSection: React.FC = () => {
       const book = books.find((b) => b.id === activeGalleryUploadBookId);
       const bookTitle = book ? book.title : 'معرض الكتاب';
       const uploadedUrl = await processAndUploadImage(file, {
-        maxWidth: 1000,
-        maxHeight: 1100,
-        quality: 0.82,
+        maxWidth: 640,
+        maxHeight: 900,
+        quality: 0.72,
         category: 'المؤلفات والكتب',
         contextTitle: `معرض مؤلف: ${bookTitle}`,
         bookId: activeGalleryUploadBookId,

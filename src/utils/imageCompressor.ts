@@ -5,9 +5,9 @@
 
 export const compressImage = (
   fileOrDataUrl: File | string,
-  maxWidth = 800,
-  maxHeight = 1100,
-  quality = 0.82
+  maxWidth = 640,
+  maxHeight = 900,
+  quality = 0.72
 ): Promise<string> => {
   return new Promise((resolve) => {
     // Safety timeout: Never hang at 45% under any circumstances

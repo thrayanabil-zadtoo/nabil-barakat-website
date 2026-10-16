@@ -574,9 +574,9 @@ export const InlineEditModal: React.FC = () => {
                         if (!file) return;
                         try {
                           const uploaded = await processAndUploadImage(file, {
-                            maxWidth: 900,
-                            maxHeight: 1200,
-                            quality: 0.82,
+                            maxWidth: 640,
+                            maxHeight: 900,
+                            quality: 0.72,
                             category: 'المؤلفات والكتب',
                             contextTitle: `غلاف: ${bTitle || 'كتاب'}`,
                           });
@@ -632,9 +632,9 @@ export const InlineEditModal: React.FC = () => {
                         if (!file) return;
                         try {
                           const uploaded = await processAndUploadImage(file, {
-                            maxWidth: 1200,
-                            maxHeight: 1200,
-                            quality: 0.82,
+                            maxWidth: 640,
+                            maxHeight: 900,
+                            quality: 0.72,
                             category: 'المؤلفات والكتب',
                             contextTitle: `لوحة / ملحق كتاب: ${bTitle || 'كتاب'}`,
                           });

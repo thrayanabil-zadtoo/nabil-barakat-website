@@ -61,7 +61,7 @@ export async function uploadImageToCloud(
 
   // Stage 2: Compression & Optimization (45%)
   if (onProgress) onProgress(45, 'جاري تحسين أبعاد وضغط الصورة بأعلى جودة ونقاء...');
-  const compressed = await compressImage(file, 800, 1100, 0.82);
+  const compressed = await compressImage(file, 640, 900, 0.72);
   await new Promise((r) => setTimeout(r, 80));
 
   // Stage 3: Cloud Database Storage (75%)

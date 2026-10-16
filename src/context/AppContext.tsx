@@ -788,7 +788,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Helper: Ensures any image from books is automatically synchronized into the Photo Gallery
-  const ensureBookImageInGallery = (bookTitle: string, imageUrl: string) => {
+  const ensureBookImageInGallery = (bookTitle: string, imageUrl: string, syncCloud = false) => {
     if (!imageUrl || imageUrl.includes('book_reality_dream') || isVideoMedia(imageUrl)) return;
     setPhotos((prev) => {
       if (prev.some((p) => p.imageUrl === imageUrl)) return prev;
@@ -805,7 +805,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       const nextPhotos = [newPhotoItem, ...prev];
       safeSetItem('nabil_author_v4_photos', nextPhotos);
-      executeCloudSave({ photos: nextPhotos }, 'تم حفظ وتضمين صورة الغلاف في المعرض سحابياً', 'معرض الصور');
+      if (syncCloud) {
+        executeCloudSave({ photos: nextPhotos }, 'تم حفظ وتضمين صورة الغلاف في المعرض سحابياً', 'معرض الصور');
+      }
       return nextPhotos;
     });
   };
@@ -851,8 +853,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const isBookRelated =
         options?.bookId || options?.category === 'المؤلفات والكتب' || options?.contextTitle?.includes('كتاب');
-      if (isBookRelated) {
-        ensureBookImageInGallery(options?.contextTitle || `مؤلف: ${finalDisplayName}`, finalUrl);
+      if (isBookRelated && !options?.contextTitle?.includes('غلاف')) {
+        ensureBookImageInGallery(options?.contextTitle || `مؤلف: ${finalDisplayName}`, finalUrl, false);
       }
 
       setUploadStatus({
@@ -909,14 +911,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = currentBooks.find((b) => b.id === id);
     const title = updated.title || target?.title || 'أحد المؤلفات';
     if (updated.coverImage) {
-      ensureBookImageInGallery(title, updated.coverImage);
+      ensureBookImageInGallery(title, updated.coverImage, false);
     }
     if (updated.galleryImages) {
       updated.galleryImages.forEach((img) => {
-        if (!isVideoMedia(img)) ensureBookImageInGallery(title, img);
+        if (!isVideoMedia(img)) ensureBookImageInGallery(title, img, false);
       });
     }
-    await executeCloudSave({ books: nextBooksList }, 'تم حفظ تعديلات الكتاب في قاعدة البيانات السحابية بنجاح', 'تعديلات الكتاب');
+    await executeCloudSave({ books: nextBooksList }, `تم حفظ تعديلات كتاب «${title}» في قاعدة البيانات السحابية بنجاح`, `تعديلات «${title}»`);
   };
 
   const deleteBook = async (id: string) => {
@@ -939,15 +941,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nextBooksList = currentBooks.map((b) => {
       if (b.id !== bookId) return b;
+      // Filter out duplicate coverImage from galleryImages so it is not duplicated in document
       const cleanedGallery = (b.galleryImages || []).filter(
-        (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+        (img) => img !== coverImage && !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
       );
-      const hasCover = cleanedGallery.includes(coverImage);
-      const newGallery = hasCover ? cleanedGallery : [coverImage, ...cleanedGallery];
       return {
         ...b,
         coverImage,
-        galleryImages: newGallery,
+        galleryImages: cleanedGallery,
       };
     });
 
@@ -955,8 +956,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
-    ensureBookImageInGallery(bookTitle, coverImage);
-    await executeCloudSave({ books: nextBooksList }, 'تم اعتماد وتحديث صورة غلاف الكتاب سحابياً بنجاح', 'غلاف الكتاب');
+    ensureBookImageInGallery(bookTitle, coverImage, false);
+    await executeCloudSave(
+      { books: nextBooksList },
+      `تم اعتماد وتحديث غلاف رواية «${bookTitle}» سحابياً بنجاح`,
+      `غلاف رواية «${bookTitle}»`
+    );
   };
 
   const deleteBookGalleryImage = async (bookId: string, imageIndex: number) => {
