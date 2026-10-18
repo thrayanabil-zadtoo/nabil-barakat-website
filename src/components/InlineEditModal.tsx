@@ -22,6 +22,8 @@ export const InlineEditModal: React.FC = () => {
     updateLink,
     books,
     processAndUploadImage,
+    processAndUploadVideo,
+    showToast,
     copyToClipboardWithFeedback,
   } = useApp();
 
@@ -330,14 +332,23 @@ export const InlineEditModal: React.FC = () => {
                       type="file"
                       accept="video/mp4,video/webm,video/quicktime,video/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setVUrl(reader.result as string);
-                          };
-                          reader.readAsDataURL(file);
+                        if (!file) return;
+                        if (file.size > 150 * 1024 * 1024) {
+                          showToast('حجم ملف الفيديو يتجاوز 150 ميجابايت.');
+                          return;
+                        }
+                        try {
+                          const videoUrl = await processAndUploadVideo(file, {
+                            contextTitle: vTitle || 'مشهد روائي',
+                            bookId: vBookId,
+                          });
+                          setVUrl(videoUrl);
+                        } catch (err: any) {
+                          showToast(err?.message || 'تعذر رفع ملف الفيديو');
+                        } finally {
+                          e.target.value = '';
                         }
                       }}
                     />
@@ -595,9 +606,9 @@ export const InlineEditModal: React.FC = () => {
                   معرض الصور واللوحات المرفقة للكتاب ({bGalleryImages.length})
                 </label>
                 <div className="space-y-2">
-                  {bGalleryImages.length > 0 && (
+                  {bGalleryImages.filter((img) => Boolean(img && img.trim())).length > 0 && (
                     <div className="flex flex-wrap gap-2 p-2 bg-slate-50 border border-gray-200 rounded-lg">
-                      {bGalleryImages.map((img, i) => (
+                      {bGalleryImages.filter((img) => Boolean(img && img.trim())).map((img, i) => (
                         <div key={i} className="relative group/gthumb">
                           <img src={img} alt="" className="w-16 h-16 object-cover rounded-md border" />
                           <button
@@ -794,12 +805,24 @@ export const InlineEditModal: React.FC = () => {
                         type="file"
                         accept="video/mp4,video/webm,video/quicktime,video/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = () => setNVideoUrl(reader.result as string);
-                          reader.readAsDataURL(file);
+                          if (file.size > 150 * 1024 * 1024) {
+                            showToast('حجم ملف الفيديو يتجاوز 150 ميجابايت.');
+                            return;
+                          }
+                          try {
+                            const videoUrl = await processAndUploadVideo(file, {
+                              contextTitle: nTitle || 'فيديو الخبر',
+                            });
+                            setNVideoUrl(videoUrl);
+                            setNMediaType('video');
+                          } catch (err: any) {
+                            showToast(err?.message || 'تعذر رفع ملف الفيديو');
+                          } finally {
+                            e.target.value = '';
+                          }
                         }}
                       />
                     </label>

@@ -25,6 +25,7 @@ import {
 import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/storageManager';
 import { compressImage } from '../utils/imageCompressor';
 import { uploadImageToCloud } from '../utils/cloudStorageHelper';
+import { uploadVideoToServer } from '../utils/videoUploadHelper';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { subscribeToCloudSiteData, saveSiteDataToCloud, fetchCloudSiteData, SyncedSiteData } from '../utils/firebaseSync';
 
@@ -178,6 +179,13 @@ interface AppContextType {
       maxHeight?: number;
       quality?: number;
       category?: string;
+      contextTitle?: string;
+      bookId?: string;
+    }
+  ) => Promise<string>;
+  processAndUploadVideo: (
+    file: File,
+    options?: {
       contextTitle?: string;
       bookId?: string;
     }
@@ -879,6 +887,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resultUrl: null,
       });
       showToast('تعذر رفع أو معالجة الصورة');
+      throw err;
+    }
+  };
+
+  // Visual video upload helper with live network upload progress to server
+  const processAndUploadVideo = async (
+    file: File,
+    options?: {
+      contextTitle?: string;
+      bookId?: string;
+    }
+  ): Promise<string> => {
+    const currentFileName = file.name || 'video.mp4';
+    const totalMb = (file.size / (1024 * 1024)).toFixed(1);
+
+    if (file.size > 150 * 1024 * 1024) {
+      showToast('حجم ملف الفيديو يتجاوز الحد الأقصى (150 ميجابايت)');
+      throw new Error('حجم ملف الفيديو يتجاوز 150 ميجابايت');
+    }
+
+    setUploadStatus({
+      isUploading: true,
+      progress: 5,
+      fileName: currentFileName,
+      stage: 'processing',
+      stageText: `بدء تهيئة الرفع الفعلي لملف الفيديو (${totalMb} ميجابايت)...`,
+      resultUrl: null,
+    });
+
+    try {
+      const uploadResult = await uploadVideoToServer(file, (progress, stageText) => {
+        setUploadStatus({
+          isUploading: progress < 100,
+          progress,
+          fileName: currentFileName,
+          stage: progress < 100 ? 'saving_cloud' : 'completed',
+          stageText,
+          resultUrl: null,
+        });
+      });
+
+      const finalUrl = uploadResult.url;
+      const finalFileName = uploadResult.fileName;
+
+      setUploadStatus({
+        isUploading: false,
+        progress: 100,
+        fileName: finalFileName,
+        stage: 'completed',
+        stageText: `✓ اكتمل رفع وحفظ الفيديو سحابياً بنجاح! (${uploadResult.sizeMb} ميجابايت)`,
+        resultUrl: finalUrl,
+      });
+
+      showToast(`تم رفع وحفظ ملف الفيديو بنجاح (${uploadResult.sizeMb} ميجابايت)`);
+      return finalUrl;
+    } catch (err: any) {
+      console.error('processAndUploadVideo error:', err);
+      setUploadStatus({
+        isUploading: false,
+        progress: 0,
+        fileName: currentFileName,
+        stage: 'error',
+        stageText: err?.message || 'تعذر رفع ملف الفيديو، يرجى التحقق من اتصال الإنترنت.',
+        resultUrl: null,
+      });
+      showToast(err?.message || 'فشل رفع ملف الفيديو');
       throw err;
     }
   };
@@ -1682,6 +1756,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         uploadStatus,
         setUploadStatus,
         processAndUploadImage,
+        processAndUploadVideo,
         copyToClipboardWithFeedback,
       }}
     >

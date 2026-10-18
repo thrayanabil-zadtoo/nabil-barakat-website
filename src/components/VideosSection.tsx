@@ -20,6 +20,7 @@ import {
   Layers,
   ChevronLeft,
   Tv,
+  Check,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -38,6 +39,7 @@ export const VideosSection: React.FC = () => {
     setVideoPosition,
     books,
     showToast,
+    processAndUploadVideo,
   } = useApp();
 
   // Novel filter: 'all' or specific novel ID (e.g. 'book-1')
@@ -97,31 +99,28 @@ export const VideosSection: React.FC = () => {
     return list;
   }, [videos, selectedNovelId, books]);
 
-  const handleVideoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 80 * 1024 * 1024) {
-      showToast('حجم ملف الفيديو أكبر من 80 ميجابايت. يُرجى اختيار ملف أصغر أو استخدام رابط الفيديو المباشر.');
+    if (file.size > 150 * 1024 * 1024) {
+      showToast('حجم ملف الفيديو أكبر من 150 ميجابايت. يُرجى اختيار ملف أصغر أو استخدام رابط الفيديو المباشر.');
       return;
     }
 
     try {
       setIsProcessingVideo(true);
-      const reader = new FileReader();
-      reader.onload = () => {
-        setUploadedVideoData(reader.result as string);
-        showToast('تم تحميل ملف المشهد بنجاح! يمكنك الآن حفظه ونشره ضمن الرواية.');
-        setIsProcessingVideo(false);
-      };
-      reader.onerror = () => {
-        showToast('تعذر قراءة ملف الفيديو');
-        setIsProcessingVideo(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
+      const videoUrl = await processAndUploadVideo(file, {
+        contextTitle: newTitle || 'مشهد روائي',
+        bookId: newNovelId,
+      });
+      setUploadedVideoData(videoUrl);
       setIsProcessingVideo(false);
-      showToast('حدث خطأ أثناء معالجة ملف الفيديو');
+    } catch (err: any) {
+      setIsProcessingVideo(false);
+      showToast(err?.message || 'تعذر رفع ملف الفيديو، يرجى المحاولة مرة أخرى');
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -255,11 +254,17 @@ export const VideosSection: React.FC = () => {
       {/* Selected Novel Spotlight Card */}
       {selectedNovel && (
         <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-l from-[#0b385e] to-[#07243c] text-white flex flex-col sm:flex-row items-center gap-4 sm:gap-6 shadow-lg border border-[#dfa85b]/30">
-          <img
-            src={selectedNovel.coverImage}
-            alt={selectedNovel.title}
-            className="w-20 h-28 object-cover rounded-xl shadow-md border-2 border-[#dfa85b]/50 shrink-0"
-          />
+          {selectedNovel.coverImage ? (
+            <img
+              src={selectedNovel.coverImage}
+              alt={selectedNovel.title}
+              className="w-20 h-28 object-cover rounded-xl shadow-md border-2 border-[#dfa85b]/50 shrink-0"
+            />
+          ) : (
+            <div className="w-20 h-28 rounded-xl bg-white/10 border-2 border-[#dfa85b]/50 flex items-center justify-center shrink-0">
+              <BookOpen className="w-8 h-8 text-[#dfa85b]" />
+            </div>
+          )}
           <div className="flex-1 text-center sm:text-right space-y-1.5">
             <div className="inline-flex items-center gap-1.5 text-xs text-[#dfa85b] font-bold bg-white/10 px-2.5 py-0.5 rounded-full">
               <Tv className="w-3.5 h-3.5" />
@@ -385,13 +390,14 @@ export const VideosSection: React.FC = () => {
               ملف الفيديو أو رابط البث المباشر (MP4 / YouTube / Vimeo):
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <label className="cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black text-xs rounded-xl transition shadow-sm">
-                <Upload className="w-4 h-4" />
-                <span>رفع ملف فيديو من الجهاز (MP4/WebM)</span>
+              <label className={`cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 ${isProcessingVideo ? 'bg-amber-300 text-amber-900 pointer-events-none' : 'bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c]'} font-black text-xs rounded-xl transition shadow-sm`}>
+                <Upload className={`w-4 h-4 ${isProcessingVideo ? 'animate-bounce' : ''}`} />
+                <span>{isProcessingVideo ? 'جاري رفع وحفظ الفيديو سحابياً...' : 'رفع ملف فيديو من الجهاز (MP4/WebM)'}</span>
                 <input
                   type="file"
                   accept="video/mp4,video/webm,video/quicktime,video/*"
                   className="hidden"
+                  disabled={isProcessingVideo}
                   onChange={handleVideoFileUpload}
                 />
               </label>
@@ -405,8 +411,19 @@ export const VideosSection: React.FC = () => {
               />
             </div>
             {uploadedVideoData && (
-              <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                ✓ تم تحميل ملف الفيديو من جهازك وجاهز للحفظ في السحابة.
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 font-bold flex items-center justify-between">
+                <span className="flex items-center gap-1.5 truncate">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="truncate">✓ تم رفع الفيديو وحفظه في السحابة: {uploadedVideoData}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setUploadedVideoData('')}
+                  className="text-slate-400 hover:text-rose-500 text-xs px-1.5 cursor-pointer shrink-0"
+                  title="إلغاء الفيديو"
+                >
+                  ✕
+                </button>
               </div>
             )}
           </div>
@@ -453,7 +470,8 @@ export const VideosSection: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredVideos.map((video) => {
-            const videoSource = video.videoFileUrl || video.url;
+            const rawSource = video.videoFileUrl || video.url;
+            const videoSource = (rawSource || '').trim();
             const novelTitle = video.bookTitle || video.category.replace('رواية', '').trim();
 
             return (
@@ -466,15 +484,23 @@ export const VideosSection: React.FC = () => {
                   className="relative aspect-[16/10] w-full bg-black overflow-hidden flex flex-col items-center justify-center border-b border-slate-200 select-none"
                   onContextMenu={(e) => e.preventDefault()}
                 >
-                  <video
-                    src={videoSource}
-                    controls
-                    controlsList="nodownload noplaybackrate"
-                    disablePictureInPicture
-                    playsInline
-                    preload="metadata"
-                    className="w-full h-full object-contain bg-black"
-                  />
+                  {videoSource ? (
+                    <video
+                      src={videoSource}
+                      controls
+                      controlsList="nodownload noplaybackrate"
+                      disablePictureInPicture
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center">
+                      <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1.5" />
+                      <span className="text-xs font-bold text-slate-200">مشهد روائي قيد التجهيز</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">لم يُرفع ملف الفيديو بعد</span>
+                    </div>
+                  )}
 
                   {/* Copyright Watermark Badge (العلامة المائية لحفظ الحقوق عند البث والمشاهدة) */}
                   <div
@@ -668,15 +694,28 @@ export const VideosSection: React.FC = () => {
               className="relative aspect-[16/9] w-full bg-black flex items-center justify-center select-none"
               onContextMenu={(e) => e.preventDefault()}
             >
-              <video
-                src={activeVideoModal.videoFileUrl || activeVideoModal.url}
-                controls
-                controlsList="nodownload noplaybackrate"
-                disablePictureInPicture
-                autoPlay
-                playsInline
-                className="w-full h-full object-contain"
-              />
+              {(() => {
+                const modalVideoSrc = (activeVideoModal.videoFileUrl || activeVideoModal.url || '').trim();
+                if (!modalVideoSrc) {
+                  return (
+                    <div className="w-full aspect-video flex flex-col items-center justify-center bg-black text-slate-300 p-6 text-center">
+                      <Film className="w-12 h-12 text-[#dfa85b] mb-2" />
+                      <span className="text-sm font-bold">لا يوجد ملف فيديو متاح لهذا المشهد</span>
+                    </div>
+                  );
+                }
+                return (
+                  <video
+                    src={modalVideoSrc}
+                    controls
+                    controlsList="nodownload noplaybackrate"
+                    disablePictureInPicture
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-contain"
+                  />
+                );
+              })()}
 
               {/* Top-Right Watermark Seal */}
               <div

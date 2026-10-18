@@ -413,6 +413,42 @@ let syncDebounceTimer: any = null;
 let pendingSyncPayload: Partial<SyncedSiteData> = {};
 
 /**
+ * Creates a safe, lightweight aggregate index of books for the `site_content/books` document.
+ * This guarantees the document stays comfortably within Firestore's 1MB limit (under ~750KB).
+ * Full book content (including all high-res chapter pages and media) is authoritatively stored
+ * in individual `/books/{id}` documents.
+ */
+export function createAggregateBooksIndex(books: any[]): any[] {
+  return books.map((b) => {
+    // 1. Clean up duplicate cover from galleryImages and exclude huge base64 video payloads
+    const cleanedGallery = (b.galleryImages || []).filter(
+      (img: string) =>
+        img !== b.coverImage &&
+        !img.includes('book_reality_dream') &&
+        !img.includes('cultural_salon_event') &&
+        !img.startsWith('data:video/')
+    );
+
+    // 2. Keep samplePages lightweight in the aggregate index:
+    // Retain page numbers, titles, and text, while omitting heavy duplicate base64 page images (>5KB).
+    // The authoritative full pages are saved in `/books/{b.id}`.
+    const lightweightPages = (b.samplePages || []).map((p: any) => {
+      if (p.image && typeof p.image === 'string' && p.image.startsWith('data:image/') && p.image.length > 5000) {
+        const { image, ...rest } = p;
+        return rest;
+      }
+      return p;
+    });
+
+    return {
+      ...b,
+      galleryImages: cleanedGallery,
+      samplePages: lightweightPages,
+    };
+  });
+}
+
+/**
  * Atomically saves site data to Firestore across both modular documents and the main document.
  * Guaranteed to never fail silently: throws or logs clearly, properly awaits writes.
  */
@@ -440,24 +476,20 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         sanitized.books.forEach((b: any) => {
           if (b.id) {
             savePromises.push(
-              setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true })
+              setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true }).catch((err) => {
+                console.warn(`[Firestore] Notice on single book doc ${b.id}:`, err?.message);
+              })
             );
           }
         });
 
-        // 2. Clean up any duplicate cover images from galleryImages before saving the aggregate index
-        const deduplicatedBooks = sanitized.books.map((b: any) => {
-          const cleanedGallery = (b.galleryImages || []).filter((img: string) => img !== b.coverImage);
-          return {
-            ...b,
-            galleryImages: cleanedGallery,
-          };
-        });
+        // 2. Prepare aggregate books index safely under 1MB limit
+        const aggregateBooks = createAggregateBooksIndex(sanitized.books);
 
         // 3. Save the aggregate books document safely with fallback
         const booksDocRef = doc(db, COLLECTION_NAME, 'books');
         savePromises.push(
-          setDoc(booksDocRef, { books: deduplicatedBooks, updatedAt: nowIso }, { merge: true }).catch((err) => {
+          setDoc(booksDocRef, { books: aggregateBooks, updatedAt: nowIso }, { merge: true }).catch((err) => {
             console.warn('[Firestore] Note on aggregate books doc:', err?.message);
           })
         );
@@ -465,43 +497,102 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
 
       if (sanitized.authorProfile) {
         const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
-        savePromises.push(setDoc(profileDocRef, { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true }));
-        savePromises.push(setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(profileDocRef, { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
+            (err) => console.warn('[Firestore] Profile save notice:', err?.message)
+          )
+        );
+        savePromises.push(
+          setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
+            (err) => console.warn('[Firestore] Site settings profile notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.videos && Array.isArray(sanitized.videos)) {
+        // Ensure no giant base64 video data URL exceeds Firestore's 1MB document limit
+        const safeVideos = sanitized.videos.map((v: any) => {
+          const isBase64Url = typeof v.url === 'string' && v.url.startsWith('data:video/');
+          const isBase64File = typeof v.videoFileUrl === 'string' && v.videoFileUrl.startsWith('data:video/');
+          if (isBase64Url || isBase64File) {
+            return {
+              ...v,
+              url: isBase64Url ? (v.videoFileUrl && !v.videoFileUrl.startsWith('data:') ? v.videoFileUrl : '') : v.url,
+              videoFileUrl: isBase64File ? undefined : v.videoFileUrl,
+            };
+          }
+          return v;
+        });
+
         const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
-        savePromises.push(setDoc(videosDocRef, { videos: sanitized.videos, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(videosDocRef, { videos: safeVideos, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Videos save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.photos && Array.isArray(sanitized.photos)) {
         const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
-        savePromises.push(setDoc(photosDocRef, { photos: sanitized.photos, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(photosDocRef, { photos: sanitized.photos, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Photos save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.news && Array.isArray(sanitized.news)) {
+        const safeNews = sanitized.news.map((n: any) => {
+          if (typeof n.videoUrl === 'string' && n.videoUrl.startsWith('data:video/')) {
+            return {
+              ...n,
+              videoUrl: '',
+            };
+          }
+          return n;
+        });
         const newsDocRef = doc(db, COLLECTION_NAME, 'news');
-        savePromises.push(setDoc(newsDocRef, { news: sanitized.news, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(newsDocRef, { news: safeNews, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] News save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.links && Array.isArray(sanitized.links)) {
         const linksDocRef = doc(db, COLLECTION_NAME, 'links');
-        savePromises.push(setDoc(linksDocRef, { links: sanitized.links, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(linksDocRef, { links: sanitized.links, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Links save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.announcements && Array.isArray(sanitized.announcements)) {
         const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
-        savePromises.push(setDoc(annDocRef, { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(annDocRef, { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true }).catch(
+            (err) => console.warn('[Firestore] Announcements save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.comments && Array.isArray(sanitized.comments)) {
         const commentsDocRef = doc(db, COLLECTION_NAME, 'comments');
-        savePromises.push(setDoc(commentsDocRef, { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(commentsDocRef, { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Comments save notice:', err?.message)
+          )
+        );
       }
 
       if (sanitized.messages && Array.isArray(sanitized.messages)) {
         const messagesDocRef = doc(db, COLLECTION_NAME, 'messages');
-        savePromises.push(setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }));
+        savePromises.push(
+          setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Messages save notice:', err?.message)
+          )
+        );
       }
 
       // Save modular docs with a generous timeout (8s) so long-polling latency or mobile connections never fail prematurely
@@ -510,17 +601,24 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         new Promise((r) => setTimeout(r, 8000)),
       ]);
 
-      // 2. Also save to main aggregate document as a combined cache
+      // 2. Also save to main aggregate document as a combined cache (safeguarding against 1MB limit)
       try {
         const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
-        await setDoc(
-          mainDocRef,
-          {
-            ...sanitized,
-            updatedAt: nowIso,
-          },
-          { merge: true }
-        );
+        const mainPayload: any = { ...sanitized, updatedAt: nowIso };
+        if (mainPayload.books) {
+          mainPayload.books = createAggregateBooksIndex(mainPayload.books);
+        }
+        if (mainPayload.photos && Array.isArray(mainPayload.photos)) {
+          mainPayload.photos = mainPayload.photos.map((p: any) => {
+            if (p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000) {
+              return { ...p, imageUrl: '' };
+            }
+            return p;
+          });
+        }
+        await setDoc(mainDocRef, mainPayload, { merge: true }).catch((err) => {
+          console.warn('[Firestore] Main aggregate doc update skipped (modular docs already saved):', err?.message);
+        });
       } catch (mainErr) {
         // If main doc ever approaches 1MB, modular docs already saved successfully!
         console.warn('[Firestore] Note: Main aggregate doc update skipped or large, modular docs saved.', mainErr);

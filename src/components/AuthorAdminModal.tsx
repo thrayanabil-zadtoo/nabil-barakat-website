@@ -78,6 +78,7 @@ export const AuthorAdminModal: React.FC = () => {
     syncAllToCloudNow,
     saveStatus,
     processAndUploadImage,
+    processAndUploadVideo,
     copyToClipboardWithFeedback,
   } = useApp();
 
@@ -491,24 +492,29 @@ export const AuthorAdminModal: React.FC = () => {
                     <div className="space-y-2">
                       <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-bold text-xs rounded-lg transition shadow-xs w-full justify-center">
                         <Upload className="w-4 h-4" />
-                        <span>رفع فيديو من الجهاز (MP4/WebM)</span>
+                        <span>رفع فيديو من الجهاز وحفظه سحابياً (MP4/WebM)</span>
                         <input
                           type="file"
                           accept="video/mp4,video/webm,video/quicktime,video/*"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 80 * 1024 * 1024) {
-                                showToast('حجم ملف الفيديو كبير جداً (أكبر من 80 ميجابايت).');
+                              if (file.size > 150 * 1024 * 1024) {
+                                showToast('حجم ملف الفيديو كبير جداً (أكبر من 150 ميجابايت).');
                                 return;
                               }
-                              const reader = new FileReader();
-                              reader.onload = () => {
-                                setVUrl(reader.result as string);
-                                showToast('تم تجهيز ملف الفيديو للمشاهدة وحفظ الحقوق بنجاح');
-                              };
-                              reader.readAsDataURL(file);
+                              try {
+                                const videoUrl = await processAndUploadVideo(file, {
+                                  contextTitle: vTitle || 'مشهد روائي',
+                                  bookId: vBookId,
+                                });
+                                setVUrl(videoUrl);
+                              } catch (err: any) {
+                                showToast(err?.message || 'تعذر رفع ملف الفيديو');
+                              } finally {
+                                e.target.value = '';
+                              }
                             }
                           }}
                         />
@@ -677,7 +683,13 @@ export const AuthorAdminModal: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {photos.map((p) => (
                     <div key={p.id} className="p-3 border rounded-xl bg-white space-y-2 flex flex-col justify-between">
-                      <img src={p.imageUrl} alt="" className="w-full aspect-video object-cover rounded-lg" />
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt="" className="w-full aspect-video object-cover rounded-lg" />
+                      ) : (
+                        <div className="w-full aspect-video bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                          <ImageIcon className="w-8 h-8" />
+                        </div>
+                      )}
                       <div>
                         <div className="font-bold text-[#0b385e] truncate">{p.title}</div>
                         <div className="text-[11px] text-gray-500">{p.location} · {p.category}</div>
@@ -828,7 +840,13 @@ export const AuthorAdminModal: React.FC = () => {
                   {books.map((b) => (
                     <div key={b.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50">
                       <div className="flex items-center gap-3">
-                        <img src={b.coverImage} alt="" className="w-10 h-14 object-cover rounded border" />
+                        {b.coverImage ? (
+                          <img src={b.coverImage} alt="" className="w-10 h-14 object-cover rounded border" />
+                        ) : (
+                          <div className="w-10 h-14 bg-slate-100 rounded border flex items-center justify-center text-slate-400">
+                            <BookOpen className="w-5 h-5 text-[#dfa85b]" />
+                          </div>
+                        )}
                         <div>
                           <div className="font-bold text-[#0b385e] text-sm">{b.title}</div>
                           <div className="text-[11px] text-gray-500">{b.subtitle} · {b.publicationYear} · {b.pagesCount} صفحة</div>

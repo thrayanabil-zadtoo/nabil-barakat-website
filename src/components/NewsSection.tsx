@@ -38,6 +38,7 @@ export const NewsSection: React.FC = () => {
     togglePinNews,
     moveNewsOrder,
     setNewsPosition,
+    processAndUploadVideo,
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -84,32 +85,28 @@ export const NewsSection: React.FC = () => {
     }
   };
 
-  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check size limit: 45MB max
-    if (file.size > 45 * 1024 * 1024) {
-      showToast('حجم ملف الفيديو كبير جداً. يرجى اختيار فيديو بحجم أقل من 45 ميجابايت أو إضافة رابط تيكتوك/يوتيوب.');
+    if (file.size > 150 * 1024 * 1024) {
+      showToast('حجم ملف الفيديو كبير جداً (الحد الأقصى 150 ميجابايت).');
       return;
     }
 
     try {
       setIsProcessingMedia(true);
-      const reader = new FileReader();
-      reader.onload = () => {
-        setNewVideoUrl(reader.result as string);
-        showToast('تم تحميل الفيديو من جهازك بنجاح!');
-        setIsProcessingMedia(false);
-      };
-      reader.onerror = () => {
-        showToast('فشل تحميل ملف الفيديو، يرجى التحقق من الصيغة');
-        setIsProcessingMedia(false);
-      };
-      reader.readAsDataURL(file);
-    } catch {
+      const videoUrl = await processAndUploadVideo(file, {
+        contextTitle: newTitle || 'مادة مرئية في خبر',
+      });
+      setNewVideoUrl(videoUrl);
+      setNewMediaType('video');
+      showToast('تم رفع وحفظ ملف الفيديو بنجاح!');
+    } catch (err: any) {
+      showToast(err?.message || 'فشل رفع ملف الفيديو');
+    } finally {
       setIsProcessingMedia(false);
-      showToast('حدث خطأ أثناء قراءة ملف الفيديو');
+      e.target.value = '';
     }
   };
 

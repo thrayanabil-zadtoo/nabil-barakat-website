@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { PhotoItem } from '../types';
-import { Image as ImageIcon, Plus, X, MapPin, Trash2, Maximize2, Edit2, Share2, MessageSquare, Video, Play, Upload, Pin, Copy, Check } from 'lucide-react';
+import { Image as ImageIcon, Plus, X, MapPin, Trash2, Maximize2, Edit2, Share2, MessageSquare, Video, Play, Upload, Pin, Copy, Check, Film } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -299,12 +299,19 @@ export const PhotosSection: React.FC = () => {
               className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 cursor-pointer"
               onClick={() => setActiveLightboxPhoto(photo)}
             >
-              <img
-                src={photo.imageUrl}
-                alt={photo.title}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-              />
+              {photo.imageUrl ? (
+                <img
+                  src={photo.imageUrl}
+                  alt={photo.title}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400">
+                  <ImageIcon className="w-10 h-10 mb-1" />
+                  <span className="text-xs">صورة المعرض</span>
+                </div>
+              )}
 
               {/* Photo Top Corner Quick Delete (Supervisor Mode) */}
               {isAuthorMode && (
@@ -583,22 +590,36 @@ export const PhotosSection: React.FC = () => {
                       </div>
                     );
                   }
+                  const resolvedVideoSrc = (vUrl || activeLightboxPhoto.imageUrl || '').trim();
+                  if (!resolvedVideoSrc) {
+                    return (
+                      <div className="text-center text-slate-400 py-12">
+                        <Film className="w-10 h-10 mx-auto mb-2 text-[#dfa85b]" />
+                        <span className="text-xs">لا يوجد ملف فيديو متاح</span>
+                      </div>
+                    );
+                  }
                   return (
                     <video
-                      src={vUrl || activeLightboxPhoto.imageUrl}
+                      src={resolvedVideoSrc}
                       controls
                       autoPlay
                       className="max-h-[68vh] w-auto max-w-full rounded-lg shadow-2xl"
                     />
                   );
                 })()
-              ) : (
+              ) : activeLightboxPhoto.imageUrl ? (
                 <img
                   src={activeLightboxPhoto.imageUrl}
                   alt={activeLightboxPhoto.title}
                   referrerPolicy="no-referrer"
                   className="max-h-[68vh] w-auto object-contain rounded-lg"
                 />
+              ) : (
+                <div className="text-center text-slate-400 py-12">
+                  <ImageIcon className="w-10 h-10 mx-auto mb-2 text-[#dfa85b]" />
+                  <span className="text-xs">لا توجد صورة متاحة</span>
+                </div>
               )}
             </div>
 

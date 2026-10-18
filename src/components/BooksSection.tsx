@@ -52,6 +52,7 @@ export const BooksSection: React.FC = () => {
     moveBookOrder,
     setBookPosition,
     processAndUploadImage,
+    processAndUploadVideo,
     copyToClipboardWithFeedback,
   } = useApp();
   const [selectedBookForReading, setSelectedBookForReading] = useState<Book | null>(null);
@@ -138,25 +139,31 @@ export const BooksSection: React.FC = () => {
     e.target.value = '';
   };
 
-  const onGalleryVideoFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onGalleryVideoFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !activeGalleryVideoUploadBookId) return;
+    const targetBookId = activeGalleryVideoUploadBookId;
+    if (!file || !targetBookId) return;
 
-    if (file.size > 80 * 1024 * 1024) {
-      showToast('حجم الفيديو أكبر من 80 ميجابايت. يُرجى اختيار ملف فيديو أصغر أو مضغوط.');
+    if (file.size > 150 * 1024 * 1024) {
+      showToast('حجم الفيديو أكبر من 150 ميجابايت. يُرجى اختيار ملف فيديو أصغر أو مضغوط.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      addBookGalleryImage(activeGalleryVideoUploadBookId, reader.result as string);
-    };
-    reader.onerror = () => {
-      showToast('حدث خطأ أثناء قراءة ملف الفيديو');
-    };
-    reader.readAsDataURL(file);
-    setActiveGalleryVideoUploadBookId(null);
-    e.target.value = '';
+    try {
+      const book = books.find((b) => b.id === targetBookId);
+      const bookTitle = book ? book.title : 'الرواية';
+      const uploadedVideoUrl = await processAndUploadVideo(file, {
+        contextTitle: `فيديو رواية: ${bookTitle}`,
+        bookId: targetBookId,
+      });
+      await addBookGalleryImage(targetBookId, uploadedVideoUrl);
+      showToast('تمت إضافة الفيديو إلى معرض الرواية بنجاح وحفظه سحابياً');
+    } catch (err: any) {
+      showToast(err?.message || 'حدث خطأ أثناء رفع ملف الفيديو');
+    } finally {
+      setActiveGalleryVideoUploadBookId(null);
+      e.target.value = '';
+    }
   };
 
   const handleAddVideoUrlSubmit = (e: React.FormEvent) => {
@@ -345,9 +352,11 @@ export const BooksSection: React.FC = () => {
 
               {/* Multiple Gallery Images & Videos Preview */}
               {(() => {
-                const validGallery = (book.galleryImages || []).filter(
-                  (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-                );
+                const validGallery = (book.galleryImages || [])
+                  .filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+                  .filter(
+                    (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+                  );
                 return (
                   <div className="pt-3 border-t border-[#f1f5f9] space-y-2">
                     <div className="flex items-center justify-between text-[11px] text-[#64748b]">
@@ -660,28 +669,32 @@ export const BooksSection: React.FC = () => {
 
             {/* Modal Body / Media View (Image or Video) */}
             <div className="relative flex-1 bg-black flex items-center justify-center p-2 sm:p-4 overflow-hidden min-h-[350px]">
-              {isVideoMedia(enlargedImage.imageUrl) ? (
-                <video
-                  src={enlargedImage.imageUrl}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl bg-black"
-                />
-              ) : (
-                <img
-                  src={enlargedImage.imageUrl}
-                  alt={enlargedImage.book.title}
-                  referrerPolicy="no-referrer"
-                  className="max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl"
-                />
-              )}
+              {enlargedImage.imageUrl ? (
+                isVideoMedia(enlargedImage.imageUrl) ? (
+                  <video
+                    src={enlargedImage.imageUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl bg-black"
+                  />
+                ) : (
+                  <img
+                    src={enlargedImage.imageUrl}
+                    alt={enlargedImage.book.title}
+                    referrerPolicy="no-referrer"
+                    className="max-h-[68vh] w-auto max-w-full object-contain rounded-lg shadow-2xl"
+                  />
+                )
+              ) : null}
 
               {/* Navigation Arrows if book has multiple gallery images */}
               {(() => {
-                const bookGallery = (enlargedImage.book.galleryImages || []).filter(
-                  (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-                );
+                const bookGallery = (enlargedImage.book.galleryImages || [])
+                  .filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+                  .filter(
+                    (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+                  );
                 if (bookGallery.length <= 1) return null;
                 const prevIndex = (enlargedImage.index - 1 + bookGallery.length) % bookGallery.length;
                 const nextIndex = (enlargedImage.index + 1) % bookGallery.length;

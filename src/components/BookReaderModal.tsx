@@ -54,7 +54,7 @@ interface BookReaderModalProps {
 }
 
 export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose, initialPageIndex }) => {
-  const { books, addBookComment, deleteBookComment, setBookCover, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos } = useApp();
+  const { books, addBookComment, deleteBookComment, setBookCover, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos, processAndUploadImage, processAndUploadVideo } = useApp();
   const [confirmDeleteBookCommentId, setConfirmDeleteBookCommentId] = useState<string | null>(null);
   
   // Track active book ID so user can switch books right inside reader
@@ -554,11 +554,17 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   }`}
                   title={`الانتقال لتصفح وقراءة كتاب ${b.title}`}
                 >
-                  <img
-                    src={b.coverImage}
-                    alt={b.title}
-                    className="w-5 h-7 object-cover rounded shadow-xs shrink-0"
-                  />
+                  {b.coverImage ? (
+                    <img
+                      src={b.coverImage}
+                      alt={b.title}
+                      className="w-5 h-7 object-cover rounded shadow-xs shrink-0"
+                    />
+                  ) : (
+                    <div className="w-5 h-7 rounded bg-white/20 flex items-center justify-center shrink-0">
+                      <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
+                    </div>
+                  )}
                   <span className="truncate max-w-[120px] sm:max-w-[170px]">{b.title}</span>
                   {isCurrent && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[#07243c] shrink-0" />
@@ -658,15 +664,24 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => {
+            onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => {
-                addBookGalleryImage(activeBook.id, reader.result as string);
-              };
-              reader.readAsDataURL(file);
-              e.target.value = '';
+              try {
+                const uploadedUrl = await processAndUploadImage(file, {
+                  maxWidth: 640,
+                  maxHeight: 900,
+                  quality: 0.72,
+                  category: 'المؤلفات والكتب',
+                  contextTitle: `معرض مؤلف: ${activeBook.title}`,
+                  bookId: activeBook.id,
+                });
+                await addBookGalleryImage(activeBook.id, uploadedUrl);
+              } catch (err: any) {
+                showToast(err?.message || 'تعذر معالجة أو رفع الصورة');
+              } finally {
+                e.target.value = '';
+              }
             }}
           />
           <input
@@ -674,19 +689,25 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
             type="file"
             accept="video/mp4,video/webm,video/quicktime,video/*"
             className="hidden"
-            onChange={(e) => {
+            onChange={async (e) => {
               const file = e.target.files?.[0];
               if (!file) return;
-              if (file.size > 80 * 1024 * 1024) {
-                showToast('حجم الفيديو أكبر من 80 ميجابايت. يُرجى اختيار ملف فيديو أصغر أو مضغوط.');
+              if (file.size > 150 * 1024 * 1024) {
+                showToast('حجم الفيديو أكبر من 150 ميجابايت. يُرجى اختيار ملف فيديو أصغر.');
                 return;
               }
-              const reader = new FileReader();
-              reader.onload = () => {
-                addBookGalleryImage(activeBook.id, reader.result as string);
-              };
-              reader.readAsDataURL(file);
-              e.target.value = '';
+              try {
+                const videoUrl = await processAndUploadVideo(file, {
+                  contextTitle: `فيديو كتاب: ${activeBook.title}`,
+                  bookId: activeBook.id,
+                });
+                await addBookGalleryImage(activeBook.id, videoUrl);
+                showToast('تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً');
+              } catch (err: any) {
+                showToast(err?.message || 'حدث خطأ أثناء رفع ملف الفيديو');
+              } finally {
+                e.target.value = '';
+              }
             }}
           />
           
@@ -1419,9 +1440,11 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
 
           {/* TAB 3: Multiple Images & Videos Gallery */}
           {activeTab === 'gallery' && (() => {
-            const validGallery = (activeBook.galleryImages || []).filter(
-              (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-            );
+            const validGallery = (activeBook.galleryImages || [])
+              .filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+              .filter(
+                (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+              );
             return (
               <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#e2e8f0]">
@@ -1728,9 +1751,11 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
 
       {/* Enlarged Gallery Image Lightbox inside BookReaderModal */}
       {enlargedImageIndex !== null && (() => {
-        const validGallery = (activeBook.galleryImages || []).filter(
-          (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
-        );
+        const validGallery = (activeBook.galleryImages || [])
+          .filter((img): img is string => typeof img === 'string' && img.trim().length > 0)
+          .filter(
+            (img) => !img.includes('book_reality_dream') && !img.includes('cultural_salon_event')
+          );
         const currentImg = validGallery[enlargedImageIndex];
         if (!currentImg) return null;
 

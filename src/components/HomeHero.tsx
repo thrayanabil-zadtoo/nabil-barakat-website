@@ -23,6 +23,7 @@ import {
   Link2,
   Maximize2,
   Pin,
+  Film,
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { BookReaderModal } from './BookReaderModal';
@@ -514,7 +515,7 @@ export const HomeHero: React.FC = () => {
                     onClick={() => setSelectedBookForReading(book)}
                   >
                     <img
-                      src={book.coverImage}
+                      src={book.coverImage || '/src/assets/images/book_cover_heritage_1790501223547.jpg'}
                       alt={book.title}
                       referrerPolicy="no-referrer"
                       className="w-full aspect-[3/4] object-cover group-hover:scale-105 transition duration-300"
@@ -634,7 +635,16 @@ export const HomeHero: React.FC = () => {
             {activeVideo && (
               <div className="space-y-2.5">
                 {(() => {
-                  const videoSrc = activeVideo.videoFileUrl || activeVideo.url;
+                  const rawSrc = activeVideo.videoFileUrl || activeVideo.url;
+                  const videoSrc = (rawSrc || '').trim();
+                  if (!videoSrc) {
+                    return (
+                      <div className="aspect-[16/9] w-full rounded-xl bg-slate-900 border border-[#1e293b] flex flex-col items-center justify-center text-slate-400 p-4 text-center">
+                        <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1.5" />
+                        <span className="text-xs font-bold text-slate-200">مشهد روائي قيد التجهيز</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       className="relative aspect-[16/9] w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#1e293b] shadow select-none"
@@ -777,7 +787,7 @@ export const HomeHero: React.FC = () => {
                 >
                   <div className="flex gap-2.5 items-center">
                     <div className="w-16 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-[#d7e9f2] to-[#f0d08b] shrink-0 border border-[#dce8ef]">
-                      {item.coverImage && (
+                      {Boolean(item.coverImage) && (
                         <img
                           src={item.coverImage}
                           alt={item.title}
@@ -924,12 +934,14 @@ export const HomeHero: React.FC = () => {
               </button>
             </div>
             <div className="p-4 space-y-3">
-              <img
-                src={lightboxPhoto.imageUrl}
-                alt={lightboxPhoto.title}
-                referrerPolicy="no-referrer"
-                className="w-full max-h-[60vh] object-contain rounded-xl"
-              />
+              {lightboxPhoto.imageUrl ? (
+                <img
+                  src={lightboxPhoto.imageUrl}
+                  alt={lightboxPhoto.title}
+                  referrerPolicy="no-referrer"
+                  className="w-full max-h-[60vh] object-contain rounded-xl"
+                />
+              ) : null}
               <p className="text-xs text-[#6f8291]">{lightboxPhoto.caption}</p>
               <div className="flex justify-end gap-2 pt-2">
                 <button
