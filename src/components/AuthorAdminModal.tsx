@@ -500,8 +500,11 @@ export const AuthorAdminModal: React.FC = () => {
                           onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 150 * 1024 * 1024) {
-                                showToast('حجم ملف الفيديو كبير جداً (أكبر من 150 ميجابايت).');
+                              if (file.size > 22 * 1024 * 1024) {
+                                showToast(
+                                  `تنبيه: حجم الفيديو (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) يتجاوز الحد الموصى به للملف المباشر (20 ميجابايت). يُرجى وضع رابط الفيديو من YouTube أو Vimeo لسرعة فائقة وبدون حدود.`
+                                );
+                                e.target.value = '';
                                 return;
                               }
                               try {

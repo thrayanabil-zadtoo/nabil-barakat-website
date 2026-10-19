@@ -104,8 +104,11 @@ export const VideosSection: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 150 * 1024 * 1024) {
-      showToast('حجم ملف الفيديو أكبر من 150 ميجابايت. يُرجى اختيار ملف أصغر أو استخدام رابط الفيديو المباشر.');
+    if (file.size > 22 * 1024 * 1024) {
+      showToast(
+        `تنبيه: حجم الفيديو (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) يتجاوز الحد الموصى به للرفع المباشر (20 ميجابايت). يُرجى وضع رابط الفيديو من YouTube أو Vimeo لسرعة فائقة وبدون حدود.`
+      );
+      e.target.value = '';
       return;
     }
 
@@ -387,9 +390,31 @@ export const VideosSection: React.FC = () => {
 
           {/* Video file or URL */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-700">
-              ملف الفيديو أو رابط البث المباشر (MP4 / YouTube / Vimeo):
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700">
+                ملف الفيديو أو رابط البث المباشر (MP4 / YouTube / Vimeo / TikTok):
+              </label>
+              <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                الحد الموصى به للملف المباشر: حتى 20 ميجابايت
+              </span>
+            </div>
+
+            {/* Size & Streaming Guidance Banner */}
+            <div className="bg-gradient-to-r from-amber-50 via-amber-50/60 to-slate-50 border border-amber-200/80 rounded-xl p-3 text-[11px] space-y-1.5 shadow-2xs">
+              <div className="font-bold flex items-center gap-1.5 text-[#0b385e]">
+                <Sparkles className="w-3.5 h-3.5 text-[#dfa85b]" />
+                <span>إرشادات حجم وبث الفيديو لضمان السرعة الفائقة:</span>
+              </div>
+              <div className="text-slate-600 space-y-1 pr-2 border-r-2 border-[#dfa85b]/40">
+                <p>
+                  • <strong>رفع ملف مباشر من الجهاز:</strong> الحد الأقصى للملف هو <strong>20 ميجابايت</strong> لمنع استهلاك باقة السحابة المجانية وتسريع التحميل.
+                </p>
+                <p>
+                  • <strong>للفيديوهات الأكبر حجماً (مثل 30 أو 50 ميجابايت فما فوق):</strong> يُوصى بشدة بوضع <strong>رابط YouTube (علني أو غير مدرج Unlisted)</strong> أو <strong>Vimeo</strong> أو <strong>TikTok</strong> في الخانة أدناه، حيث يمنحك بثاً فائق السرعة بدقة 1080p دون أي حد للحجم نهائياً!
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className={`cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 ${isProcessingVideo ? 'bg-amber-300 text-amber-900 pointer-events-none' : 'bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c]'} font-black text-xs rounded-xl transition shadow-sm`}>
                 <Upload className={`w-4 h-4 ${isProcessingVideo ? 'animate-bounce' : ''}`} />

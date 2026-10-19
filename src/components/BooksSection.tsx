@@ -145,8 +145,10 @@ export const BooksSection: React.FC = () => {
     const targetBookId = activeGalleryVideoUploadBookId;
     if (!file || !targetBookId) return;
 
-    if (file.size > 150 * 1024 * 1024) {
-      showToast('حجم الفيديو أكبر من 150 ميجابايت. يُرجى اختيار ملف فيديو أصغر أو مضغوط.');
+    if (file.size > 22 * 1024 * 1024) {
+      showToast(
+        `تنبيه: حجم الفيديو (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) يتجاوز الحد الموصى به للملف المباشر (20 ميجابايت). يُرجى استخدام رابط فيديو مباشر أو اختيار ملف أصغر.`
+      );
       return;
     }
 

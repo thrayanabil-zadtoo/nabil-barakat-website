@@ -15,8 +15,18 @@ export interface VideoUploadResult {
 // In-memory cache for resolved object URLs so we never re-create or re-fetch on re-renders
 export const resolvedVideoObjectUrls = new Map<string, string>();
 
+// Active upload cancellation tracker
+let activeUploadController: { isCancelled: boolean } | null = null;
+
+export function cancelActiveVideoUpload(): void {
+  if (activeUploadController) {
+    activeUploadController.isCancelled = true;
+    activeUploadController = null;
+  }
+}
+
 /**
- * Uploads a video directly to Firestore in safe chunks (under 400KB each),
+ * Uploads a video directly to Firestore in safe chunks (under 600KB each),
  * and caches the raw Blob in IndexedDB for instant offline and local playback.
  * Guaranteed to work on static hosts like Firebase Hosting (e.g. nb.zadtoo.com).
  */
@@ -28,30 +38,36 @@ export async function uploadVideoToFirestoreChunks(
   const mediaId = `vid_cloud_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const cleanName = file.name || `${mediaId}.mp4`;
 
-  if (file.size > 80 * 1024 * 1024) {
-    throw new Error('حجم ملف الفيديو كبير جداً (أقصى حجم 80 ميجابايت)');
+  // Maximum recommended limit for direct database-chunked upload to stay safely within free Firestore write quotas
+  if (file.size > 22 * 1024 * 1024) {
+    throw new Error(
+      `حجم الفيديو (${totalMb} ميجابايت) كبير للرفع المباشر كأجزاء قاعدة بيانات مجانية. الحد الأقصى للملفات المباشرة هو 20 ميجابايت لتجنب تجاوز باقة السحابة. يُرجى وضع رابط الفيديو من YouTube أو Vimeo أو TikTok لبث غير محدود.`
+    );
   }
+
+  // Set up cancellation controller
+  activeUploadController = { isCancelled: false };
+  const controller = activeUploadController;
 
   if (onProgress) {
     onProgress(5, `بدء تهيئة الرفع السحابي للفيديو (${totalMb} ميجابايت)...`);
   }
 
-  // 1. Immediately cache the raw file in IndexedDB on this device
+  // 1. Immediately cache the raw file in IndexedDB on this device for instant local playback
   try {
     await saveToIndexedDB(`video_blob_${mediaId}`, file);
-    // Also store a local object URL in memory cache for instant preview
     const immediateBlobUrl = URL.createObjectURL(file);
     resolvedVideoObjectUrls.set(mediaId, immediateBlobUrl);
   } catch (idbErr) {
     console.warn('[FirestoreVideo] Notice caching in IndexedDB:', idbErr);
   }
 
-  // 2. Slice file into safe 380KB chunks
-  const chunkSize = 380 * 1024; // 380KB binary -> ~500KB base64 (well under 1MB limit)
+  // 2. Slice file into safe 580KB chunks (reduces write calls by half compared to 380KB)
+  const chunkSize = 580 * 1024; // 580KB binary -> ~773KB base64 (well under 1MB limit)
   const totalChunks = Math.ceil(file.size / chunkSize);
 
   if (onProgress) {
-    onProgress(10, `جاري تشفير وتجزئة الفيديو إلى (${totalChunks}) أجزاء سحابية مؤمنة...`);
+    onProgress(10, `جاري تشفير وتجهيز الفيديو (${totalChunks} أجزاء مؤمنة)...`);
   }
 
   // Helper to read a slice as base64
@@ -60,7 +76,6 @@ export async function uploadVideoToFirestoreChunks(
       const reader = new FileReader();
       reader.onload = () => {
         const res = reader.result as string;
-        // strip data:*/*;base64,
         const base64Index = res.indexOf(';base64,');
         if (base64Index !== -1) {
           resolve(res.substring(base64Index + 8));
@@ -75,9 +90,56 @@ export async function uploadVideoToFirestoreChunks(
 
   const nowIso = new Date().toISOString();
 
-  // 3. Upload chunks sequentially or in small parallel batches of 3
-  const batchSize = 3;
+  // Helper to write a single chunk with a strict 12-second timeout and 1 retry
+  const writeChunkWithTimeout = async (chunkIndex: number, sliceBlob: Blob, attempt = 1): Promise<void> => {
+    if (controller.isCancelled) {
+      throw new Error('تم إلغاء عملية الرفع من قبل المستخدم.');
+    }
+
+    const b64Data = await readSliceAsBase64(sliceBlob);
+    const chunkDocRef = doc(db, 'video_chunks', `${mediaId}_chunk_${chunkIndex}`);
+
+    const writePromise = setDoc(chunkDocRef, {
+      mediaId,
+      chunkIndex,
+      totalChunks,
+      data: b64Data,
+      mimeType: file.type || 'video/mp4',
+      createdAt: nowIso,
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('انتهت مهلة استجابة السحابة لهذا الجزء (يرجى التحقق من سرعة الاتصال)')), 12000)
+    );
+
+    try {
+      await Promise.race([writePromise, timeoutPromise]);
+    } catch (err: any) {
+      if (controller.isCancelled) throw new Error('تم إلغاء عملية الرفع.');
+
+      const errMsg = String(err?.message || '');
+      if (errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('Quota') || err?.code === 'resource-exhausted') {
+        throw new Error(
+          'تجاوزت عمليات الرفع السحابي اليومية حد باقة Firebase المجانية. يُرجى وضع رابط الفيديو (YouTube أو Vimeo أو TikTok) في الخانة المخصصة ليعمل فوراً دون حدود.'
+        );
+      }
+
+      if (attempt < 2) {
+        console.warn(`[FirestoreVideo] Retrying chunk ${chunkIndex + 1} (attempt ${attempt + 1})...`);
+        await new Promise((r) => setTimeout(r, 600));
+        return writeChunkWithTimeout(chunkIndex, sliceBlob, attempt + 1);
+      }
+      throw err;
+    }
+  };
+
+  // 3. Upload chunks sequentially in small batches of 2 with brief resting pauses to prevent rate-limiting
+  const batchSize = 2;
   for (let i = 0; i < totalChunks; i += batchSize) {
+    if (controller.isCancelled) {
+      throw new Error('تم إلغاء عملية الرفع من قبل المستخدم.');
+    }
+
     const chunkPromises: Promise<any>[] = [];
     const currentBatchEnd = Math.min(totalChunks, i + batchSize);
 
@@ -85,24 +147,13 @@ export async function uploadVideoToFirestoreChunks(
       const start = c * chunkSize;
       const end = Math.min(file.size, start + chunkSize);
       const slice = file.slice(start, end);
-
-      const uploadSingleChunk = async (chunkIndex: number, sliceBlob: Blob) => {
-        const b64Data = await readSliceAsBase64(sliceBlob);
-        const chunkDocRef = doc(db, 'video_chunks', `${mediaId}_chunk_${chunkIndex}`);
-        await setDoc(chunkDocRef, {
-          mediaId,
-          chunkIndex,
-          totalChunks,
-          data: b64Data,
-          mimeType: file.type || 'video/mp4',
-          createdAt: nowIso,
-        });
-      };
-
-      chunkPromises.push(uploadSingleChunk(c, slice));
+      chunkPromises.push(writeChunkWithTimeout(c, slice));
     }
 
     await Promise.all(chunkPromises);
+
+    // Small breather between network bursts
+    await new Promise((r) => setTimeout(r, 70));
 
     const uploadedCount = currentBatchEnd;
     const progressPercent = Math.min(92, Math.max(12, Math.round((uploadedCount / totalChunks) * 90)));
@@ -118,7 +169,7 @@ export async function uploadVideoToFirestoreChunks(
 
   // 4. Save metadata document in uploaded_videos
   if (onProgress) {
-    onProgress(95, 'جاري توثيق بيانات الفيديو في السحابة...');
+    onProgress(95, 'جاري توثيق وتثبيت بيانات الفيديو في السحابة...');
   }
 
   const metaDocRef = doc(db, 'uploaded_videos', mediaId);
@@ -137,6 +188,8 @@ export async function uploadVideoToFirestoreChunks(
   if (onProgress) {
     onProgress(100, `✓ اكتمل رفع وحفظ الفيديو سحابياً بنجاح! (${totalMb} ميجابايت)`);
   }
+
+  activeUploadController = null;
 
   return {
     url: firestoreUrl,

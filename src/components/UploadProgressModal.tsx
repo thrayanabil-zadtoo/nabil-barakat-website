@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Check, Copy, Upload, X, Cloud, Sparkles, ExternalLink } from 'lucide-react';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
+import { cancelActiveVideoUpload } from '../utils/firestoreVideoStorage';
 
 export const UploadProgressModal: React.FC = () => {
   const { uploadStatus, setUploadStatus, copyToClipboardWithFeedback } = useApp();
@@ -20,6 +21,9 @@ export const UploadProgressModal: React.FC = () => {
   };
 
   const handleClose = () => {
+    if (stage !== 'completed') {
+      cancelActiveVideoUpload();
+    }
     setUploadStatus(null);
     setCopied(false);
   };
@@ -156,6 +160,15 @@ export const UploadProgressModal: React.FC = () => {
           </span>
 
           <div className="flex items-center gap-2">
+            {stage !== 'completed' && (
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-2.5 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-lg text-[11px] font-bold transition cursor-pointer"
+              >
+                إلغاء الرفع ✕
+              </button>
+            )}
             {stage === 'completed' && (
               <button
                 type="button"
