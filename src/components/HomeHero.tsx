@@ -31,6 +31,7 @@ import { HeaderPhotoModal } from './HeaderPhotoModal';
 import { HeaderAnnouncementBanner } from './HeaderAnnouncementBanner';
 import { SiteStatisticsHub } from './SiteStatisticsHub';
 import { ContentInteractionBar } from './ContentInteractionBar';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { Book, PhotoItem } from '../types';
 
 export const HomeHero: React.FC = () => {
@@ -650,8 +651,8 @@ export const HomeHero: React.FC = () => {
                       className="relative aspect-[16/9] w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#1e293b] shadow select-none"
                       onContextMenu={(e) => e.preventDefault()}
                     >
-                      <video
-                        src={videoSrc}
+                      <SmartVideoPlayer
+                        rawSrc={videoSrc}
                         controls
                         controlsList="nodownload noplaybackrate"
                         disablePictureInPicture

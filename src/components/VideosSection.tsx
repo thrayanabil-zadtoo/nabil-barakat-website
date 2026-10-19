@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 
 export const VideosSection: React.FC = () => {
   const {
@@ -484,23 +485,15 @@ export const VideosSection: React.FC = () => {
                   className="relative aspect-[16/10] w-full bg-black overflow-hidden flex flex-col items-center justify-center border-b border-slate-200 select-none"
                   onContextMenu={(e) => e.preventDefault()}
                 >
-                  {videoSource ? (
-                    <video
-                      src={videoSource}
-                      controls
-                      controlsList="nodownload noplaybackrate"
-                      disablePictureInPicture
-                      playsInline
-                      preload="metadata"
-                      className="w-full h-full object-contain bg-black"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center">
-                      <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1.5" />
-                      <span className="text-xs font-bold text-slate-200">مشهد روائي قيد التجهيز</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">لم يُرفع ملف الفيديو بعد</span>
-                    </div>
-                  )}
+                  <SmartVideoPlayer
+                    rawSrc={videoSource}
+                    controls
+                    controlsList="nodownload noplaybackrate"
+                    disablePictureInPicture
+                    playsInline
+                    preload="metadata"
+                    className="w-full h-full object-contain bg-black"
+                  />
 
                   {/* Copyright Watermark Badge (العلامة المائية لحفظ الحقوق عند البث والمشاهدة) */}
                   <div
@@ -705,8 +698,8 @@ export const VideosSection: React.FC = () => {
                   );
                 }
                 return (
-                  <video
-                    src={modalVideoSrc}
+                  <SmartVideoPlayer
+                    rawSrc={modalVideoSrc}
                     controls
                     controlsList="nodownload noplaybackrate"
                     disablePictureInPicture

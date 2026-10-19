@@ -1,35 +1,54 @@
 /**
- * Real Video Upload Helper
- * Handles streaming multipart file uploads to the backend `/api/upload-video` endpoint,
- * providing real network upload progress (0% -> 100%) and permanent URL generation.
+ * Unified Cloud Video Upload Helper
+ * Intelligently routes between:
+ * 1. Express backend /api/upload-video (when running with server backend)
+ * 2. Cloud Firestore Chunked Storage (when hosted on static Firebase Hosting like nb.zadtoo.com)
+ * Guaranteed to never fail with "Unexpected token '<', <!doctype..."!
  */
+
+import { uploadVideoToFirestoreChunks, VideoUploadResult } from './firestoreVideoStorage';
+
+export type { VideoUploadResult };
 
 export interface VideoUploadProgressCallback {
   (progress: number, stageText: string): void;
 }
 
-export interface VideoUploadResult {
-  url: string;
-  fileName: string;
-  sizeMb: string;
+/**
+ * Checks whether the current host is a purely static Firebase Hosting environment
+ */
+function isStaticFirebaseHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  return (
+    host === 'nb.zadtoo.com' ||
+    host.endsWith('.web.app') ||
+    host.endsWith('.firebaseapp.com')
+  );
 }
 
 /**
- * Uploads a real video file to the server with live byte-level network upload tracking.
+ * Uploads a video file with live byte-level progress and guaranteed cloud persistence.
  */
 export function uploadVideoToServer(
   file: File,
   onProgress?: VideoUploadProgressCallback
 ): Promise<VideoUploadResult> {
+  const totalMb = (file.size / (1024 * 1024)).toFixed(1);
+
+  if (file.size > 150 * 1024 * 1024) {
+    const err = new Error('حجم ملف الفيديو يتجاوز الحد الأقصى المسموح به (150 ميجابايت)');
+    if (onProgress) onProgress(0, 'حجم الملف كبير جداً');
+    return Promise.reject(err);
+  }
+
+  // If on static Firebase Hosting (nb.zadtoo.com), route directly to Cloud Firestore Chunks
+  if (isStaticFirebaseHost()) {
+    console.log('[VideoUpload] Detected Firebase Hosting domain (nb.zadtoo.com). Using direct Cloud Firestore Chunked Storage.');
+    return uploadVideoToFirestoreChunks(file, onProgress);
+  }
+
   return new Promise((resolve, reject) => {
-    const totalMb = (file.size / (1024 * 1024)).toFixed(1);
-
-    if (file.size > 150 * 1024 * 1024) {
-      const err = new Error('حجم ملف الفيديو يتجاوز الحد الأقصى المسموح به (150 ميجابايت)');
-      if (onProgress) onProgress(0, 'حجم الملف كبير جداً');
-      return reject(err);
-    }
-
     if (onProgress) {
       onProgress(5, `بدء تهيئة الرفع السحابي لملف الفيديو (${totalMb} ميجابايت)...`);
     }
@@ -52,9 +71,21 @@ export function uploadVideoToServer(
     };
 
     xhr.onload = () => {
+      const responseText = xhr.responseText ? xhr.responseText.trim() : '';
+      const contentType = xhr.getResponseHeader('content-type') || '';
+
+      // Check if host returned HTML (like Firebase Hosting rewriting 404 to index.html)
+      if (responseText.startsWith('<!') || contentType.includes('text/html') || xhr.status === 404) {
+        console.warn('[VideoUpload] /api/upload-video returned HTML (static host detected). Falling back to Cloud Firestore Chunked Storage...');
+        uploadVideoToFirestoreChunks(file, onProgress)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const res = JSON.parse(xhr.responseText);
+          const res = JSON.parse(responseText);
           if (res.success && res.url) {
             if (onProgress) {
               onProgress(100, `✓ اكتمل رفع وحفظ الفيديو سحابياً بنجاح! (${res.sizeMb} ميجابايت)`);
@@ -65,36 +96,42 @@ export function uploadVideoToServer(
               sizeMb: res.sizeMb,
             });
           } else {
-            const msg = res.error || 'فشل معالجة ملف الفيديو على الخادم';
-            if (onProgress) onProgress(0, msg);
-            reject(new Error(msg));
+            console.warn('[VideoUpload] Server response not successful, attempting Firestore fallback...', res.error);
+            uploadVideoToFirestoreChunks(file, onProgress)
+              .then(resolve)
+              .catch(reject);
           }
-        } catch (e: any) {
-          if (onProgress) onProgress(0, 'خطأ في قراءة رد الخادم');
-          reject(e);
+        } catch {
+          console.warn('[VideoUpload] JSON parse failed, falling back to Cloud Firestore Storage...');
+          uploadVideoToFirestoreChunks(file, onProgress)
+            .then(resolve)
+            .catch(reject);
         }
       } else {
-        const msg = `فشل الرفع السحابي (رمز الاستجابة: ${xhr.status})`;
-        if (onProgress) onProgress(0, msg);
-        reject(new Error(msg));
+        console.warn(`[VideoUpload] Server status ${xhr.status}, falling back to Cloud Firestore Storage...`);
+        uploadVideoToFirestoreChunks(file, onProgress)
+          .then(resolve)
+          .catch(reject);
       }
     };
 
     xhr.onerror = () => {
-      const msg = 'تعذر الاتصال بخادم رفع الفيديوهات، يرجى التحقق من اتصال الإنترنت.';
-      if (onProgress) onProgress(0, msg);
-      reject(new Error(msg));
+      console.warn('[VideoUpload] Network error on /api/upload-video, falling back to Cloud Firestore Storage...');
+      uploadVideoToFirestoreChunks(file, onProgress)
+        .then(resolve)
+        .catch(reject);
     };
 
     xhr.ontimeout = () => {
-      const msg = 'انتهت مهلة رفع الفيديو، يرجى التأكد من سرعة الاتصال وإعادة المحاولة.';
-      if (onProgress) onProgress(0, msg);
-      reject(new Error(msg));
+      console.warn('[VideoUpload] Timeout on /api/upload-video, falling back to Cloud Firestore Storage...');
+      uploadVideoToFirestoreChunks(file, onProgress)
+        .then(resolve)
+        .catch(reject);
     };
 
     xhr.open('POST', '/api/upload-video', true);
-    // 5 minutes timeout for large video uploads
-    xhr.timeout = 5 * 60 * 1000;
+    // 45 seconds timeout before fallback
+    xhr.timeout = 45 * 1000;
     xhr.send(formData);
   });
 }

@@ -6,6 +6,7 @@ import { parseVideoUrl } from '../utils/videoUtils';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 
 export const PhotosSection: React.FC = () => {
   const {
@@ -600,8 +601,8 @@ export const PhotosSection: React.FC = () => {
                     );
                   }
                   return (
-                    <video
-                      src={resolvedVideoSrc}
+                    <SmartVideoPlayer
+                      rawSrc={resolvedVideoSrc}
                       controls
                       autoPlay
                       className="max-h-[68vh] w-auto max-w-full rounded-lg shadow-2xl"

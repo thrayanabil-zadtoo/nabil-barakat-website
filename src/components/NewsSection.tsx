@@ -24,6 +24,8 @@ import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { parseVideoUrl } from '../utils/videoUtils';
+import { isVideoMedia } from '../utils/mediaUtils';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 
 export const NewsSection: React.FC = () => {
   const {
@@ -328,8 +330,8 @@ export const NewsSection: React.FC = () => {
 
                 {newVideoUrl && (
                   <div className="relative mt-2 max-w-sm rounded-xl overflow-hidden border border-slate-300 shadow bg-black aspect-video flex items-center justify-center">
-                    {newVideoUrl.startsWith('data:video') || newVideoUrl.startsWith('blob:') || newVideoUrl.endsWith('.mp4') ? (
-                      <video src={newVideoUrl} controls className="w-full h-full object-contain" />
+                    {isVideoMedia(newVideoUrl) ? (
+                      <SmartVideoPlayer rawSrc={newVideoUrl} controls className="w-full h-full object-contain" />
                     ) : (
                       <div className="p-4 text-center text-white space-y-1">
                         <Play className="w-8 h-8 text-[#dfa85b] mx-auto" />
@@ -475,9 +477,9 @@ export const NewsSection: React.FC = () => {
               {/* Media Container */}
               <div className="relative aspect-[16/10] w-full bg-[#0a233a] overflow-hidden border-b border-[#e2e8f0]">
                 {isVideo && item.videoUrl ? (
-                  item.videoUrl.startsWith('data:video') || item.videoUrl.startsWith('blob:') || item.videoUrl.endsWith('.mp4') ? (
-                    <video
-                      src={item.videoUrl}
+                  isVideoMedia(item.videoUrl) ? (
+                    <SmartVideoPlayer
+                      rawSrc={item.videoUrl}
                       controls
                       playsInline
                       className="w-full h-full object-cover"
@@ -729,8 +731,8 @@ export const NewsSection: React.FC = () => {
               {/* Top Media */}
               {readingArticle.videoUrl ? (
                 <div className="rounded-xl overflow-hidden bg-black aspect-video flex items-center justify-center border border-slate-200 shadow-md">
-                  {readingArticle.videoUrl.startsWith('data:video') || readingArticle.videoUrl.startsWith('blob:') || readingArticle.videoUrl.endsWith('.mp4') ? (
-                    <video src={readingArticle.videoUrl} controls autoPlay className="w-full h-full object-contain" />
+                  {isVideoMedia(readingArticle.videoUrl) ? (
+                    <SmartVideoPlayer rawSrc={readingArticle.videoUrl} controls autoPlay className="w-full h-full object-contain" />
                   ) : (
                     <iframe
                       src={parseVideoUrl(readingArticle.videoUrl).embedUrl || readingArticle.videoUrl}

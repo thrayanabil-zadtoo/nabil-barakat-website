@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Check, Copy, Upload, X, Cloud, Sparkles, ExternalLink } from 'lucide-react';
+import { isVideoMedia } from '../utils/mediaUtils';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 
 export const UploadProgressModal: React.FC = () => {
   const { uploadStatus, setUploadStatus, copyToClipboardWithFeedback } = useApp();
@@ -89,17 +91,13 @@ export const UploadProgressModal: React.FC = () => {
 
         {/* Thumbnail preview if available */}
         {resultUrl && (() => {
-          const isVideo = Boolean(
-            resultUrl.match(/\.(mp4|webm|mov|ogg|m4v)$/i) ||
-            resultUrl.includes('/uploads/videos/') ||
-            (fileName && fileName.match(/\.(mp4|webm|mov|ogg|m4v)$/i))
-          );
+          const isVideo = isVideoMedia(resultUrl) || Boolean(fileName && isVideoMedia(fileName));
           return (
             <div className="flex items-center gap-3 p-2.5 bg-white/5 rounded-xl border border-white/10">
               <div className="w-12 h-12 rounded-lg overflow-hidden bg-black/60 border border-white/10 shrink-0 relative flex items-center justify-center">
                 {isVideo ? (
-                  <video
-                    src={resultUrl}
+                  <SmartVideoPlayer
+                    rawSrc={resultUrl}
                     className="w-full h-full object-cover"
                     muted
                     playsInline

@@ -33,6 +33,7 @@ import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { isVideoMedia } from '../utils/mediaUtils';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 
 export const BooksSection: React.FC = () => {
   const {
@@ -387,8 +388,8 @@ export const BooksSection: React.FC = () => {
                             >
                               {isVid ? (
                                 <>
-                                  <video
-                                    src={mediaUrl}
+                                  <SmartVideoPlayer
+                                    rawSrc={mediaUrl}
                                     playsInline
                                     muted
                                     preload="metadata"
@@ -671,8 +672,8 @@ export const BooksSection: React.FC = () => {
             <div className="relative flex-1 bg-black flex items-center justify-center p-2 sm:p-4 overflow-hidden min-h-[350px]">
               {enlargedImage.imageUrl ? (
                 isVideoMedia(enlargedImage.imageUrl) ? (
-                  <video
-                    src={enlargedImage.imageUrl}
+                  <SmartVideoPlayer
+                    rawSrc={enlargedImage.imageUrl}
                     controls
                     autoPlay
                     playsInline

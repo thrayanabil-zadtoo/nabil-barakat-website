@@ -42,6 +42,7 @@ import { useMusic } from '../context/MusicContext';
 import { PageShareCardModal } from './PageShareCardModal';
 import { AuthorSeal } from './AuthorSeal';
 import { isVideoMedia } from '../utils/mediaUtils';
+import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { saveReadingProgress, getDeviceInfo } from '../utils/deviceDetector';
 import { compressImage } from '../utils/imageCompressor';
 import { getSiteDomain } from '../config/siteDomain';
@@ -1518,8 +1519,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                           >
                             {isVid ? (
                               <>
-                                <video
-                                  src={mediaUrl}
+                                <SmartVideoPlayer
+                                  rawSrc={mediaUrl}
                                   playsInline
                                   muted
                                   preload="metadata"
@@ -1796,8 +1797,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
               {/* Media View (Video or Image) */}
               <div className="relative flex-1 bg-black flex items-center justify-center p-2 sm:p-4 overflow-hidden min-h-[350px]">
                 {isVideoMedia(currentImg) ? (
-                  <video
-                    src={currentImg}
+                  <SmartVideoPlayer
+                    rawSrc={currentImg}
                     controls
                     autoPlay
                     playsInline
