@@ -1,22 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { resolveVideoUrl, resolvedVideoObjectUrls } from '../utils/firestoreVideoStorage';
+import { parseVideoUrl } from '../utils/videoUtils';
 import { Film } from 'lucide-react';
 
 interface SmartVideoPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   rawSrc?: string | null;
   placeholderText?: string;
+  title?: string;
 }
 
 export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
   src,
   rawSrc,
   placeholderText = 'مشهد روائي قيد التجهيز',
+  title = 'مشغل الفيديو',
   className = 'w-full h-full object-contain bg-black',
   ...restProps
 }) => {
   const originalSource = (rawSrc || (typeof src === 'string' ? src : '') || '').trim();
+  const parsed = parseVideoUrl(originalSource);
 
-  // If already resolved in memory or regular URL, initialize immediately without layout flash
+  // If this is an external embed (YouTube, Vimeo, TikTok, Google Drive), render iframe directly
+  if (parsed.embedUrl) {
+    return (
+      <iframe
+        src={parsed.embedUrl}
+        title={title}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        className="w-full h-full border-0 bg-black object-contain"
+      />
+    );
+  }
+
+  // Otherwise, handle direct video (HTML5 video, firestore://, blob:, /uploads/, etc.)
   const [playableSrc, setPlayableSrc] = useState<string>(() => {
     if (!originalSource) return '';
     if (!originalSource.startsWith('firestore://video/')) return originalSource;
@@ -77,7 +94,7 @@ export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
 
   if (!originalSource) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center">
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center select-none">
         <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1.5" />
         <span className="text-xs font-bold text-slate-200">{placeholderText}</span>
         <span className="text-[10px] text-slate-400 mt-0.5">لم يُرفع ملف الفيديو بعد</span>
@@ -87,10 +104,10 @@ export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-black/90 text-amber-300 p-4 text-center">
+      <div className="w-full h-full flex flex-col items-center justify-center bg-black/90 text-amber-300 p-4 text-center select-none">
         <Film className="w-7 h-7 text-[#dfa85b] animate-bounce mb-2" />
-        <span className="text-xs font-bold">جاري تهيئة وبث المشهد السحابي...</span>
-        <span className="text-[10px] text-amber-200/70 mt-1">يتم استرجاع فصول الفيديو المؤمنة</span>
+        <span className="text-xs font-bold">جاري تهيئة وبث المشهد...</span>
+        <span className="text-[10px] text-amber-200/70 mt-1">يتم استرجاع المقطع للمشاهدة</span>
       </div>
     );
   }
