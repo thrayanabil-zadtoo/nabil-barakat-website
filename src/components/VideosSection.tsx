@@ -428,13 +428,18 @@ export const VideosSection: React.FC = () => {
                 />
               </label>
 
-              <input
-                type="text"
-                value={directVideoUrl}
-                onChange={(e) => setDirectVideoUrl(e.target.value)}
-                placeholder="أو ضع رابط ملف فيديو مباشر (MP4)..."
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none"
-              />
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={directVideoUrl}
+                  onChange={(e) => setDirectVideoUrl(e.target.value)}
+                  placeholder="ضع رابط YouTube أو Vimeo أو TikTok أو MP4 مباشر..."
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none focus:border-[#dfa85b] focus:bg-white transition"
+                />
+                <span className="text-[10px] text-slate-500 block pr-1">
+                  💡 يدعم روابط: YouTube (علني أو غير مدرج) · Vimeo · TikTok · Google Drive · روابط MP4
+                </span>
+              </div>
             </div>
             {uploadedVideoData && (
               <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 font-bold flex items-center justify-between">
