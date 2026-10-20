@@ -1,7 +1,7 @@
 /**
  * Video URL Parser and Embed Helper
- * Handles YouTube (standard, shorts, youtu.be, embed), Vimeo, TikTok,
- * Google Drive videos, and direct video links (MP4, WebM, blob, firestore).
+ * Handles YouTube (standard, shorts, live, youtu.be, embed, mobile share, iframe tags),
+ * Vimeo, TikTok, Google Drive videos, and direct video links (MP4, WebM, blob, firestore).
  */
 
 export interface ParsedVideoInfo {
@@ -25,28 +25,92 @@ export function parseVideoUrl(input: string | undefined | null): ParsedVideoInfo
     };
   }
 
-  // 1. Extract pure URL from any accompanying text (e.g. mobile share text)
-  const urlMatch = input.match(/(https?:\/\/[^\s"'<>]+)/i);
-  const rawUrl = urlMatch ? urlMatch[1] : input.trim();
-  const cleanUrl = rawUrl.trim();
+  let text = input.trim();
 
-  // 2. Check for YouTube (watch?v=, youtu.be/, /embed/, /shorts/)
-  const ytMatch = cleanUrl.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/i
-  );
-  if (ytMatch && ytMatch[1]) {
-    const videoId = ytMatch[1];
-    return {
-      platform: 'youtube',
-      videoId,
-      embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`,
-      directUrl: cleanUrl,
-      isShortLink: cleanUrl.includes('youtu.be/'),
-      cleanUrl,
-    };
+  // If user pasted an iframe embed code (e.g. <iframe src="https://www.youtube.com/embed/..."></iframe>)
+  const iframeSrcMatch = text.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+  if (iframeSrcMatch && iframeSrcMatch[1]) {
+    text = iframeSrcMatch[1].trim();
   }
 
-  // 3. Check for Vimeo (vimeo.com/12345678 or player.vimeo.com/video/12345678)
+  // Extract pure URL from any accompanying text (e.g. mobile share text "Watch this: https://...")
+  const urlMatch = text.match(/(https?:\/\/[^\s"'<>]+)/i);
+  let rawUrl = urlMatch ? urlMatch[1] : text;
+
+  // Normalize protocol if missing (e.g. "www.youtube.com/..." or "youtu.be/...")
+  if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('firestore://') && !rawUrl.startsWith('data:') && !rawUrl.startsWith('blob:')) {
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.includes('vimeo.com') || rawUrl.includes('tiktok.com')) {
+      rawUrl = 'https://' + rawUrl;
+    }
+  }
+
+  const cleanUrl = rawUrl.trim();
+
+  // 1. Check for YouTube
+  // Patterns supported:
+  // - https://www.youtube.com/watch?v=VIDEO_ID (and with extra query params: ?si=...&v=ID)
+  // - https://youtu.be/VIDEO_ID
+  // - https://www.youtube.com/shorts/VIDEO_ID
+  // - https://www.youtube.com/live/VIDEO_ID
+  // - https://www.youtube.com/embed/VIDEO_ID
+  // - https://www.youtube-nocookie.com/embed/VIDEO_ID
+  // - https://m.youtube.com/watch?v=VIDEO_ID
+  const isYouTubeHost = /(?:youtube\.com|youtu\.be|youtube-nocookie\.com)/i.test(cleanUrl);
+
+  if (isYouTubeHost) {
+    let videoId: string | null = null;
+
+    // Pattern A: youtu.be/VIDEO_ID
+    const youtuBeMatch = cleanUrl.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+    if (youtuBeMatch && youtuBeMatch[1]) {
+      videoId = youtuBeMatch[1];
+    }
+
+    // Pattern B: /embed/VIDEO_ID or /v/VIDEO_ID
+    if (!videoId) {
+      const embedMatch = cleanUrl.match(/\/(?:embed|v)\/([a-zA-Z0-9_-]{11})/i);
+      if (embedMatch && embedMatch[1]) {
+        videoId = embedMatch[1];
+      }
+    }
+
+    // Pattern C: /shorts/VIDEO_ID
+    if (!videoId) {
+      const shortsMatch = cleanUrl.match(/\/shorts\/([a-zA-Z0-9_-]{11})/i);
+      if (shortsMatch && shortsMatch[1]) {
+        videoId = shortsMatch[1];
+      }
+    }
+
+    // Pattern D: /live/VIDEO_ID
+    if (!videoId) {
+      const liveMatch = cleanUrl.match(/\/live\/([a-zA-Z0-9_-]{11})/i);
+      if (liveMatch && liveMatch[1]) {
+        videoId = liveMatch[1];
+      }
+    }
+
+    // Pattern E: watch?v=VIDEO_ID or watch?anything&v=VIDEO_ID
+    if (!videoId) {
+      const watchMatch = cleanUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/i);
+      if (watchMatch && watchMatch[1]) {
+        videoId = watchMatch[1];
+      }
+    }
+
+    if (videoId) {
+      return {
+        platform: 'youtube',
+        videoId,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`,
+        directUrl: cleanUrl,
+        isShortLink: cleanUrl.includes('youtu.be/'),
+        cleanUrl,
+      };
+    }
+  }
+
+  // 2. Check for Vimeo (vimeo.com/12345678 or player.vimeo.com/video/12345678)
   const vimeoMatch = cleanUrl.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/i);
   if (vimeoMatch && vimeoMatch[1]) {
     const videoId = vimeoMatch[1];
@@ -60,7 +124,7 @@ export function parseVideoUrl(input: string | undefined | null): ParsedVideoInfo
     };
   }
 
-  // 4. Check for Google Drive Video
+  // 3. Check for Google Drive Video
   const driveMatch = cleanUrl.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i);
   if (driveMatch && driveMatch[1]) {
     const videoId = driveMatch[1];
@@ -74,7 +138,7 @@ export function parseVideoUrl(input: string | undefined | null): ParsedVideoInfo
     };
   }
 
-  // 5. Check for TikTok
+  // 4. Check for TikTok
   const isTikTok = /tiktok\.com/i.test(cleanUrl);
   const tiktokIdMatch = cleanUrl.match(/\/(?:video|photo|v)\/(\d{15,22})/i) || cleanUrl.match(/(\d{17,21})/);
   if (isTikTok && tiktokIdMatch && tiktokIdMatch[1]) {
@@ -89,7 +153,7 @@ export function parseVideoUrl(input: string | undefined | null): ParsedVideoInfo
     };
   }
 
-  // 6. Check for Direct Video (mp4, webm, mov, data:, blob:, firestore:)
+  // 5. Check for Direct Video (mp4, webm, mov, data:, blob:, firestore:)
   if (
     cleanUrl.startsWith('firestore://video/') ||
     cleanUrl.startsWith('data:video/') ||

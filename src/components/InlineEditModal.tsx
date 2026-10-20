@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy, Film } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
+import { parseVideoUrl } from '../utils/videoUtils';
 
 export const InlineEditModal: React.FC = () => {
   const {
@@ -153,9 +154,16 @@ export const InlineEditModal: React.FC = () => {
   const handleSaveVideo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingVideo) return;
+    const cleanSource = vUrl.trim();
+    const parsed = parseVideoUrl(cleanSource);
+    const finalUrl = parsed.cleanUrl || cleanSource;
+    const isStreamPlatform = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
+
     updateVideo(editingVideo.id, {
       title: vTitle,
-      url: vUrl,
+      url: finalUrl,
+      videoFileUrl: isStreamPlatform ? undefined : (finalUrl.startsWith('data:') ? finalUrl : editingVideo.videoFileUrl),
+      platform: parsed.platform || 'direct',
       description: vDesc,
       category: vCategory,
       duration: vDuration,

@@ -27,6 +27,7 @@ import { compressImage } from '../utils/imageCompressor';
 import { uploadImageToCloud } from '../utils/cloudStorageHelper';
 import { uploadVideoToServer } from '../utils/videoUploadHelper';
 import { isVideoMedia } from '../utils/mediaUtils';
+import { parseVideoUrl } from '../utils/videoUtils';
 import { subscribeToCloudSiteData, saveSiteDataToCloud, fetchCloudSiteData, SyncedSiteData } from '../utils/firebaseSync';
 
 interface AppContextType {
@@ -191,6 +192,11 @@ interface AppContextType {
     }
   ) => Promise<string>;
   copyToClipboardWithFeedback: (text: string, message?: string) => void;
+  refreshAndBypassCache: (forceHardReload?: boolean) => Promise<void>;
+  autoRefreshEnabled: boolean;
+  toggleAutoRefresh: () => void;
+  autoRefreshIntervalSeconds: number;
+  setAutoRefreshIntervalSeconds: (sec: number) => void;
 }
 
 export interface UploadStatusState {
@@ -378,7 +384,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     booksRef.current = books;
   }, [books]);
-  const [videos, setVideos] = useState<VideoItem[]>(() => loadState('videos', initialVideos));
+  const [videos, setVideos] = useState<VideoItem[]>(() => {
+    const raw = loadState<VideoItem[]>('videos', initialVideos);
+    return (raw || []).filter((v) => v && !v.url?.includes('mixkit.co'));
+  });
   const [photos, setPhotos] = useState<PhotoItem[]>(() => loadState('photos', initialPhotos));
   const [news, setNews] = useState<NewsItem[]>(() => loadState('news', initialNews));
   const [links, setLinks] = useState<LinkItem[]>(() => loadState('links', initialLinks));
@@ -481,9 +490,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setPhotos(cloudData.photos);
             safeSetItem('nabil_author_v4_photos', cloudData.photos);
           }
-          if (cloudData.videos && Array.isArray(cloudData.videos)) {
-            setVideos(cloudData.videos);
-            safeSetItem('nabil_author_v4_videos', cloudData.videos);
+          const initVideos = cloudData.videos;
+          if (initVideos && Array.isArray(initVideos)) {
+            setVideos((prev) => {
+              const cleanCloud = initVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+              const cloudIds = new Set(cleanCloud.map((v: any) => v.id));
+              const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
+              const merged = [...localPending, ...cleanCloud];
+              safeSetItem('nabil_author_v4_videos', merged);
+              return merged;
+            });
           }
           if (cloudData.news && Array.isArray(cloudData.news)) {
             setNews(cloudData.news);
@@ -518,9 +534,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           booksRef.current = cloudData.books;
           safeSetItem('nabil_author_v4_books', cloudData.books);
         }
-        if (cloudData.videos && Array.isArray(cloudData.videos)) {
-          setVideos(cloudData.videos);
-          safeSetItem('nabil_author_v4_videos', cloudData.videos);
+        const liveVideos = cloudData.videos;
+        if (liveVideos && Array.isArray(liveVideos)) {
+          setVideos((prev) => {
+            const cleanCloud = liveVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+            const cloudIds = new Set(cleanCloud.map((v: any) => v.id));
+            const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
+            const merged = [...localPending, ...cleanCloud];
+            safeSetItem('nabil_author_v4_videos', merged);
+            return merged;
+          });
         }
         if (cloudData.photos && Array.isArray(cloudData.photos)) {
           setPhotos(cloudData.photos);
@@ -551,8 +574,158 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, []);
+
+  // Auto-refresh configuration (persisted in localStorage)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('nabil_auto_refresh_enabled') !== 'false';
+  });
+  const [autoRefreshIntervalSeconds, setAutoRefreshIntervalSeconds] = useState<number>(() => {
+    return parseInt(localStorage.getItem('nabil_auto_refresh_sec') || '60', 10);
+  });
+
+  const toggleAutoRefresh = () => {
+    setAutoRefreshEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('nabil_auto_refresh_enabled', next ? 'true' : 'false');
+      showToast(next ? '✓ تم تفعيل التحديث التلقائي للصفحة (تحديث مستمر للبيانات)' : 'تم إيقاف التحديث التلقائي للصفحة');
+      return next;
+    });
+  };
+
+  // Continuous auto-refresh timer to keep page 100% fresh without manual reload
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+
+    const timer = setInterval(() => {
+      // 1. First sync with local IndexedDB (instant, zero network cost)
+      loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos')
+        .then((idbV) => {
+          if (idbV && Array.isArray(idbV) && idbV.length > 0) {
+            setVideos((prev) => {
+              if (JSON.stringify(prev) !== JSON.stringify(idbV)) return idbV;
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+
+      loadFromIndexedDB<Book[]>('nabil_author_v4_books')
+        .then((idbB) => {
+          if (idbB && Array.isArray(idbB) && idbB.length > 0) {
+            setBooks((prev) => {
+              if (JSON.stringify(prev) !== JSON.stringify(idbB)) {
+                booksRef.current = idbB;
+                return idbB;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+
+      // 2. Fetch fresh cloud data gracefully
+      fetchCloudSiteData()
+        .then((fresh) => {
+          if (fresh && Object.keys(fresh).length > 0) {
+            if (fresh.videos && Array.isArray(fresh.videos)) {
+              setVideos((prev) => {
+                const clean = fresh.videos!.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+                const localMap = new Map(prev.map((v) => [v.id, v]));
+                clean.forEach((cv: any) => localMap.set(cv.id, cv));
+                return Array.from(localMap.values());
+              });
+            }
+          }
+        })
+        .catch(() => {});
+    }, Math.max(20, autoRefreshIntervalSeconds) * 1000);
+
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled, autoRefreshIntervalSeconds]);
+
+  const refreshAndBypassCache = async (forceHardReload = false) => {
+    showToast('جاري تحديث الصفحة وجلب أحدث البيانات المباشرة وتجاوز كاش المتصفح...');
+
+    // 1. Delete all browser CacheStorage instances (service workers / PWA caches)
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const cacheKeys = await window.caches.keys();
+        await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+      } catch (err) {
+        console.warn('CacheStorage purge notice:', err);
+      }
+    }
+
+    // 2. Clear sessionStorage
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
+    // 3. Hydrate from IndexedDB first (guarantees local additions/edits are always preserved)
+    try {
+      const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos');
+      if (idbVideos && Array.isArray(idbVideos) && idbVideos.length > 0) {
+        setVideos(idbVideos);
+      }
+      const idbBooks = await loadFromIndexedDB<Book[]>('nabil_author_v4_books');
+      if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
+        setBooks(idbBooks);
+        booksRef.current = idbBooks;
+      }
+      const idbPhotos = await loadFromIndexedDB<PhotoItem[]>('nabil_author_v4_photos');
+      if (idbPhotos && Array.isArray(idbPhotos) && idbPhotos.length > 0) {
+        setPhotos(idbPhotos);
+      }
+    } catch {
+      // ignore
+    }
+
+    // 4. Fetch live Cloud Firestore data
+    try {
+      const fresh = await fetchCloudSiteData();
+      if (fresh && Object.keys(fresh).length > 0) {
+        if (fresh.videos && Array.isArray(fresh.videos)) {
+          const cleanV = fresh.videos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+          setVideos((prev) => {
+            const localMap = new Map(prev.map((v) => [v.id, v]));
+            cleanV.forEach((cv: any) => localMap.set(cv.id, cv));
+            const merged = Array.from(localMap.values());
+            safeSetItem('nabil_author_v4_videos', merged);
+            return merged;
+          });
+        }
+        if (fresh.books && Array.isArray(fresh.books)) {
+          setBooks(fresh.books);
+          booksRef.current = fresh.books;
+          safeSetItem('nabil_author_v4_books', fresh.books);
+        }
+        if (fresh.photos && Array.isArray(fresh.photos)) {
+          setPhotos(fresh.photos);
+          safeSetItem('nabil_author_v4_photos', fresh.photos);
+        }
+        if (fresh.authorProfile) {
+          setAuthorProfile((prev) => ({ ...prev, ...fresh.authorProfile }));
+          safeSetItem('nabil_author_v4_profile', fresh.authorProfile);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    showToast('✓ تم تحديث الصفحة وتجاوز الكاش بنجاح!');
+
+    if (forceHardReload && typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    }
+  };
 
   const syncAllToCloudNow = async () => {
     try {
@@ -1175,26 +1348,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Videos
   const addVideo = (videoData: Omit<VideoItem, 'id' | 'date'>) => {
+    const rawUrl = (videoData.url || '').trim();
+    const parsed = parseVideoUrl(rawUrl);
+    const cleanUrl = parsed.cleanUrl || rawUrl;
+    const isStream = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
+
     const newVideo: VideoItem = {
       ...videoData,
+      url: cleanUrl,
+      videoFileUrl: isStream ? undefined : videoData.videoFileUrl,
+      platform: parsed.platform !== 'unknown' ? parsed.platform : (videoData.platform || 'direct'),
       id: `vid-${Date.now()}`,
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
     };
+
     setVideos((prev) => {
-      const next = [newVideo, ...prev];
+      const next = [newVideo, ...prev.filter((v) => v.id !== newVideo.id)];
       safeSetItem('nabil_author_v4_videos', next);
-      executeCloudSave({ videos: next }, 'تمت إضافة مقطع الفيديو وحفظه سحابياً', 'الفيديو');
       return next;
     });
+
+    executeCloudSave({ videos: [newVideo, ...videos.filter((v) => v.id !== newVideo.id)] }, 'تمت إضافة مقطع الفيديو وحفظه سحابياً', 'الفيديو');
   };
 
   const updateVideo = (id: string, updated: Partial<VideoItem>) => {
+    let nextUpdated = { ...updated };
+    if (updated.url) {
+      const parsed = parseVideoUrl(updated.url);
+      const isStream = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
+      nextUpdated.url = parsed.cleanUrl || updated.url;
+      if (parsed.platform !== 'unknown') {
+        nextUpdated.platform = parsed.platform;
+      }
+      if (isStream) {
+        nextUpdated.videoFileUrl = undefined;
+      }
+    }
+
     setVideos((prev) => {
-      const next = prev.map((v) => (v.id === id ? { ...v, ...updated } : v));
+      const next = prev.map((v) => (v.id === id ? { ...v, ...nextUpdated } : v));
       safeSetItem('nabil_author_v4_videos', next);
-      executeCloudSave({ videos: next }, 'تم تحديث بيانات الفيديو وحفظها سحابياً', 'تعديل الفيديو');
       return next;
     });
+
+    const nextList = videos.map((v) => (v.id === id ? { ...v, ...nextUpdated } : v));
+    executeCloudSave({ videos: nextList }, 'تم تحديث بيانات الفيديو وحفظها سحابياً', 'تعديل الفيديو');
   };
 
   const deleteVideo = (id: string) => {
@@ -1758,6 +1956,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         processAndUploadImage,
         processAndUploadVideo,
         copyToClipboardWithFeedback,
+        refreshAndBypassCache,
+        autoRefreshEnabled,
+        toggleAutoRefresh,
+        autoRefreshIntervalSeconds,
+        setAutoRefreshIntervalSeconds,
       }}
     >
       {children}

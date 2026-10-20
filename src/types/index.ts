@@ -45,7 +45,7 @@ export interface VideoItem {
   id: string;
   title: string;
   description: string;
-  platform: 'tiktok' | 'youtube' | 'direct';
+  platform: 'tiktok' | 'youtube' | 'vimeo' | 'drive' | 'direct' | 'unknown';
   url: string;
   videoFileUrl?: string;
   category: string;

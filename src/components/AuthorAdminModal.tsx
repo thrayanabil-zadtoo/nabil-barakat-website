@@ -162,17 +162,19 @@ export const AuthorAdminModal: React.FC = () => {
       vTitle.trim() ||
       `رواية ${bookTitle} · ${vChapterTitle.trim() || (vChapterNumber ? `الفصل ${vChapterNumber}` : 'مشهد درامي')}`;
 
+    const isStreamPlatform = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
+
     addVideo({
       title: cleanTitle,
       url: parsed.cleanUrl || vUrl.trim(),
-      videoFileUrl: vUrl.startsWith('data:') ? vUrl : undefined,
+      videoFileUrl: isStreamPlatform ? undefined : (vUrl.startsWith('data:') ? vUrl : undefined),
       category: vCategory || `رواية ${bookTitle}`,
       bookId: vBookId,
       bookTitle,
       chapterNumber: vChapterNumber ? Number(vChapterNumber) : undefined,
       chapterTitle: vChapterTitle.trim() || undefined,
       description: vDesc.trim() || `تجسيد درامي ومرئي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
-      platform: 'direct',
+      platform: parsed.platform || 'direct',
       duration: vDuration || '02:30',
       likesCount: vLikes || '1.5K',
       commentsCount: vComments || '180',

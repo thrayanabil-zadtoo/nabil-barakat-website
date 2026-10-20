@@ -16,6 +16,7 @@ import {
   Settings,
   FileText,
   Sparkles,
+  RotateCw,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -28,6 +29,9 @@ export const Navbar: React.FC = () => {
     setIsLoginModalOpen,
     logoutSupervisor,
     messages,
+    refreshAndBypassCache,
+    autoRefreshEnabled,
+    toggleAutoRefresh,
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -93,31 +97,57 @@ export const Navbar: React.FC = () => {
           <span className="font-bold text-sm text-[#f6ebd9]">الكاتب أ. نبيل بركات</span>
         </div>
 
-        {/* Left Side: Supervisor Controls (Visible only when logged in; login button is in Footer) */}
-        {isAuthorMode && (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setIsAdminPanelOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-[#dfa85b] border-[#c4924c] text-[#092b45] shadow transition cursor-pointer"
-              title="لوحة تحكم المشرف وإدارة المحتوى"
-            >
-              <Settings className="w-3.5 h-3.5 text-[#092b45]" />
-              <span>لوحة التحكم</span>
-              {unreadMessagesCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
-              )}
-            </button>
-            <button
-              onClick={logoutSupervisor}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 transition cursor-pointer"
-              title="تسجيل خروج المشرف وقفل الصلاحيات"
-            >
-              <LogOut className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">خروج</span>
-            </button>
-          </div>
-        )}
+        {/* Left Side: Auto-refresh & Supervisor Controls */}
+        <div className="flex items-center gap-1.5">
+          {/* Quick Cache Bypass button (visible to all, author or visitor) */}
+          <button
+            onClick={() => refreshAndBypassCache(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-lg border border-sky-400/40 bg-sky-950/60 hover:bg-sky-900 text-sky-200 shadow transition cursor-pointer"
+            title="تحديث فوري للصفحة ومسح كاش المتصفح بالكامل"
+          >
+            <RotateCw className="w-3.5 h-3.5 text-sky-300" />
+            <span className="hidden sm:inline">تحديث وتجاوز الكاش 🔄</span>
+          </button>
 
+          {/* Auto Refresh Toggle Indicator */}
+          <button
+            onClick={toggleAutoRefresh}
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition cursor-pointer ${
+              autoRefreshEnabled
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900/70'
+                : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:bg-slate-800'
+            }`}
+            title="تبديل التحديث التلقائي للصفحة لمنع الكاش"
+          >
+            <span className={`w-2 h-2 rounded-full ${autoRefreshEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+            <span>{autoRefreshEnabled ? 'تلقائي: مفعّل 🟢' : 'تلقائي: متوقف ⚪'}</span>
+          </button>
+
+          {/* Supervisor Specific Controls */}
+          {isAuthorMode && (
+            <>
+              <button
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-[#dfa85b] border-[#c4924c] text-[#092b45] shadow transition cursor-pointer"
+                title="لوحة تحكم المشرف وإدارة المحتوى"
+              >
+                <Settings className="w-3.5 h-3.5 text-[#092b45]" />
+                <span>لوحة التحكم</span>
+                {unreadMessagesCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" />
+                )}
+              </button>
+              <button
+                onClick={logoutSupervisor}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-500/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-200 transition cursor-pointer"
+                title="تسجيل خروج المشرف وقفل الصلاحيات"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden sm:inline">خروج</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Mobile Drawer */}

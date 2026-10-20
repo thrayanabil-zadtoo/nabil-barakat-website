@@ -636,7 +636,7 @@ export const HomeHero: React.FC = () => {
             {activeVideo && (
               <div className="space-y-2.5">
                 {(() => {
-                  const rawSrc = activeVideo.videoFileUrl || activeVideo.url;
+                  const rawSrc = activeVideo.url || activeVideo.videoFileUrl;
                   const videoSrc = (rawSrc || '').trim();
                   if (!videoSrc) {
                     return (
