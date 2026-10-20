@@ -151,13 +151,19 @@ export const AuthorAdminModal: React.FC = () => {
 
   const handleAddVideo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vTitle.trim() || !vUrl.trim()) return;
+    if (!vUrl.trim()) {
+      showToast('يرجى إدخال رابط الفيديو أو رفع ملفه أولاً');
+      return;
+    }
     const parsed = parseVideoUrl(vUrl);
     const assignedBook = books.find((b) => b.id === vBookId);
     const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+    const cleanTitle =
+      vTitle.trim() ||
+      `رواية ${bookTitle} · ${vChapterTitle.trim() || (vChapterNumber ? `الفصل ${vChapterNumber}` : 'مشهد درامي')}`;
 
     addVideo({
-      title: vTitle.trim(),
+      title: cleanTitle,
       url: parsed.cleanUrl || vUrl.trim(),
       videoFileUrl: vUrl.startsWith('data:') ? vUrl : undefined,
       category: vCategory || `رواية ${bookTitle}`,

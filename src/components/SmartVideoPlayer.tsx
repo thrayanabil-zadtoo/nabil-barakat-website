@@ -50,6 +50,12 @@ export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
     return false;
   });
 
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [originalSource]);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -92,12 +98,16 @@ export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
     };
   }, [originalSource]);
 
-  if (!originalSource) {
+  if (!originalSource || originalSource.includes('mixkit.co') || hasError) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center select-none">
-        <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1.5" />
+      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400 p-4 text-center select-none space-y-1.5">
+        <Film className="w-8 h-8 text-[#dfa85b]/70 mb-1" />
         <span className="text-xs font-bold text-slate-200">{placeholderText}</span>
-        <span className="text-[10px] text-slate-400 mt-0.5">لم يُرفع ملف الفيديو بعد</span>
+        <span className="text-[10px] text-slate-400 max-w-xs">
+          {hasError
+            ? 'تعذر تشغيل الرابط الخارجي (يرجى تعديل الرابط أو وضع رابط YouTube)'
+            : 'لم يُرفع ملف الفيديو أو لم يُحدد رابط البث بعد'}
+        </span>
       </div>
     );
   }
@@ -116,6 +126,10 @@ export const SmartVideoPlayer: React.FC<SmartVideoPlayerProps> = ({
     <video
       src={playableSrc || undefined}
       className={className}
+      onError={() => {
+        console.warn('[SmartVideoPlayer] Video source failed to load, activating fallback');
+        setHasError(true);
+      }}
       {...restProps}
     />
   );

@@ -120,6 +120,37 @@ export const VideosSection: React.FC = () => {
       });
       setUploadedVideoData(videoUrl);
       setIsProcessingVideo(false);
+
+      const assignedBook = books.find((b) => b.id === newNovelId);
+      const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+      const cleanTitle =
+        newTitle.trim() ||
+        `رواية ${bookTitle} · ${newChapterTitle.trim() || (newChapterNumber ? `الفصل ${newChapterNumber}` : 'مشهد درامي')}`;
+
+      // Automatically add and publish the video to the novel chapter list immediately!
+      addVideo({
+        title: cleanTitle,
+        url: videoUrl,
+        videoFileUrl: videoUrl,
+        description: newDesc.trim() || `مشهد مرئي وتجسيد درامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+        category: `رواية ${bookTitle}`,
+        platform: 'direct',
+        duration: newDuration || '02:30',
+        likesCount: '1.2K',
+        commentsCount: '95',
+        bookId: newNovelId,
+        bookTitle,
+        chapterNumber: newChapterNumber ? Number(newChapterNumber) : undefined,
+        chapterTitle: newChapterTitle.trim() || undefined,
+      });
+
+      showToast(`✓ تم نشر وتجسيد الفصل بنجاح ضمن رواية «${bookTitle}»!`);
+      setShowAddForm(false);
+      setNewTitle('');
+      setUploadedVideoData('');
+      setDirectVideoUrl('');
+      setNewDesc('');
+      setNewChapterTitle('');
     } catch (err: any) {
       setIsProcessingVideo(false);
       showToast(err?.message || 'تعذر رفع ملف الفيديو، يرجى المحاولة مرة أخرى');
@@ -130,31 +161,29 @@ export const VideosSection: React.FC = () => {
 
   const handleAddVideoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) {
-      showToast('يرجى كتابة عنوان المشهد أو الفصل');
-      return;
-    }
-
     const finalVideoSource = uploadedVideoData || directVideoUrl.trim();
 
     if (!finalVideoSource) {
-      showToast('يرجى رفع ملف الفيديو أو إدخال رابط المشهد');
+      showToast('يرجى رفع ملف الفيديو أو إدخال رابط المشهد (مثل رابط YouTube أو Vimeo أو TikTok)');
       return;
     }
 
     const assignedBook = books.find((b) => b.id === newNovelId);
     const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+    const cleanTitle =
+      newTitle.trim() ||
+      `رواية ${bookTitle} · ${newChapterTitle.trim() || (newChapterNumber ? `الفصل ${newChapterNumber}` : 'مشهد درامي')}`;
 
     addVideo({
-      title: newTitle.trim(),
+      title: cleanTitle,
       url: finalVideoSource,
       videoFileUrl: uploadedVideoData || undefined,
       description: newDesc.trim() || `مشهد مرئي وتجسيد درامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
       category: `رواية ${bookTitle}`,
       platform: 'direct',
       duration: newDuration || '02:30',
-      likesCount: '1.5K',
-      commentsCount: '180',
+      likesCount: '1.2K',
+      commentsCount: '95',
       bookId: newNovelId,
       bookTitle,
       chapterNumber: newChapterNumber ? Number(newChapterNumber) : undefined,
@@ -167,6 +196,7 @@ export const VideosSection: React.FC = () => {
     setNewDesc('');
     setNewChapterTitle('');
     setShowAddForm(false);
+    showToast(`✓ تم حفظ ونشر المشهد المرئي بنجاح ضمن رواية «${bookTitle}»`);
   };
 
   return (
