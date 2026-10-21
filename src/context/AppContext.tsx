@@ -214,6 +214,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Clean up legacy storage and hydrate from IndexedDB on boot
   useEffect(() => {
     cleanupLegacyStorage();
+    try {
+      // Purge old video cache versions to prevent old/broken file URLs from resurrecting
+      localStorage.removeItem('nabil_author_v4_videos');
+      localStorage.removeItem('nabil_author_v3_videos');
+    } catch {}
+
     const hydrateFromIDB = async () => {
       try {
         const idbBooks = await loadFromIndexedDB<Book[]>('nabil_author_v4_books');
@@ -228,8 +234,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (idbPhotos && Array.isArray(idbPhotos)) {
           setPhotos(idbPhotos);
         }
-        const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos');
-        if (idbVideos && Array.isArray(idbVideos)) {
+        const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v5_videos');
+        if (idbVideos && Array.isArray(idbVideos) && idbVideos.length > 0) {
           setVideos(idbVideos);
         }
         const idbNews = await loadFromIndexedDB<NewsItem[]>('nabil_author_v4_news');
@@ -385,8 +391,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     booksRef.current = books;
   }, [books]);
   const [videos, setVideos] = useState<VideoItem[]>(() => {
-    const raw = loadState<VideoItem[]>('videos', initialVideos);
-    return (raw || []).filter((v) => v && !v.url?.includes('mixkit.co'));
+    const raw = localStorage.getItem('nabil_author_v5_videos');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+        }
+      } catch {}
+    }
+    return initialVideos;
   });
   const [photos, setPhotos] = useState<PhotoItem[]>(() => loadState('photos', initialPhotos));
   const [news, setNews] = useState<NewsItem[]>(() => loadState('news', initialNews));
@@ -497,6 +511,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const cloudIds = new Set(cleanCloud.map((v: any) => v.id));
               const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
               const merged = [...localPending, ...cleanCloud];
+              safeSetItem('nabil_author_v5_videos', merged);
               safeSetItem('nabil_author_v4_videos', merged);
               return merged;
             });
@@ -536,14 +551,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         const liveVideos = cloudData.videos;
         if (liveVideos && Array.isArray(liveVideos)) {
-          setVideos((prev) => {
-            const cleanCloud = liveVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-            const cloudIds = new Set(cleanCloud.map((v: any) => v.id));
-            const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
-            const merged = [...localPending, ...cleanCloud];
-            safeSetItem('nabil_author_v4_videos', merged);
-            return merged;
-          });
+          const cleanCloud = liveVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+          setVideos(cleanCloud);
+          safeSetItem('nabil_author_v5_videos', cleanCloud);
         }
         if (cloudData.photos && Array.isArray(cloudData.photos)) {
           setPhotos(cloudData.photos);
@@ -602,13 +612,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const timer = setInterval(() => {
       // 1. First sync with local IndexedDB (instant, zero network cost)
-      loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos')
+      loadFromIndexedDB<VideoItem[]>('nabil_author_v5_videos')
         .then((idbV) => {
           if (idbV && Array.isArray(idbV) && idbV.length > 0) {
-            setVideos((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(idbV)) return idbV;
-              return prev;
-            });
+            setVideos(idbV);
           }
         })
         .catch(() => {});
@@ -632,12 +639,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then((fresh) => {
           if (fresh && Object.keys(fresh).length > 0) {
             if (fresh.videos && Array.isArray(fresh.videos)) {
-              setVideos((prev) => {
-                const clean = fresh.videos!.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-                const localMap = new Map(prev.map((v) => [v.id, v]));
-                clean.forEach((cv: any) => localMap.set(cv.id, cv));
-                return Array.from(localMap.values());
-              });
+              const clean = fresh.videos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+              setVideos(clean);
+              safeSetItem('nabil_author_v5_videos', clean);
             }
           }
         })
@@ -669,7 +673,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 3. Hydrate from IndexedDB first (guarantees local additions/edits are always preserved)
     try {
-      const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v4_videos');
+      const idbVideos = await loadFromIndexedDB<VideoItem[]>('nabil_author_v5_videos');
       if (idbVideos && Array.isArray(idbVideos) && idbVideos.length > 0) {
         setVideos(idbVideos);
       }
@@ -692,13 +696,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (fresh && Object.keys(fresh).length > 0) {
         if (fresh.videos && Array.isArray(fresh.videos)) {
           const cleanV = fresh.videos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-          setVideos((prev) => {
-            const localMap = new Map(prev.map((v) => [v.id, v]));
-            cleanV.forEach((cv: any) => localMap.set(cv.id, cv));
-            const merged = Array.from(localMap.values());
-            safeSetItem('nabil_author_v4_videos', merged);
-            return merged;
-          });
+          setVideos(cleanV);
+          safeSetItem('nabil_author_v5_videos', cleanV);
         }
         if (fresh.books && Array.isArray(fresh.books)) {
           setBooks(fresh.books);
@@ -1364,11 +1363,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setVideos((prev) => {
       const next = [newVideo, ...prev.filter((v) => v.id !== newVideo.id)];
-      safeSetItem('nabil_author_v4_videos', next);
+      safeSetItem('nabil_author_v5_videos', next);
+      executeCloudSave({ videos: next }, 'تم حفظ وتثبيت الفيديو سحابياً', 'الفيديو');
       return next;
     });
-
-    executeCloudSave({ videos: [newVideo, ...videos.filter((v) => v.id !== newVideo.id)] }, 'تمت إضافة مقطع الفيديو وحفظه سحابياً', 'الفيديو');
   };
 
   const updateVideo = (id: string, updated: Partial<VideoItem>) => {
@@ -1387,18 +1385,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setVideos((prev) => {
       const next = prev.map((v) => (v.id === id ? { ...v, ...nextUpdated } : v));
-      safeSetItem('nabil_author_v4_videos', next);
+      safeSetItem('nabil_author_v5_videos', next);
+      executeCloudSave({ videos: next }, 'تم تحديث بيانات الفيديو وحفظها سحابياً', 'تعديل الفيديو');
       return next;
     });
-
-    const nextList = videos.map((v) => (v.id === id ? { ...v, ...nextUpdated } : v));
-    executeCloudSave({ videos: nextList }, 'تم تحديث بيانات الفيديو وحفظها سحابياً', 'تعديل الفيديو');
   };
 
   const deleteVideo = (id: string) => {
     setVideos((prev) => {
       const next = prev.filter((v) => v.id !== id);
-      safeSetItem('nabil_author_v4_videos', next);
+      safeSetItem('nabil_author_v5_videos', next);
       executeCloudSave({ videos: next }, 'تم إزالة الفيديو وتحديث السحابة', 'حذف الفيديو');
       return next;
     });
@@ -1413,6 +1409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...target, isPinned: isNowPinned };
       const rest = prev.filter((b) => b.id !== id);
       const next = isNowPinned ? [updated, ...rest] : [...rest, updated];
+      safeSetItem('nabil_author_v5_videos', next);
       safeSetItem('nabil_author_v4_videos', next);
       executeCloudSave({ videos: next }, isNowPinned ? `تم تثبيت مقطع الفيديو في المقدمة 📌` : `تم إلغاء تثبيت مقطع الفيديو`);
       return next;
@@ -1429,6 +1426,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const temp = next[idx];
       next[idx] = next[targetIdx];
       next[targetIdx] = temp;
+      safeSetItem('nabil_author_v5_videos', next);
       safeSetItem('nabil_author_v4_videos', next);
       executeCloudSave({ videos: next }, `تم تغيير ترتيب الفيديو إلى المركز (${targetIdx + 1})`);
       return next;
@@ -1444,6 +1442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = [...prev];
       const [item] = next.splice(idx, 1);
       next.splice(targetIdx, 0, item);
+      safeSetItem('nabil_author_v5_videos', next);
       safeSetItem('nabil_author_v4_videos', next);
       executeCloudSave({ videos: next }, `تم تغيير ترتيب الفيديو ليصبح في المركز (${targetIdx + 1})`);
       return next;

@@ -1,27 +1,26 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { VideoItem } from '../types';
+import { VideoItem, Book } from '../types';
 import {
-  Video,
+  Film,
   Play,
   Plus,
   Trash2,
   Edit2,
-  Share2,
   Sparkles,
   Pin,
   Upload,
-  Film,
   Maximize2,
   X,
   BookOpen,
   ShieldCheck,
-  Lock,
-  Layers,
-  ChevronLeft,
-  Tv,
-  Check,
   RotateCw,
+  Check,
+  Youtube,
+  ExternalLink,
+  Info,
+  Clock,
+  Layers,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -32,68 +31,76 @@ export const VideosSection: React.FC = () => {
   const {
     videos,
     addVideo,
-    isAuthorMode,
+    updateVideo,
     deleteVideo,
-    setEditingVideo,
-    openShareModal,
-    openCommentModal,
     togglePinVideo,
     moveVideoOrder,
     setVideoPosition,
     books,
+    isAuthorMode,
     showToast,
-    processAndUploadVideo,
     refreshAndBypassCache,
     autoRefreshEnabled,
     toggleAutoRefresh,
+    processAndUploadVideo,
   } = useApp();
 
-  // Novel filter: 'all' or specific novel ID (e.g. 'book-1')
+  // Active novel filter: 'all' or a specific book id (e.g. 'book-1')
   const [selectedNovelId, setSelectedNovelId] = useState<string>('all');
-  const [activeVideoModal, setActiveVideoModal] = useState<VideoItem | null>(null);
-  const [confirmDeleteVideoId, setConfirmDeleteVideoId] = useState<string | null>(null);
 
-  // Add Video Form State
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newNovelId, setNewNovelId] = useState<string>(() => books[0]?.id || 'book-1');
-  const [newChapterNumber, setNewChapterNumber] = useState<number | ''>(1);
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [uploadedVideoData, setUploadedVideoData] = useState<string>('');
-  const [directVideoUrl, setDirectVideoUrl] = useState<string>('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newDuration, setNewDuration] = useState('02:30');
-  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  // Video modals state
+  const [activeTheaterVideo, setActiveTheaterVideo] = useState<VideoItem | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // List of novels for filter tabs
-  const novelList = useMemo(() => {
-    return books.map((b) => ({
-      id: b.id,
-      title: b.title,
-      cover: b.coverImage,
-      videoCount: videos.filter((v) => v.bookId === b.id || v.title.includes(b.title) || v.category.includes(b.title)).length,
-    }));
-  }, [books, videos]);
+  // Add / Edit Modal state
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [editingVideoItem, setEditingVideoItem] = useState<VideoItem | null>(null);
 
-  // Selected Novel Object
+  // Form Fields
+  const [formNovelId, setFormNovelId] = useState<string>(() => books[0]?.id || 'book-1');
+  const [formChapterNumber, setFormChapterNumber] = useState<number | ''>(1);
+  const [formChapterTitle, setFormChapterTitle] = useState<string>('');
+  const [formTitle, setFormTitle] = useState<string>('');
+  const [formVideoUrl, setFormVideoUrl] = useState<string>('');
+  const [formDescription, setFormDescription] = useState<string>('');
+  const [formDuration, setFormDuration] = useState<string>('02:30');
+  const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+
+  // Selected Novel Object for current tab
   const selectedNovel = useMemo(() => {
     if (selectedNovelId === 'all') return null;
     return books.find((b) => b.id === selectedNovelId) || null;
   }, [selectedNovelId, books]);
 
-  // Filtered and Sorted Videos
-  const filteredVideos = useMemo(() => {
+  // Novels List with counts
+  const novelsWithCounts = useMemo(() => {
+    return books.map((book) => {
+      const count = videos.filter((v) => {
+        if (v.bookId === book.id) return true;
+        if (v.title?.includes(book.title) || v.category?.includes(book.title)) return true;
+        return false;
+      }).length;
+      return {
+        book,
+        count,
+      };
+    });
+  }, [books, videos]);
+
+  // Filtered and Sorted videos
+  const displayedVideos = useMemo(() => {
     let list = videos;
     if (selectedNovelId !== 'all') {
-      const currentBook = books.find((b) => b.id === selectedNovelId);
+      const activeBook = books.find((b) => b.id === selectedNovelId);
       list = videos.filter((v) => {
         if (v.bookId === selectedNovelId) return true;
-        if (currentBook && (v.title.includes(currentBook.title) || v.category.includes(currentBook.title))) {
+        if (activeBook && (v.title?.includes(activeBook.title) || v.category?.includes(activeBook.title))) {
           return true;
         }
         return false;
       });
-      // Sort chapters sequentially by chapter number if available
+
+      // Sort chapters sequentially
       return [...list].sort((a, b) => {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -102,225 +109,267 @@ export const VideosSection: React.FC = () => {
         return chA - chB;
       });
     }
-    return list;
+
+    return [...list].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return 0;
+    });
   }, [videos, selectedNovelId, books]);
 
-  const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Open modal in Add mode
+  const handleOpenAddModal = (presetNovelId?: string) => {
+    const targetBookId = presetNovelId || (selectedNovelId !== 'all' ? selectedNovelId : books[0]?.id || 'book-1');
+    const targetBook = books.find((b) => b.id === targetBookId);
+    const existingCount = videos.filter((v) => v.bookId === targetBookId).length;
+
+    setEditingVideoItem(null);
+    setFormNovelId(targetBookId);
+    setFormChapterNumber(existingCount + 1);
+    setFormChapterTitle('');
+    setFormTitle('');
+    setFormVideoUrl('');
+    setFormDescription(targetBook ? `تجسيد مرئي ودرامي لفصول رواية «${targetBook.title}» بقلم الكاتب أ. نبيل بركات.` : '');
+    setFormDuration('02:30');
+    setIsModalOpen(true);
+  };
+
+  // Open modal in Edit mode
+  const handleOpenEditModal = (video: VideoItem) => {
+    setEditingVideoItem(video);
+    setFormNovelId(video.bookId || books[0]?.id || 'book-1');
+    setFormChapterNumber(video.chapterNumber ?? '');
+    setFormChapterTitle(video.chapterTitle || '');
+    setFormTitle(video.title || '');
+    setFormVideoUrl(video.url || video.videoFileUrl || '');
+    setFormDescription(video.description || '');
+    setFormDuration(video.duration || '02:30');
+    setIsModalOpen(true);
+  };
+
+  // Handle form submission (Add or Edit)
+  const handleSubmitVideoForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawUrl = formVideoUrl.trim();
+    if (!rawUrl) {
+      showToast('يرجى إدخال رابط الفيديو (مثل رابط YouTube أو Vimeo) أو رفع ملفه');
+      return;
+    }
+
+    const assignedBook = books.find((b) => b.id === formNovelId);
+    const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+
+    const cleanTitle =
+      formTitle.trim() ||
+      `رواية ${bookTitle} · ${formChapterTitle.trim() || (formChapterNumber ? `الفصل ${formChapterNumber}` : 'مشهد درامي')}`;
+
+    const parsed = parseVideoUrl(rawUrl);
+    const isStream = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
+    const finalUrl = parsed.cleanUrl || rawUrl;
+
+    if (editingVideoItem) {
+      // Update existing video
+      updateVideo(editingVideoItem.id, {
+        title: cleanTitle,
+        url: finalUrl,
+        videoFileUrl: isStream ? undefined : (finalUrl.startsWith('data:') ? finalUrl : editingVideoItem.videoFileUrl),
+        platform: parsed.platform !== 'unknown' ? parsed.platform : 'direct',
+        description: formDescription.trim() || `تجسيد مرئي ودرامي لرواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+        category: `رواية ${bookTitle}`,
+        duration: formDuration || '02:30',
+        bookId: formNovelId,
+        bookTitle,
+        chapterNumber: formChapterNumber ? Number(formChapterNumber) : undefined,
+        chapterTitle: formChapterTitle.trim() || undefined,
+      });
+      showToast(`✓ تم تحديث بيانات المشهد وحفظ رابط YouTube سحابياً!`);
+    } else {
+      // Add new video
+      addVideo({
+        title: cleanTitle,
+        url: finalUrl,
+        videoFileUrl: isStream ? undefined : (finalUrl.startsWith('data:') ? finalUrl : undefined),
+        platform: parsed.platform !== 'unknown' ? parsed.platform : 'direct',
+        description: formDescription.trim() || `تجسيد مرئي ودرامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+        category: `رواية ${bookTitle}`,
+        duration: formDuration || '02:30',
+        likesCount: '2.1K',
+        commentsCount: '190',
+        bookId: formNovelId,
+        bookTitle,
+        chapterNumber: formChapterNumber ? Number(formChapterNumber) : undefined,
+        chapterTitle: formChapterTitle.trim() || undefined,
+      });
+      showToast(`✓ تم حفظ ونشر المشهد بنجاح ضمن رواية «${bookTitle}» وتثبيته سحابياً!`);
+    }
+
+    // Switch view to this novel so the author sees the change immediately
+    setSelectedNovelId(formNovelId);
+    setIsModalOpen(false);
+  };
+
+  // Direct file upload handler
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > 22 * 1024 * 1024) {
-      showToast(
-        `تنبيه: حجم الفيديو (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) يتجاوز الحد الموصى به للرفع المباشر (20 ميجابايت). يُرجى وضع رابط الفيديو من YouTube أو Vimeo لسرعة فائقة وبدون حدود.`
-      );
+      showToast(`تنبيه: حجم الملف (${(file.size / (1024 * 1024)).toFixed(1)} ميجابايت) كبير. يفضل استخدام رابط YouTube للبث الفوري غير المحدود.`);
       e.target.value = '';
       return;
     }
 
     try {
-      setIsProcessingVideo(true);
-      const videoUrl = await processAndUploadVideo(file, {
-        contextTitle: newTitle || 'مشهد روائي',
-        bookId: newNovelId,
+      setIsUploadingFile(true);
+      const url = await processAndUploadVideo(file, {
+        contextTitle: formTitle || 'مشهد روائي',
+        bookId: formNovelId,
       });
-      setUploadedVideoData(videoUrl);
-      setIsProcessingVideo(false);
-
-      const assignedBook = books.find((b) => b.id === newNovelId);
-      const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
-      const cleanTitle =
-        newTitle.trim() ||
-        `رواية ${bookTitle} · ${newChapterTitle.trim() || (newChapterNumber ? `الفصل ${newChapterNumber}` : 'مشهد درامي')}`;
-
-      // Automatically add and publish the video to the novel chapter list immediately!
-      addVideo({
-        title: cleanTitle,
-        url: videoUrl,
-        videoFileUrl: videoUrl,
-        description: newDesc.trim() || `مشهد مرئي وتجسيد درامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
-        category: `رواية ${bookTitle}`,
-        platform: 'direct',
-        duration: newDuration || '02:30',
-        likesCount: '1.2K',
-        commentsCount: '95',
-        bookId: newNovelId,
-        bookTitle,
-        chapterNumber: newChapterNumber ? Number(newChapterNumber) : undefined,
-        chapterTitle: newChapterTitle.trim() || undefined,
-      });
-
-      showToast(`✓ تم نشر وتجسيد الفصل بنجاح ضمن رواية «${bookTitle}»!`);
-      setShowAddForm(false);
-      setNewTitle('');
-      setUploadedVideoData('');
-      setDirectVideoUrl('');
-      setNewDesc('');
-      setNewChapterTitle('');
+      setFormVideoUrl(url);
+      setIsUploadingFile(false);
+      showToast('✓ تم تجهيز ملف الفيديو بنجاح');
     } catch (err: any) {
-      setIsProcessingVideo(false);
-      showToast(err?.message || 'تعذر رفع ملف الفيديو، يرجى المحاولة مرة أخرى');
+      setIsUploadingFile(false);
+      showToast(err?.message || 'تعذر رفع الملف، يرجى المحاولة ثانية');
     } finally {
       e.target.value = '';
     }
   };
 
-  const handleAddVideoSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalVideoSource = directVideoUrl.trim() || uploadedVideoData;
-
-    if (!finalVideoSource) {
-      showToast('يرجى وضع رابط المشهد (مثل رابط YouTube أو Vimeo) أو رفع ملف الفيديو');
-      return;
-    }
-
-    const assignedBook = books.find((b) => b.id === newNovelId);
-    const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
-    const cleanTitle =
-      newTitle.trim() ||
-      `رواية ${bookTitle} · ${newChapterTitle.trim() || (newChapterNumber ? `الفصل ${newChapterNumber}` : 'مشهد درامي')}`;
-
-    const parsed = parseVideoUrl(finalVideoSource);
-    const isStream = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
-    const targetUrl = parsed.cleanUrl || finalVideoSource;
-
-    addVideo({
-      title: cleanTitle,
-      url: targetUrl,
-      videoFileUrl: isStream ? undefined : (uploadedVideoData || undefined),
-      description: newDesc.trim() || `مشهد مرئي وتجسيد درامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
-      category: `رواية ${bookTitle}`,
-      platform: parsed.platform !== 'unknown' ? parsed.platform : 'direct',
-      duration: newDuration || '02:30',
-      likesCount: '1.2K',
-      commentsCount: '95',
-      bookId: newNovelId,
-      bookTitle,
-      chapterNumber: newChapterNumber ? Number(newChapterNumber) : undefined,
-      chapterTitle: newChapterTitle.trim() || undefined,
-    });
-
-    // Make sure the novel tab is selected so the author sees the new video immediately!
-    setSelectedNovelId(newNovelId);
-
-    setNewTitle('');
-    setUploadedVideoData('');
-    setDirectVideoUrl('');
-    setNewDesc('');
-    setNewChapterTitle('');
-    setShowAddForm(false);
-    showToast(`✓ تم حفظ ونشر المشهد بنجاح ضمن رواية «${bookTitle}» وظهرت في القائمة`);
-  };
+  // Live validation for input URL
+  const parsedInputUrl = useMemo(() => {
+    if (!formVideoUrl.trim()) return null;
+    return parseVideoUrl(formVideoUrl.trim());
+  }, [formVideoUrl]);
 
   return (
-    <div className="space-y-8 py-6" dir="rtl">
-      
-      {/* Header Banner */}
+    <section className="space-y-8 py-4 sm:py-6" dir="rtl" aria-label="فيديو يجسد الروايات">
+      {/* 1. Header Banner */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#d6e0ea] pb-5">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs text-[#c4924c] font-bold">
             <Sparkles className="w-4 h-4 text-[#dfa85b]" />
             <span>الإنتاج المرئي والدرامي للمؤلفات الأدبية</span>
             <span aria-hidden="true">·</span>
-            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>مشاهدة حصرية مباشرة · محمي بعلامة مائية</span>
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0b385e] font-literary flex items-center gap-2">
-            <Film className="w-7 h-7 text-[#dfa85b]" />
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0b385e] font-literary flex items-center gap-2.5">
+            <Film className="w-8 h-8 text-[#dfa85b]" />
             <span>فيديو يجسد الروايات</span>
           </h2>
           <p className="text-xs sm:text-sm text-[#475569] max-w-3xl leading-relaxed">
-            مشاهد درامية وفصول مصورة تجسد روايات ومؤلفات الكاتب الروائي والشاعر <span className="font-bold text-[#0b385e]">أ. نبيل بركات</span>، تأخذك في رحلة بصرية حية داخل أعماق الشخصيات وحبكات الروايات. (مشاهدة حصرية مباشرة بدون تحميل لحفظ حقوق الملكية الفكرية).
+            فضاء مرئي تفاعلي يجسد روايات ومؤلفات الكاتب والشاعر <span className="font-bold text-[#0b385e]">أ. نبيل بركات</span> عبر مشاهد وفصول درامية مصورة، مبثوثة مباشرة وبأعلى دقة من YouTube مع حفظ حقوق الملكية الفكرية.
           </p>
         </div>
 
-        {/* Auto-refresh and Supervisor add video controls */}
+        {/* Global Controls */}
         <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          {/* Add video button */}
+          <button
+            onClick={() => handleOpenAddModal()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm hover:shadow cursor-pointer"
+            title="إضافة مشهد أو فصل فيديو جديد إلى إحدى الروايات"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ إضافة فيديو / مشهد جديد</span>
+          </button>
+
           {/* Auto Refresh Toggle */}
           <button
             onClick={toggleAutoRefresh}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer border ${
+            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer border ${
               autoRefreshEnabled
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                 : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
             }`}
-            title="تبديل التحديث التلقائي للصفحة لمنع تخزين الكاش واستلام التحديثات مباشرة"
+            title="تفعيل أو إيقاف التحديث التلقائي لمنع الكاش وجلب التعديلات فورا"
           >
             <span className={`w-2 h-2 rounded-full ${autoRefreshEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
             <span>{autoRefreshEnabled ? 'تحديث تلقائي: نشط 🟢' : 'تحديث تلقائي: متوقف ⚪'}</span>
           </button>
 
-          {/* Force bypass cache button */}
+          {/* Force bypass cache */}
           <button
             onClick={() => refreshAndBypassCache(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap"
-            title="تحديث فوري للصفحة ومسح كاش المتصفح بالكامل"
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap"
+            title="تحديث الصفحة فوراً ومسح كاش المتصفح"
           >
             <RotateCw className="w-3.5 h-3.5 text-[#dfa85b]" />
-            <span>تحديث فوري وتجاوز الكاش 🔄</span>
+            <span>تحديث وتجاوز الكاش 🔄</span>
           </button>
-
-          {isAuthorMode && (
-            <button
-              onClick={() => {
-                if (selectedNovelId !== 'all') {
-                  setNewNovelId(selectedNovelId);
-                }
-                setShowAddForm(!showAddForm);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4 text-[#dfa85b]" />
-              <span>+ إضافة فصل / مشهد فيديو جديد</span>
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Novel Filter Tabs (ضمن روايات) */}
+      {/* 2. Novel Selector Tabs (مع الروايات) */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between text-xs text-slate-500 font-bold px-1">
-          <span className="flex items-center gap-1.5 text-[#0b385e]">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
             <BookOpen className="w-4 h-4 text-[#dfa85b]" />
-            <span>اختر الرواية لمشاهدة فصولها المجسدة بالفيديو:</span>
+            <span>اختر الرواية لمشاهدة فصولها ومقاطعها المصورة:</span>
+          </div>
+          <span className="text-[11px] text-slate-500">
+            إجمالي الفيديوهات: <strong className="text-[#0b385e]">{videos.length}</strong>
           </span>
-          <span>{filteredVideos.length} مشهد متوفر</span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+          {/* All Novels Tab */}
           <button
             onClick={() => setSelectedNovelId('all')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
               selectedNovelId === 'all'
-                ? 'bg-[#0b385e] text-white shadow-md'
-                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                ? 'bg-[#0b385e] text-white border-[#0b385e] shadow-md'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs'
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-[#dfa85b]" />
-            <span>كافة الروايات والمؤلفات ({videos.length})</span>
+            <span>كل الروايات والمؤلفات</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                selectedNovelId === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {videos.length}
+            </span>
           </button>
 
-          {novelList.map((novel) => {
-            const isSelected = selectedNovelId === novel.id;
+          {/* Individual Novel Tabs */}
+          {novelsWithCounts.map(({ book, count }) => {
+            const isSelected = selectedNovelId === book.id;
             return (
               <button
-                key={novel.id}
-                onClick={() => setSelectedNovelId(novel.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                key={book.id}
+                onClick={() => setSelectedNovelId(book.id)}
+                className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
                   isSelected
-                    ? 'bg-[#dfa85b] text-[#07243c] font-black shadow-md border border-[#c4924c]'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                    ? 'bg-[#0b385e] text-white border-[#0b385e] shadow-md ring-2 ring-[#dfa85b]/40'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs'
                 }`}
               >
-                <BookOpen className={`w-3.5 h-3.5 ${isSelected ? 'text-[#07243c]' : 'text-[#c4924c]'}`} />
-                <span>رواية «{novel.title}»</span>
+                {book.coverImage && (
+                  <img
+                    src={book.coverImage}
+                    alt={book.title}
+                    className="w-5 h-7 object-cover rounded shadow-2xs shrink-0"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                )}
+                <span>{book.title}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    isSelected ? 'bg-[#07243c] text-white' : 'bg-slate-100 text-slate-600'
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : count > 0
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-400'
                   }`}
                 >
-                  {novel.videoCount} {novel.videoCount === 1 ? 'فصل' : 'فصول'}
+                  {count > 0 ? `${count} مقطع` : 'فارغ'}
                 </span>
               </button>
             );
@@ -328,603 +377,487 @@ export const VideosSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Selected Novel Spotlight Card */}
+      {/* 3. Selected Novel Highlight Card (When a specific novel is chosen) */}
       {selectedNovel && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-l from-[#0b385e] to-[#07243c] text-white flex flex-col sm:flex-row items-center gap-4 sm:gap-6 shadow-lg border border-[#dfa85b]/30">
-          {selectedNovel.coverImage ? (
+        <div className="bg-gradient-to-r from-[#0b385e]/5 via-[#dfa85b]/10 to-slate-50 border border-[#dfa85b]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+          {selectedNovel.coverImage && (
             <img
               src={selectedNovel.coverImage}
               alt={selectedNovel.title}
-              className="w-20 h-28 object-cover rounded-xl shadow-md border-2 border-[#dfa85b]/50 shrink-0"
+              className="w-16 h-24 sm:w-20 sm:h-28 object-cover rounded-xl shadow-md border border-white shrink-0"
             />
-          ) : (
-            <div className="w-20 h-28 rounded-xl bg-white/10 border-2 border-[#dfa85b]/50 flex items-center justify-center shrink-0">
-              <BookOpen className="w-8 h-8 text-[#dfa85b]" />
-            </div>
           )}
-          <div className="flex-1 text-center sm:text-right space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 text-xs text-[#dfa85b] font-bold bg-white/10 px-2.5 py-0.5 rounded-full">
-              <Tv className="w-3.5 h-3.5" />
-              <span>مشاهد وفصول مجسدة حصرياً</span>
+          <div className="flex-1 space-y-1.5 text-center sm:text-right">
+            <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+              <span className="text-xs font-bold text-[#c4924c] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                {selectedNovel.genre || 'رواية أدبية'}
+              </span>
+              {selectedNovel.publicationYear && (
+                <span className="text-xs text-slate-500 font-mono">سنة النشر: {selectedNovel.publicationYear}</span>
+              )}
             </div>
-            <h3 className="text-lg sm:text-xl font-bold font-literary">
-              رواية «{selectedNovel.title}» — الفصول المجسدة مرئياً
+            <h3 className="text-lg sm:text-xl font-bold text-[#0b385e] font-literary">
+              رواية «{selectedNovel.title}»
             </h3>
-            <p className="text-xs text-slate-300 max-w-2xl line-clamp-2 leading-relaxed">
-              {selectedNovel.description || selectedNovel.subtitle}
+            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed max-w-2xl">
+              {selectedNovel.description || 'فصول درامية مصورة تجسد تفاصيل وشخصيات هذا العمل الأدبي.'}
             </p>
           </div>
-          <div className="shrink-0 text-center bg-white/10 p-3 rounded-xl border border-white/10">
-            <div className="text-xl font-black text-[#dfa85b]">{filteredVideos.length}</div>
-            <div className="text-[10px] text-slate-300">فصول مرئية</div>
+          <div className="shrink-0 flex sm:flex-col gap-2">
+            <button
+              onClick={() => handleOpenAddModal(selectedNovel.id)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#dfa85b]" />
+              <span>+ تجسيد فصل جديد</span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Supervisor: Add New Video Chapter Form */}
-      {showAddForm && isAuthorMode && (
-        <form
-          onSubmit={handleAddVideoSubmit}
-          className="p-5 sm:p-6 rounded-2xl bg-white border-2 border-[#dfa85b]/50 shadow-xl space-y-4 animate-in fade-in duration-200"
-        >
-          <div className="flex items-center justify-between border-b pb-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-[#0b385e]">
-              <Plus className="w-4 h-4 text-[#dfa85b]" />
-              <span>إضافة وتجسيد فيديو جديد ضمن الروايات</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAddForm(false)}
-              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      {/* 4. Videos Grid / Empty State */}
+      {displayedVideos.length === 0 ? (
+        <div className="text-center py-12 px-6 bg-white rounded-2xl border border-dashed border-slate-300 space-y-4 shadow-2xs">
+          <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 flex items-center justify-center border border-amber-200">
+            <Film className="w-8 h-8 text-[#dfa85b]" />
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Novel Selector */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                اختر الرواية التي يتبع لها المشهد:
-              </label>
-              <select
-                value={newNovelId}
-                onChange={(e) => {
-                  setNewNovelId(e.target.value);
-                  const b = books.find((item) => item.id === e.target.value);
-                  if (b && !newTitle) {
-                    setNewTitle(`رواية ${b.title} · الفصل الأول`);
-                  }
-                }}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-bold text-[#0b385e] outline-none"
-              >
-                {books.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    رواية: {b.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Chapter Number */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                رقم الفصل / المشهد:
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={newChapterNumber}
-                onChange={(e) => setNewChapterNumber(e.target.value ? Number(e.target.value) : '')}
-                placeholder="1"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-bold text-center outline-none"
-              />
-            </div>
-
-            {/* Chapter Title */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                عنوان الفصل أو المشهد:
-              </label>
-              <input
-                type="text"
-                value={newChapterTitle}
-                onChange={(e) => setNewChapterTitle(e.target.value)}
-                placeholder="مثال: الفصل الأول: البدايات الغامضة"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 outline-none"
-              />
-            </div>
+          <div className="space-y-1.5 max-w-md mx-auto">
+            <h4 className="font-bold text-slate-800 text-base">
+              {selectedNovel
+                ? `لا توجد فصول فيديو مضافة لرواية «${selectedNovel.title}» بعد`
+                : 'لا توجد فصول فيديو مضافة حتى الآن'}
+            </h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              يمكنك إضافة وتجسيد أول مشهد بالفيديو بسهولة بوضع رابط المقطع من YouTube (عادي أو شورتس) ليظهر فوراً في هذه القائمة.
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الفيديو الرئيسي:</label>
-              <input
-                type="text"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="مثال: رواية وقعت في فخ شيماء · الفصل الأول (أو اتركه فارغاً لتوليد تلقائي)"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 outline-none font-bold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">مدة المقطع التقديرية:</label>
-              <input
-                type="text"
-                value={newDuration}
-                onChange={(e) => setNewDuration(e.target.value)}
-                placeholder="02:30"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-mono text-center outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Video file or URL */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-slate-700">
-                ملف الفيديو أو رابط البث المباشر (MP4 / YouTube / Vimeo / TikTok):
-              </label>
-              <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                الحد الموصى به للملف المباشر: حتى 20 ميجابايت
-              </span>
-            </div>
-
-            {/* Size & Streaming Guidance Banner */}
-            <div className="bg-gradient-to-r from-amber-50 via-amber-50/60 to-slate-50 border border-amber-200/80 rounded-xl p-3 text-[11px] space-y-1.5 shadow-2xs">
-              <div className="font-bold flex items-center gap-1.5 text-[#0b385e]">
-                <Sparkles className="w-3.5 h-3.5 text-[#dfa85b]" />
-                <span>إرشادات حجم وبث الفيديو لضمان السرعة الفائقة:</span>
-              </div>
-              <div className="text-slate-600 space-y-1 pr-2 border-r-2 border-[#dfa85b]/40">
-                <p>
-                  • <strong>رفع ملف مباشر من الجهاز:</strong> الحد الأقصى للملف هو <strong>20 ميجابايت</strong> لمنع استهلاك باقة السحابة المجانية وتسريع التحميل.
-                </p>
-                <p>
-                  • <strong>للفيديوهات الأكبر حجماً (مثل 30 أو 50 ميجابايت فما فوق):</strong> يُوصى بشدة بوضع <strong>رابط YouTube (علني أو غير مدرج Unlisted)</strong> أو <strong>Vimeo</strong> أو <strong>TikTok</strong> في الخانة أدناه، حيث يمنحك بثاً فائق السرعة بدقة 1080p دون أي حد للحجم نهائياً!
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <label className={`cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 ${isProcessingVideo ? 'bg-amber-300 text-amber-900 pointer-events-none' : 'bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c]'} font-black text-xs rounded-xl transition shadow-sm`}>
-                <Upload className={`w-4 h-4 ${isProcessingVideo ? 'animate-bounce' : ''}`} />
-                <span>{isProcessingVideo ? 'جاري رفع وحفظ الفيديو سحابياً...' : 'رفع ملف فيديو من الجهاز (MP4/WebM)'}</span>
-                <input
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime,video/*"
-                  className="hidden"
-                  disabled={isProcessingVideo}
-                  onChange={handleVideoFileUpload}
-                />
-              </label>
-
-              <div className="space-y-1">
-                <input
-                  type="text"
-                  value={directVideoUrl}
-                  onChange={(e) => setDirectVideoUrl(e.target.value)}
-                  placeholder="ضع رابط YouTube أو Vimeo أو TikTok أو MP4 مباشر..."
-                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none focus:border-[#dfa85b] focus:bg-white transition"
-                />
-                {directVideoUrl ? (() => {
-                  const p = parseVideoUrl(directVideoUrl);
-                  if (p.platform === 'youtube') {
-                    return (
-                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>✓ تم التعرف على رابط YouTube بنجاح (بث فوري بجودة فائقة 1080p)</span>
-                      </span>
-                    );
-                  }
-                  if (p.platform === 'vimeo') {
-                    return (
-                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>✓ تم التعرف على رابط Vimeo بنجاح</span>
-                      </span>
-                    );
-                  }
-                  if (p.platform === 'drive') {
-                    return (
-                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>✓ تم التعرف على رابط Google Drive</span>
-                      </span>
-                    );
-                  }
-                  return (
-                    <span className="text-[10px] text-slate-500 block pr-1">
-                      💡 يدعم: YouTube (علني أو غير مدرج) · Vimeo · Google Drive · روابط MP4 المباشرة
-                    </span>
-                  );
-                })() : (
-                  <span className="text-[10px] text-slate-500 block pr-1">
-                    💡 يدعم: YouTube (علني أو غير مدرج) · Vimeo · Google Drive · روابط MP4 المباشرة
-                  </span>
-                )}
-              </div>
-            </div>
-            {uploadedVideoData && (
-              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 font-bold flex items-center justify-between">
-                <span className="flex items-center gap-1.5 truncate">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="truncate">✓ تم رفع الفيديو وحفظه في السحابة: {uploadedVideoData}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setUploadedVideoData('')}
-                  className="text-slate-400 hover:text-rose-500 text-xs px-1.5 cursor-pointer shrink-0"
-                  title="إلغاء الفيديو"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">وصف موجز للمشهد الدرامي:</label>
-            <textarea
-              rows={2}
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              placeholder="اكتب نبذة عن أحداث هذا المشهد وتطوره الروائي..."
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 resize-none outline-none"
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t">
-            <button
-              type="button"
-              onClick={() => setShowAddForm(false)}
-              className="px-4 py-2 text-xs text-slate-600 hover:text-black cursor-pointer"
-            >
-              إلغاء
-            </button>
-            <button
-              type="submit"
-              disabled={isProcessingVideo}
-              className="px-5 py-2 text-xs font-bold text-white bg-[#0b385e] hover:bg-[#082a47] rounded-xl transition shadow-md cursor-pointer disabled:opacity-50"
-            >
-              {isProcessingVideo ? 'جاري المعالجة...' : 'حفظ ونشر الفصل في السحابة'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Grid of Novel Video Chapters */}
-      {filteredVideos.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 p-8 space-y-3">
-          <Film className="w-10 h-10 text-slate-300 mx-auto" />
-          <h4 className="font-bold text-slate-700 text-sm">لا توجد فصول فيديو مضافة لهذه الرواية بعد</h4>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            يمكن للمشرف إضافة وتجسيد فصول الرواية بالفيديو بالضغط على زر «+ إضافة فصل / مشهد فيديو جديد» بالأعلى.
-          </p>
+          <button
+            onClick={() => handleOpenAddModal(selectedNovel?.id)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ إضافة أول مشهد فيديو {selectedNovel ? `لرواية «${selectedNovel.title}»` : ''}</span>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredVideos.map((video) => {
-            const rawSource = video.url || video.videoFileUrl;
-            const videoSource = (rawSource || '').trim();
+          {displayedVideos.map((video, index) => {
+            const rawSource = video.url || video.videoFileUrl || '';
+            const parsed = parseVideoUrl(rawSource);
+            const isYouTube = parsed.platform === 'youtube';
             const novelTitle = video.bookTitle || video.category.replace('رواية', '').trim();
 
             return (
-              <div
+              <article
                 key={video.id}
                 className="gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-lg transition-all duration-300 border border-slate-200"
               >
-                {/* Protected Video Player with Live Watermark */}
+                {/* Video Player Box */}
                 <div
-                  className="relative aspect-[16/10] w-full bg-black overflow-hidden flex flex-col items-center justify-center border-b border-slate-200 select-none"
+                  className="relative aspect-video w-full bg-black overflow-hidden flex flex-col items-center justify-center border-b border-slate-200 select-none"
                   onContextMenu={(e) => e.preventDefault()}
                 >
                   <SmartVideoPlayer
-                    rawSrc={videoSource}
+                    rawSrc={rawSource}
+                    title={video.title}
                     controls
-                    controlsList="nodownload noplaybackrate"
-                    disablePictureInPicture
-                    playsInline
-                    preload="metadata"
                     className="w-full h-full object-contain bg-black"
                   />
 
-                  {/* Copyright Watermark Badge (العلامة المائية لحفظ الحقوق عند البث والمشاهدة) */}
+                  {/* Copyright Watermark Badge */}
                   <div
                     aria-hidden="true"
-                    className="absolute top-2.5 right-2.5 pointer-events-none select-none z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-xs border border-white/15 text-white/90 shadow-md"
+                    className="absolute top-2.5 right-2.5 pointer-events-none select-none z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-xs border border-white/15 text-white/90 shadow-md text-[10px] font-bold"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-[#dfa85b] animate-ping" />
-                    <span className="text-[10px] font-bold tracking-tight">
-                      حقوق النشر محفوظة · أ. نبيل بركات ©
-                    </span>
+                    <span>أ. نبيل بركات ©</span>
                   </div>
 
-                  {/* Bottom Subtitle Watermark for Novel Chapter */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute bottom-11 right-2.5 pointer-events-none select-none z-10 flex items-center gap-1.5 px-2 py-0.5 rounded bg-black/50 backdrop-blur-xs text-[9px] text-amber-300/90 font-mono"
-                  >
-                    <Lock className="w-2.5 h-2.5 text-[#dfa85b]" />
-                    <span>مشاهدة حصرية فقط · رواية {novelTitle}</span>
-                  </div>
+                  {/* Platform Indicator */}
+                  {isYouTube && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute bottom-2.5 right-2.5 pointer-events-none select-none z-10 flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/90 text-white text-[10px] font-bold shadow-sm"
+                    >
+                      <Youtube className="w-3 h-3" />
+                      <span>{parsed.isShortLink || rawSource.includes('shorts') ? 'YouTube Shorts' : 'YouTube'}</span>
+                    </div>
+                  )}
 
                   {/* Theater Mode Button */}
                   <button
                     type="button"
-                    onClick={() => setActiveVideoModal(video)}
-                    className="absolute top-2.5 left-2.5 bg-black/75 hover:bg-[#0b385e] text-white px-2.5 py-1 rounded-xl text-[11px] font-bold backdrop-blur-md transition flex items-center gap-1.5 shadow-md border border-white/20 cursor-pointer z-10"
-                    title="تكبير المشغل في وضع المسرح"
+                    onClick={() => setActiveTheaterVideo(video)}
+                    className="absolute top-2.5 left-2.5 bg-black/75 hover:bg-[#0b385e] text-white px-2 py-1 rounded-lg text-[10px] font-bold backdrop-blur-md transition flex items-center gap-1 shadow-md border border-white/20 cursor-pointer z-10"
+                    title="تكبير المشغل"
                   >
                     <Maximize2 className="w-3 h-3 text-[#dfa85b]" />
-                    <span>تكبير المشغل</span>
+                    <span>تكبير</span>
                   </button>
-
-                  {/* Duration Badge */}
-                  <div className="absolute bottom-2.5 left-2.5 bg-black/75 text-white px-2 py-0.5 rounded text-[10px] font-mono tabular-nums z-10">
-                    {video.duration || '02:30'}
-                  </div>
                 </div>
 
-                {/* Video Info & Chapters Label */}
-                <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+                {/* Video Content Details */}
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                   <div className="space-y-2">
-                    
                     {/* Chapter & Novel Badge */}
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[#07243c] font-black bg-[#dfa85b] px-2.5 py-0.5 rounded-md text-[11px] shadow-2xs">
-                          {video.chapterNumber ? `الفصل ${video.chapterNumber}` : 'مشهد روائي'}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0b385e] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        <BookOpen className="w-3 h-3 text-[#dfa85b]" />
+                        <span>رواية {novelTitle}</span>
+                      </span>
+
+                      {video.chapterNumber && (
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                          الفصل {video.chapterNumber}
                         </span>
-                        <span className="text-[#0b385e] font-bold bg-[#edf4fb] px-2 py-0.5 rounded-md text-[11px]">
-                          {novelTitle}
+                      )}
+
+                      {video.isPinned && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5">
+                          <Pin className="w-3 h-3" />
+                          <span>مثبت</span>
                         </span>
-                        {video.isPinned && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-[#07243c] text-[10px] font-black shadow-2xs">
-                            <Pin className="w-3 h-3 fill-current rotate-45" />
-                            <span>مثبت</span>
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-mono tabular-nums text-[11px] text-slate-400">{video.date}</span>
+                      )}
                     </div>
 
                     {/* Title */}
-                    <h3
-                      onClick={() => setActiveVideoModal(video)}
-                      className="text-base font-bold text-[#0b385e] hover:text-[#dfa85b] cursor-pointer transition line-clamp-2 font-literary leading-snug"
-                    >
+                    <h3 className="font-bold text-slate-900 text-sm line-clamp-2 group-hover:text-[#0b385e] transition leading-snug">
                       {video.title}
                     </h3>
 
                     {/* Description */}
-                    <p className="text-xs text-[#475569] leading-relaxed line-clamp-3">
-                      {video.description}
-                    </p>
-
-                    {/* Interaction Bar */}
-                    <div className="pt-2">
-                      <ContentInteractionBar
-                        itemId={video.id}
-                        itemTitle={`فيديو يجسد الروايات: ${video.title}`}
-                        itemType="video"
-                        commentsCount={32}
-                        itemUrl={video.url}
-                        itemDescription={video.description}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Footer: Protected Viewing Tag & Supervisor controls */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1 text-slate-500 text-[10px]">
-                      <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                      <span>مشاهدة فقط (التحميل معطل)</span>
-                    </span>
-
-                    {/* Supervisor Actions */}
-                    {isAuthorMode && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditingVideo(video)}
-                          className="p-1.5 text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                          title="تعديل الفيديو"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        {confirmDeleteVideoId === video.id ? (
-                          <div className="flex items-center gap-1 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-300">
-                            <span className="text-[10px] font-bold text-rose-700">حذف؟</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                deleteVideo(video.id);
-                                setConfirmDeleteVideoId(null);
-                              }}
-                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                            >
-                              نعم
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteVideoId(null)}
-                              className="px-1.5 py-0.5 text-slate-600 hover:bg-slate-200 rounded text-[10px] cursor-pointer"
-                            >
-                              إلغاء
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteVideoId(video.id)}
-                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="حذف هذا الفصل"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
+                    {video.description && (
+                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                        {video.description}
+                      </p>
                     )}
                   </div>
 
-                  {/* Supervisor Pin & Order Controls */}
-                  {isAuthorMode && (
-                    <ItemOrderPinControls
-                      isPinned={video.isPinned}
-                      onTogglePin={() => togglePinVideo(video.id)}
-                      currentIndex={videos.findIndex((v) => v.id === video.id)}
-                      totalCount={videos.length}
-                      onMoveUp={() => moveVideoOrder(video.id, 'up')}
-                      onMoveDown={() => moveVideoOrder(video.id, 'down')}
-                      onSetPosition={(newPos) => setVideoPosition(video.id, newPos)}
-                    />
-                  )}
-                </div>
+                  {/* Meta: Duration, Date & Admin Controls */}
+                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{video.duration || '02:30'}</span>
+                      </span>
+                      <span>{video.date}</span>
+                    </div>
 
-              </div>
+                    {/* Interaction Bar */}
+                    <ContentInteractionBar
+                      itemId={video.id}
+                      itemTitle={video.title}
+                      itemType="video"
+                      itemUrl={rawSource}
+                      itemDescription={video.description}
+                    />
+
+                    {/* Pin, Order and Edit Controls */}
+                    <div className="flex items-center justify-between pt-1 gap-1">
+                      <ItemOrderPinControls
+                        isPinned={!!video.isPinned}
+                        currentIndex={index}
+                        totalCount={displayedVideos.length}
+                        onTogglePin={() => togglePinVideo(video.id)}
+                        onMoveUp={() => moveVideoOrder(video.id, 'up')}
+                        onMoveDown={() => moveVideoOrder(video.id, 'down')}
+                        onSetPosition={(pos: number) => setVideoPosition(video.id, pos)}
+                      />
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenEditModal(video)}
+                          className="p-1.5 text-slate-500 hover:text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                          title="تعديل رابط الفيديو أو عنوانه"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(video.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                          title="حذف هذا الفيديو"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {/* Fullscreen Theater Modal Video Player with Watermark Overlay */}
-      {activeVideoModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/95 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl bg-[#071929] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/20">
-            
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#0b385e] text-white">
+      {/* 5. Add / Edit Video Modal */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 my-8">
+            {/* Modal Header */}
+            <div className="bg-[#0b385e] text-white p-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Film className="w-5 h-5 text-[#dfa85b]" />
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold truncate max-w-md font-literary">
-                    {activeVideoModal.title}
-                  </h3>
-                  <div className="text-[11px] text-[#cbe0f0]">
-                    تجسيد درامي لروايات أ. نبيل بركات · مشاهدة حصرية مباشرة
-                  </div>
-                </div>
+                <h3 className="font-bold text-base font-literary">
+                  {editingVideoItem ? 'تعديل بيانات ورابط المشهد' : 'إضافة وتجسيد فصل جديد باليوتيوب'}
+                </h3>
               </div>
               <button
-                onClick={() => setActiveVideoModal(null)}
-                className="text-white hover:text-[#dfa85b] p-1.5 rounded-lg transition cursor-pointer"
-                title="إغلاق"
+                onClick={() => setIsModalOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Video Player in Theater Mode with Prominent Watermark */}
-            <div
-              className="relative aspect-[16/9] w-full bg-black flex items-center justify-center select-none"
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {(() => {
-                const modalVideoSrc = (activeVideoModal.url || activeVideoModal.videoFileUrl || '').trim();
-                if (!modalVideoSrc) {
-                  return (
-                    <div className="w-full aspect-video flex flex-col items-center justify-center bg-black text-slate-300 p-6 text-center">
-                      <Film className="w-12 h-12 text-[#dfa85b] mb-2" />
-                      <span className="text-sm font-bold">لا يوجد ملف فيديو متاح لهذا المشهد</span>
-                    </div>
-                  );
-                }
-                return (
-                  <SmartVideoPlayer
-                    rawSrc={modalVideoSrc}
-                    controls
-                    controlsList="nodownload noplaybackrate"
-                    disablePictureInPicture
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-contain"
+            {/* Modal Form */}
+            <form onSubmit={handleSubmitVideoForm} className="p-5 space-y-4 text-xs">
+              {/* Novel Selection */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الرواية المرتبطة بهذا المشهد:</label>
+                <select
+                  value={formNovelId}
+                  onChange={(e) => setFormNovelId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 font-bold text-slate-800 outline-none focus:border-[#dfa85b] focus:bg-white"
+                >
+                  {books.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.title} ({b.genre || 'رواية'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Chapter Info */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">رقم الفصل (اختياري):</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formChapterNumber}
+                    onChange={(e) => setFormChapterNumber(e.target.value ? parseInt(e.target.value, 10) : '')}
+                    placeholder="1"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none focus:border-[#dfa85b] focus:bg-white"
                   />
-                );
-              })()}
-
-              {/* Top-Right Watermark Seal */}
-              <div
-                aria-hidden="true"
-                className="absolute top-4 right-4 pointer-events-none select-none z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/20 text-white shadow-xl"
-              >
-                <span className="w-2 h-2 rounded-full bg-[#dfa85b] animate-ping" />
-                <div className="text-right">
-                  <div className="text-[11px] font-black text-[#dfa85b] tracking-wide">
-                    جميع الحقوق محفوظة للكاتب أ. نبيل بركات ©
-                  </div>
-                  <div className="text-[9px] text-slate-300">
-                    بث مرئي محمي برمجياً · غير متاح للتحميل
-                  </div>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">عنوان الفصل أو المشهد:</label>
+                  <input
+                    type="text"
+                    value={formChapterTitle}
+                    onChange={(e) => setFormChapterTitle(e.target.value)}
+                    placeholder="مثال: البدايات الغامضة"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 outline-none focus:border-[#dfa85b] focus:bg-white"
+                  />
                 </div>
               </div>
 
-              {/* Bottom-Right Watermark Chapter Banner */}
-              <div
-                aria-hidden="true"
-                className="absolute bottom-16 right-4 pointer-events-none select-none z-20 px-3 py-1 rounded-lg bg-black/50 backdrop-blur-xs text-[10px] text-amber-200/90 font-mono border border-white/10"
-              >
-                {activeVideoModal.bookTitle ? `رواية: «${activeVideoModal.bookTitle}»` : 'فيديو يجسد الروايات'}
-                {activeVideoModal.chapterNumber ? ` · الفصل ${activeVideoModal.chapterNumber}` : ''}
+              {/* Video Title */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">عنوان الفيديو الرئيسي (اختياري):</label>
+                <input
+                  type="text"
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  placeholder="إذا تُرك فارغاً سيتم توليد اسم الرواية ورقم الفصل تلقائياً"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 outline-none focus:border-[#dfa85b] focus:bg-white"
+                />
               </div>
-            </div>
 
-            {/* Details & Actions Footer */}
-            <div className="p-5 bg-[#0a233a] border-t border-white/10 text-white space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#07243c] font-black bg-[#dfa85b] px-3 py-1 rounded-lg shadow-sm">
-                    {activeVideoModal.chapterNumber ? `الفصل ${activeVideoModal.chapterNumber}` : 'مشهد روائي'}
-                  </span>
-                  <span className="text-xs text-white bg-white/10 px-3 py-1 rounded-lg border border-white/10">
-                    {activeVideoModal.bookTitle || activeVideoModal.category}
+              {/* YouTube / Video URL Input */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-700">رابط الفيديو (YouTube / Shorts / Vimeo / MP4):</label>
+                  <span className="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200 flex items-center gap-1">
+                    <Youtube className="w-3 h-3" />
+                    <span>يُفضل YouTube لسرعة فائقة</span>
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      openShareModal({
-                        title: `فيديو يجسد الروايات: ${activeVideoModal.title}`,
-                        url: activeVideoModal.url,
-                        description: activeVideoModal.description,
-                        type: 'video',
-                      })
-                    }
-                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Share2 className="w-3.5 h-3.5 text-[#dfa85b]" />
-                    <span>مشاركة المشهد</span>
-                  </button>
+                <input
+                  type="text"
+                  required
+                  value={formVideoUrl}
+                  onChange={(e) => setFormVideoUrl(e.target.value)}
+                  placeholder="https://youtu.be/... أو https://youtube.com/shorts/..."
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none focus:border-[#dfa85b] focus:bg-white transition"
+                />
 
-                  <button
-                    onClick={() =>
-                      openCommentModal({
-                        targetType: 'video',
-                        targetId: activeVideoModal.id,
-                        targetTitle: activeVideoModal.title,
-                      })
-                    }
-                    className="px-3.5 py-1.5 rounded-xl bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow"
-                  >
-                    <span>إضافة تعليق ومراجعة</span>
-                  </button>
+                {/* Instant Link Validation Feedback */}
+                {parsedInputUrl && (
+                  <div className="text-[11px] p-2.5 rounded-xl border transition flex items-center gap-2">
+                    {parsedInputUrl.platform === 'youtube' ? (
+                      <div className="text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 w-full flex items-center gap-2 font-bold">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>✓ تم التعرف على فيديو YouTube بنجاح (المعرف: {parsedInputUrl.videoId})</span>
+                      </div>
+                    ) : parsedInputUrl.platform !== 'unknown' ? (
+                      <div className="text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-2 w-full flex items-center gap-2 font-bold">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>✓ تم التعرف على منصة {parsedInputUrl.platform} بنجاح</span>
+                      </div>
+                    ) : (
+                      <div className="text-blue-800 bg-blue-50 border border-blue-200 rounded-lg p-2 w-full flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span>رابط ملف مباشر أو فيديو سحابي</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Live Preview Embed */}
+                {parsedInputUrl?.embedUrl && (
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[10px] font-bold text-slate-500">معاينة مباشرة للمشغل:</span>
+                    <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-300">
+                      <iframe
+                        src={parsedInputUrl.embedUrl}
+                        title="معاينة الفيديو"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full border-0"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Or File Upload */}
+                <div className="pt-1">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition w-full justify-center">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingFile ? 'جاري معالجة الملف...' : 'أو رفع ملف MP4 من الجهاز (حتى 20 ميجابايت)'}</span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/*"
+                      className="hidden"
+                      disabled={isUploadingFile}
+                      onChange={handleFileUpload}
+                    />
+                  </label>
                 </div>
               </div>
 
-              {activeVideoModal.description && (
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-literary">
-                  {activeVideoModal.description}
-                </p>
-              )}
-            </div>
+              {/* Description */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">وصف المشهد وتفاصيل الفصل:</label>
+                <textarea
+                  rows={2}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="اكتب نبذة عن هذا الفصل الروائي والمشهد الدرامي..."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 outline-none focus:border-[#dfa85b] focus:bg-white resize-none"
+                />
+              </div>
 
+              {/* Duration */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">المدة التقديرية (مثال 02:45):</label>
+                <input
+                  type="text"
+                  value={formDuration}
+                  onChange={(e) => setFormDuration(e.target.value)}
+                  placeholder="02:30"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 font-mono outline-none focus:border-[#dfa85b] focus:bg-white"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-slate-600 hover:text-black font-bold cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUploadingFile}
+                  className="px-5 py-2.5 font-bold text-white bg-[#0b385e] hover:bg-[#082a47] rounded-xl transition shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {editingVideoItem ? 'حفظ التعديلات سحابياً' : 'حفظ ونشر الفصل في السحابة'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-    </div>
+      {/* 6. Theater / Fullscreen Modal */}
+      {activeTheaterVideo && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          dir="rtl"
+        >
+          <div className="relative w-full max-w-4xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10 space-y-3 p-4">
+            <div className="flex items-center justify-between text-white border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-[#dfa85b]" />
+                <h3 className="font-bold text-base line-clamp-1">{activeTheaterVideo.title}</h3>
+              </div>
+              <button
+                onClick={() => setActiveTheaterVideo(null)}
+                className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="aspect-video w-full bg-black rounded-xl overflow-hidden">
+              <SmartVideoPlayer
+                rawSrc={activeTheaterVideo.url || activeTheaterVideo.videoFileUrl}
+                title={activeTheaterVideo.title}
+                controls
+                autoPlay
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            <div className="text-white/80 text-xs space-y-1">
+              <p className="leading-relaxed">{activeTheaterVideo.description}</p>
+              <div className="text-[11px] text-[#dfa85b] font-bold">
+                حقوق الملكية الفكرية محفوظة · الكاتب الروائي والشاعر أ. نبيل بركات ©
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Delete Confirmation Dialog */}
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl border border-slate-200">
+            <h4 className="font-bold text-base text-slate-900">تأكيد حذف المشهد</h4>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              هل أنت متأكد من حذف هذا المشهد المرئي من قائمة الرواية؟ سيتم إزالته من السحابة أيضاً.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-black cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  deleteVideo(confirmDeleteId);
+                  setConfirmDeleteId(null);
+                  showToast('تم حذف مقطع الفيديو بنجاح');
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition cursor-pointer"
+              >
+                تأكيد الحذف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 };

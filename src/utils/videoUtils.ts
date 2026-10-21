@@ -102,7 +102,7 @@ export function parseVideoUrl(input: string | undefined | null): ParsedVideoInfo
       return {
         platform: 'youtube',
         videoId,
-        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?rel=0&modestbranding=1`,
+        embedUrl: `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1`,
         directUrl: cleanUrl,
         isShortLink: cleanUrl.includes('youtu.be/'),
         cleanUrl,
