@@ -120,13 +120,26 @@ export interface VisitorComment {
   content: string;
   date: string;
   targetSection: string;
-  targetType: 'general' | 'book' | 'video' | 'photo' | 'news';
+  targetType: 'general' | 'book' | 'video' | 'photo' | 'news' | 'post';
   targetId?: string;
   targetTitle?: string;
   isApproved: boolean;
   status: 'pending' | 'approved' | 'rejected';
   likesCount?: number;
   authorReply?: string;
+}
+
+export interface AuthorPost {
+  id: string;
+  content: string;
+  bgColor?: string; // Pre-selected gradient background for Facebook-style card (e.g. 'navy', 'amber', 'purple', 'emerald', 'crimson', 'none')
+  imageUrl?: string;
+  linkUrl?: string;
+  linkText?: string;
+  date: string;
+  likesCount?: number;
+  isLiked?: boolean;
+  isPinned?: boolean;
 }
 
 export interface AuthorProfile {

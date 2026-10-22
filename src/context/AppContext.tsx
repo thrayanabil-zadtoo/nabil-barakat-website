@@ -10,6 +10,7 @@ import {
   VisitorComment,
   VisitorMessage,
   AnnouncementItem,
+  AuthorPost,
 } from '../types';
 import {
   initialAuthorProfile,
@@ -21,6 +22,7 @@ import {
   initialPhotos,
   initialVideos,
   initialAnnouncements,
+  initialAuthorPosts,
 } from '../data/initialData';
 import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/storageManager';
 import { compressImage } from '../utils/imageCompressor';
@@ -101,8 +103,8 @@ interface AppContextType {
   closeShareModal: () => void;
 
   // Comment Modal (for commenting on ANY item)
-  commentModalTarget: { targetType: 'general' | 'book' | 'video' | 'photo' | 'news'; targetId?: string; targetTitle?: string } | null;
-  openCommentModal: (target: { targetType: 'general' | 'book' | 'video' | 'photo' | 'news'; targetId?: string; targetTitle?: string }) => void;
+  commentModalTarget: { targetType: 'general' | 'book' | 'video' | 'photo' | 'news' | 'post'; targetId?: string; targetTitle?: string } | null;
+  openCommentModal: (target: { targetType: 'general' | 'book' | 'video' | 'photo' | 'news' | 'post'; targetId?: string; targetTitle?: string }) => void;
   closeCommentModal: () => void;
 
   // CV Service monetization toggle
@@ -154,6 +156,17 @@ interface AppContextType {
   setEditingAnnouncement: (ann: AnnouncementItem | null) => void;
   isAnnouncementModalOpen: boolean;
   setIsAnnouncementModalOpen: (val: boolean) => void;
+
+  // Add Book Modal state
+  isAddBookModalOpen: boolean;
+  setIsAddBookModalOpen: (val: boolean) => void;
+
+  // Author Facebook-style Posts / Thoughts Feed
+  authorPosts: AuthorPost[];
+  addAuthorPost: (post: Omit<AuthorPost, 'id' | 'date'>) => void;
+  updateAuthorPost: (id: string, updated: Partial<AuthorPost>) => void;
+  deleteAuthorPost: (id: string) => void;
+  toggleLikeAuthorPost: (id: string) => void;
 
   // Toast notification
   toastMessage: string | null;
@@ -241,6 +254,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const idbNews = await loadFromIndexedDB<NewsItem[]>('nabil_author_v4_news');
         if (idbNews && Array.isArray(idbNews)) {
           setNews(idbNews);
+        }
+        const idbPosts = await loadFromIndexedDB<AuthorPost[]>('nabil_author_v4_author_posts');
+        if (idbPosts && Array.isArray(idbPosts) && idbPosts.length > 0) {
+          setAuthorPosts(idbPosts);
         }
       } catch (err) {
         console.warn('IDB hydration check:', err);
@@ -416,6 +433,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const [editingAnnouncement, setEditingAnnouncement] = useState<AnnouncementItem | null>(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState<boolean>(false);
+  const [isAddBookModalOpen, setIsAddBookModalOpen] = useState<boolean>(false);
+  const [authorPosts, setAuthorPosts] = useState<AuthorPost[]>(() =>
+    loadState('author_posts', initialAuthorPosts)
+  );
 
   const [activeSection, setActiveSection] = useState<string>('home');
   const [isAuthorMode, setIsAuthorMode] = useState<boolean>(() => {
@@ -528,6 +549,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setAnnouncements(cloudData.announcements);
             safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
           }
+          if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
+            setAuthorPosts(cloudData.authorPosts);
+            safeSetItem('nabil_author_v4_author_posts', cloudData.authorPosts);
+          }
           setIsCloudSynced(true);
           isCloudHydrated.current = true;
         }
@@ -570,6 +595,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
           setAnnouncements(cloudData.announcements);
           safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
+        }
+        if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
+          setAuthorPosts(cloudData.authorPosts);
+          safeSetItem('nabil_author_v4_author_posts', cloudData.authorPosts);
         }
         if (cloudData.comments && Array.isArray(cloudData.comments)) {
           setComments(cloudData.comments);
@@ -855,7 +884,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Universal Comment Modal State
   const [commentModalTarget, setCommentModalTarget] = useState<{
-    targetType: 'general' | 'book' | 'video' | 'photo' | 'news';
+    targetType: 'general' | 'book' | 'video' | 'photo' | 'news' | 'post';
     targetId?: string;
     targetTitle?: string;
   } | null>(null);
@@ -875,7 +904,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openCommentModal = (target: {
-    targetType: 'general' | 'book' | 'video' | 'photo' | 'news';
+    targetType: 'general' | 'book' | 'video' | 'photo' | 'news' | 'post';
     targetId?: string;
     targetTitle?: string;
   }) => {
@@ -1772,6 +1801,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('تم حذف التعليق');
   };
 
+  // Author Posts (Facebook-style thoughts feed)
+  const addAuthorPost = (postData: Omit<AuthorPost, 'id' | 'date'>) => {
+    const newPost: AuthorPost = {
+      ...postData,
+      id: `post-${Date.now()}`,
+      date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
+      likesCount: 0,
+      isLiked: false,
+    };
+    setAuthorPosts((prev) => {
+      const next = [newPost, ...prev];
+      safeSetItem('nabil_author_v4_author_posts', next);
+      executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة وحفظها سحابياً بنجاح', 'منشور الكاتب');
+      return next;
+    });
+    showToast('تم نشر منشورك الأدبي بنجاح على الصفحة الرئيسية!');
+  };
+
+  const updateAuthorPost = (id: string, updated: Partial<AuthorPost>) => {
+    setAuthorPosts((prev) => {
+      const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
+      safeSetItem('nabil_author_v4_author_posts', next);
+      executeCloudSave({ authorPosts: next }, 'تم تحديث المنشور سحابياً', 'تعديل المنشور');
+      return next;
+    });
+    showToast('تم تحديث المنشور بنجاح');
+  };
+
+  const deleteAuthorPost = (id: string) => {
+    setAuthorPosts((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      safeSetItem('nabil_author_v4_author_posts', next);
+      executeCloudSave({ authorPosts: next }, 'تم حذف المنشور وتحديث السحابة', 'حذف المنشور');
+      return next;
+    });
+    showToast('تم حذف المنشور بنجاح');
+  };
+
+  const toggleLikeAuthorPost = (id: string) => {
+    setAuthorPosts((prev) => {
+      const next = prev.map((p) => {
+        if (p.id === id) {
+          const isLikedNow = !p.isLiked;
+          const currentCount = p.likesCount || 0;
+          return {
+            ...p,
+            isLiked: isLikedNow,
+            likesCount: isLikedNow ? currentCount + 1 : Math.max(0, currentCount - 1),
+          };
+        }
+        return p;
+      });
+      safeSetItem('nabil_author_v4_author_posts', next);
+      saveSiteDataToCloud({ authorPosts: next }, true);
+      return next;
+    });
+  };
+
   const exportAllSiteData = () => {
     try {
       const backupData = {
@@ -1786,6 +1873,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         links,
         announcements,
         comments,
+        authorPosts,
       };
       const jsonStr = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -1819,6 +1907,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(data.links)) setLinks(data.links);
       if (Array.isArray(data.announcements)) setAnnouncements(data.announcements);
       if (Array.isArray(data.comments)) setComments(data.comments);
+      if (Array.isArray(data.authorPosts)) setAuthorPosts(data.authorPosts);
 
       showToast('تم استيراد كافة البيانات والأغلفة بنجاح وتحديث الموقع على هذا الجهاز!');
       return true;
@@ -1941,6 +2030,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setEditingAnnouncement,
         isAnnouncementModalOpen,
         setIsAnnouncementModalOpen,
+        isAddBookModalOpen,
+        setIsAddBookModalOpen,
+        authorPosts,
+        addAuthorPost,
+        updateAuthorPost,
+        deleteAuthorPost,
+        toggleLikeAuthorPost,
         toastMessage,
         showToast,
         exportAllSiteData,

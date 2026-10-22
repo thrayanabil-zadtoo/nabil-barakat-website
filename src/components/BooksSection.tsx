@@ -34,6 +34,7 @@ import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
+import { AddBookModal } from './AddBookModal';
 
 export const BooksSection: React.FC = () => {
   const {
@@ -42,6 +43,7 @@ export const BooksSection: React.FC = () => {
     deleteBook,
     setIsAuthorMode,
     setIsLoginModalOpen,
+    setIsAddBookModalOpen,
     setEditingBook,
     openShareModal,
     openCommentModal,
@@ -202,8 +204,8 @@ export const BooksSection: React.FC = () => {
         {/* Supervisor Action Button */}
         {isAuthorMode && (
           <button
-            onClick={() => setIsAuthorMode(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082c4a] rounded-lg transition shadow-sm whitespace-nowrap self-start md:self-auto"
+            onClick={() => setIsAddBookModalOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082c4a] rounded-lg transition shadow-sm whitespace-nowrap self-start md:self-auto cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#dfa85b]" />
             <span>إضافة كتاب جديد للمكتبة</span>
@@ -922,6 +924,8 @@ export const BooksSection: React.FC = () => {
         </div>
       )}
 
+      {/* Add Book Modal for Supervisor */}
+      <AddBookModal />
     </div>
   );
 };

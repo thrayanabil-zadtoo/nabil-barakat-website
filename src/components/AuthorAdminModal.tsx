@@ -25,6 +25,8 @@ import {
   Cloud,
   Loader2,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getSiteDomain, setCustomSiteDomain, DEFAULT_OFFICIAL_DOMAIN } from '../config/siteDomain';
@@ -80,7 +82,41 @@ export const AuthorAdminModal: React.FC = () => {
     processAndUploadImage,
     processAndUploadVideo,
     copyToClipboardWithFeedback,
+    announcements,
+    addAnnouncement,
+    updateAnnouncement,
+    toggleAnnouncementActive,
   } = useApp();
+
+  // Upcoming Event Toggle Helper for «فعالية مرتقبة 🏛️»
+  const upcomingEventAnnouncement = announcements.find(
+    (a) => a.badge?.includes('فعالية مرتقبة') || a.id === 'ann-3' || a.title?.includes('الصالون الأدبي')
+  );
+  const isUpcomingEventVisible = upcomingEventAnnouncement ? !!upcomingEventAnnouncement.isActive : false;
+
+  const handleToggleUpcomingEvent = () => {
+    if (upcomingEventAnnouncement) {
+      const nextState = !upcomingEventAnnouncement.isActive;
+      updateAnnouncement(upcomingEventAnnouncement.id, { isActive: nextState });
+      showToast(
+        nextState
+          ? '✓ تم إظهار «فعالية مرتقبة 🏛️» في الموقع وحفظ الحالة سحابياً'
+          : '✓ تم إخفاء «فعالية مرتقبة 🏛️» من الموقع وحفظ الحالة سحابياً'
+      );
+    } else {
+      addAnnouncement({
+        badge: 'فعالية مرتقبة 🏛️',
+        title: 'أمسية حوارية مفتوحة وتوقيع مؤلفات في الصالون الأدبي الثقافي',
+        description: 'يسعد الكاتب بلقاء القراء والمهتمين بالأدب الرصين في نقاش تفاعلي حول مستقبل الرواية',
+        linkText: 'التفاصيل والتواصل للمشاركة ↗',
+        linkUrl: '#contact',
+        glowColor: 'emerald',
+        isActive: true,
+        order: 3,
+      });
+      showToast('✓ تم إنشاء وتفعيل «فعالية مرتقبة 🏛️» بنجاح في الموقع وحفظها سحابياً');
+    }
+  };
 
   const [copiedMediaId, setCopiedMediaId] = useState<string | null>(null);
   const [domainInput, setDomainInput] = useState(() => getSiteDomain());
@@ -306,6 +342,60 @@ export const AuthorAdminModal: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
           </div>
+        </div>
+
+        {/* Quick Upcoming Event Toggle Banner («فعالية مرتقبة 🏛️») */}
+        <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-blue-500/10 border-b border-[#e2e8f0] px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">🏛️</span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-[#0b385e] text-xs">
+                  شريط الفعاليات والأمسيات: «فعالية مرتقبة 🏛️»
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    isUpcomingEventVisible
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-slate-200 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isUpcomingEventVisible ? 'bg-emerald-600 animate-pulse' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>{isUpcomingEventVisible ? 'ظاهرة للزوار في الموقع 🟢' : 'مخفية ومحجوبة عن الموقع ⚪'}</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 hidden sm:block mt-0.5">
+                {upcomingEventAnnouncement?.title || 'أمسية حوارية مفتوحة وتوقيع مؤلفات في الصالون الأدبي الثقافي'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleUpcomingEvent}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm cursor-pointer border active:scale-95 ${
+              isUpcomingEventVisible
+                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+            }`}
+            title={isUpcomingEventVisible ? 'إخفاء «فعالية مرتقبة 🏛️» من الموقع' : 'إظهار «فعالية مرتقبة 🏛️» في الموقع'}
+          >
+            {isUpcomingEventVisible ? (
+              <>
+                <EyeOff className="w-4 h-4 text-rose-600" />
+                <span>إخفاء «فعالية مرتقبة 🏛️»</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4 text-amber-300" />
+                <span>إظهار «فعالية مرتقبة 🏛️»</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Tab Navigation */}
@@ -1358,6 +1448,56 @@ export const AuthorAdminModal: React.FC = () => {
                   onChange={(e) => updateAuthorProfile({ quoteBannerText: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300"
                 />
+              </div>
+
+              {/* Upcoming Event Setting Card («فعالية مرتقبة 🏛️») */}
+              <div className="p-4 bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-slate-50 rounded-xl border border-emerald-200 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h5 className="font-bold text-[#0b385e] text-xs flex items-center gap-1.5">
+                      <span className="text-base">🏛️</span>
+                      <span>التحكم في ظهور أو إخفاء «فعالية مرتقبة 🏛️» في الموقع</span>
+                    </h5>
+                    <p className="text-[11px] text-slate-600 mt-1">
+                      الحالة الحالية في شريط الإعلانات أعلى الموقع:{' '}
+                      <strong className={isUpcomingEventVisible ? 'text-emerald-700 font-bold' : 'text-slate-600 font-bold'}>
+                        {isUpcomingEventVisible
+                          ? 'ظاهرة ونشطة للزوار في شريط الإعلانات أعلى الصفحة 🟢'
+                          : 'مخفية ومحجوبة عن الزوار ⚪'}
+                      </strong>
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleUpcomingEvent}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1.5 border active:scale-95 ${
+                      isUpcomingEventVisible
+                        ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-300'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                    }`}
+                  >
+                    {isUpcomingEventVisible ? (
+                      <>
+                        <EyeOff className="w-4 h-4 text-rose-600" />
+                        <span>إخفاء الفعالية المرتقبة 🏛️</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4 text-amber-300" />
+                        <span>إظهار الفعالية المرتقبة 🏛️</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-600 bg-white/80 p-2.5 rounded-lg border border-emerald-100/80 leading-relaxed">
+                  💡 <strong>نص الفعالية:</strong> {upcomingEventAnnouncement?.title || 'أمسية حوارية مفتوحة وتوقيع مؤلفات في الصالون الأدبي الثقافي'}
+                  {upcomingEventAnnouncement?.description && (
+                    <span className="text-slate-500 block text-[10px] mt-0.5">
+                      {upcomingEventAnnouncement.description}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* CV Service Monetization Setting */}

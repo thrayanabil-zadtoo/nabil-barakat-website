@@ -27,6 +27,13 @@ import { ContentInteractionBar } from './ContentInteractionBar';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { parseVideoUrl } from '../utils/videoUtils';
 
+export const SPECIAL_CATEGORIES = [
+  { id: 'cat-success', title: 'نجاحاتي', icon: '🏆', badge: 'إنجازات وتكريم' },
+  { id: 'cat-biography', title: 'كتاب السيرة الروائية', icon: '📖', badge: 'سيرة ومسيرة' },
+  { id: 'cat-outings', title: 'خروجات', icon: '🌿', badge: 'جولات ولقاءات' },
+  { id: 'cat-lessons', title: 'دروس من الحياة', icon: '💡', badge: 'عِبر وتأملات' },
+];
+
 export const VideosSection: React.FC = () => {
   const {
     videos,
@@ -45,7 +52,7 @@ export const VideosSection: React.FC = () => {
     processAndUploadVideo,
   } = useApp();
 
-  // Active novel filter: 'all' or a specific book id (e.g. 'book-1')
+  // Active novel filter: 'all' or a specific book id or special category id
   const [selectedNovelId, setSelectedNovelId] = useState<string>('all');
 
   // Video modals state
@@ -66,11 +73,29 @@ export const VideosSection: React.FC = () => {
   const [formDuration, setFormDuration] = useState<string>('02:30');
   const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
 
-  // Selected Novel Object for current tab
+  // Selected Special Category if chosen
+  const selectedSpecialCat = useMemo(() => {
+    return SPECIAL_CATEGORIES.find((c) => c.id === selectedNovelId) || null;
+  }, [selectedNovelId]);
+
+  // Selected Novel Object for current tab (if a book is chosen)
   const selectedNovel = useMemo(() => {
-    if (selectedNovelId === 'all') return null;
+    if (selectedNovelId === 'all' || selectedSpecialCat) return null;
     return books.find((b) => b.id === selectedNovelId) || null;
-  }, [selectedNovelId, books]);
+  }, [selectedNovelId, books, selectedSpecialCat]);
+
+  // Special Categories with counts
+  const specialCategoriesWithCounts = useMemo(() => {
+    return SPECIAL_CATEGORIES.map((cat) => {
+      const count = videos.filter((v) => {
+        if (v.bookId === cat.id) return true;
+        if (v.category === cat.title || v.bookTitle === cat.title) return true;
+        if (v.title?.includes(cat.title)) return true;
+        return false;
+      }).length;
+      return { ...cat, count };
+    });
+  }, [videos]);
 
   // Novels List with counts
   const novelsWithCounts = useMemo(() => {
@@ -90,7 +115,14 @@ export const VideosSection: React.FC = () => {
   // Filtered and Sorted videos
   const displayedVideos = useMemo(() => {
     let list = videos;
-    if (selectedNovelId !== 'all') {
+    if (selectedSpecialCat) {
+      list = videos.filter((v) => {
+        if (v.bookId === selectedSpecialCat.id) return true;
+        if (v.category === selectedSpecialCat.title || v.bookTitle === selectedSpecialCat.title) return true;
+        if (v.title?.includes(selectedSpecialCat.title)) return true;
+        return false;
+      });
+    } else if (selectedNovelId !== 'all') {
       const activeBook = books.find((b) => b.id === selectedNovelId);
       list = videos.filter((v) => {
         if (v.bookId === selectedNovelId) return true;
@@ -115,21 +147,28 @@ export const VideosSection: React.FC = () => {
       if (!a.isPinned && b.isPinned) return 1;
       return 0;
     });
-  }, [videos, selectedNovelId, books]);
+  }, [videos, selectedNovelId, selectedSpecialCat, books]);
 
   // Open modal in Add mode
-  const handleOpenAddModal = (presetNovelId?: string) => {
-    const targetBookId = presetNovelId || (selectedNovelId !== 'all' ? selectedNovelId : books[0]?.id || 'book-1');
-    const targetBook = books.find((b) => b.id === targetBookId);
-    const existingCount = videos.filter((v) => v.bookId === targetBookId).length;
+  const handleOpenAddModal = (presetId?: string) => {
+    const targetId = presetId || (selectedNovelId !== 'all' ? selectedNovelId : books[0]?.id || 'book-1');
+    const targetBook = books.find((b) => b.id === targetId);
+    const targetSpecialCat = SPECIAL_CATEGORIES.find((c) => c.id === targetId);
+    const existingCount = videos.filter((v) => v.bookId === targetId).length;
 
     setEditingVideoItem(null);
-    setFormNovelId(targetBookId);
-    setFormChapterNumber(existingCount + 1);
+    setFormNovelId(targetId);
+    setFormChapterNumber(targetSpecialCat ? '' : existingCount + 1);
     setFormChapterTitle('');
     setFormTitle('');
     setFormVideoUrl('');
-    setFormDescription(targetBook ? `تجسيد مرئي ودرامي لفصول رواية «${targetBook.title}» بقلم الكاتب أ. نبيل بركات.` : '');
+    setFormDescription(
+      targetSpecialCat
+        ? `مشهد مرئي وتأملات ضمن قسم «${targetSpecialCat.title}» بقلم الكاتب أ. نبيل بركات.`
+        : targetBook
+        ? `تجسيد مرئي ودرامي لفصول رواية «${targetBook.title}» بقلم الكاتب أ. نبيل بركات.`
+        : ''
+    );
     setFormDuration('02:30');
     setIsModalOpen(true);
   };
@@ -156,12 +195,16 @@ export const VideosSection: React.FC = () => {
       return;
     }
 
+    const assignedSpecialCat = SPECIAL_CATEGORIES.find((c) => c.id === formNovelId);
     const assignedBook = books.find((b) => b.id === formNovelId);
-    const bookTitle = assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات';
+    const bookTitle = assignedSpecialCat ? assignedSpecialCat.title : (assignedBook ? assignedBook.title : 'مؤلفات نبيل بركات');
+    const categoryName = assignedSpecialCat ? assignedSpecialCat.title : `رواية ${bookTitle}`;
 
     const cleanTitle =
       formTitle.trim() ||
-      `رواية ${bookTitle} · ${formChapterTitle.trim() || (formChapterNumber ? `الفصل ${formChapterNumber}` : 'مشهد درامي')}`;
+      (assignedSpecialCat
+        ? `${assignedSpecialCat.title} · ${formChapterTitle.trim() || 'مشهد مصور'}`
+        : `رواية ${bookTitle} · ${formChapterTitle.trim() || (formChapterNumber ? `الفصل ${formChapterNumber}` : 'مشهد درامي')}`);
 
     const parsed = parseVideoUrl(rawUrl);
     const isStream = parsed.platform === 'youtube' || parsed.platform === 'vimeo' || parsed.platform === 'tiktok' || parsed.platform === 'drive';
@@ -174,8 +217,8 @@ export const VideosSection: React.FC = () => {
         url: finalUrl,
         videoFileUrl: isStream ? undefined : (finalUrl.startsWith('data:') ? finalUrl : editingVideoItem.videoFileUrl),
         platform: parsed.platform !== 'unknown' ? parsed.platform : 'direct',
-        description: formDescription.trim() || `تجسيد مرئي ودرامي لرواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
-        category: `رواية ${bookTitle}`,
+        description: formDescription.trim() || `تجسيد مرئي ودرامي لـ «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+        category: categoryName,
         duration: formDuration || '02:30',
         bookId: formNovelId,
         bookTitle,
@@ -190,8 +233,8 @@ export const VideosSection: React.FC = () => {
         url: finalUrl,
         videoFileUrl: isStream ? undefined : (finalUrl.startsWith('data:') ? finalUrl : undefined),
         platform: parsed.platform !== 'unknown' ? parsed.platform : 'direct',
-        description: formDescription.trim() || `تجسيد مرئي ودرامي لفصول رواية «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
-        category: `رواية ${bookTitle}`,
+        description: formDescription.trim() || `تجسيد مرئي ودرامي ضمن «${bookTitle}» بقلم الكاتب أ. نبيل بركات.`,
+        category: categoryName,
         duration: formDuration || '02:30',
         likesCount: '2.1K',
         commentsCount: '190',
@@ -200,10 +243,10 @@ export const VideosSection: React.FC = () => {
         chapterNumber: formChapterNumber ? Number(formChapterNumber) : undefined,
         chapterTitle: formChapterTitle.trim() || undefined,
       });
-      showToast(`✓ تم حفظ ونشر المشهد بنجاح ضمن رواية «${bookTitle}» وتثبيته سحابياً!`);
+      showToast(`✓ تم حفظ ونشر المشهد بنجاح ضمن «${bookTitle}» وتثبيته سحابياً!`);
     }
 
-    // Switch view to this novel so the author sees the change immediately
+    // Switch view to this novel or category so the author sees the change immediately
     setSelectedNovelId(formNovelId);
     setIsModalOpen(false);
   };
@@ -267,15 +310,17 @@ export const VideosSection: React.FC = () => {
 
         {/* Global Controls */}
         <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
-          {/* Add video button */}
-          <button
-            onClick={() => handleOpenAddModal()}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm hover:shadow cursor-pointer"
-            title="إضافة مشهد أو فصل فيديو جديد إلى إحدى الروايات"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ إضافة فيديو / مشهد جديد</span>
-          </button>
+          {/* Add video button - strictly supervisor only */}
+          {isAuthorMode && (
+            <button
+              onClick={() => handleOpenAddModal()}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm hover:shadow cursor-pointer"
+              title="إضافة مشهد أو فصل فيديو جديد"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ إضافة فيديو / مشهد جديد</span>
+            </button>
+          )}
 
           {/* Auto Refresh Toggle */}
           <button
@@ -303,12 +348,22 @@ export const VideosSection: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Novel Selector Tabs (مع الروايات) */}
+      {/* Literary Motto Banner */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-[#dfa85b]/20 to-amber-500/10 border border-[#dfa85b]/40 rounded-2xl p-4 sm:p-5 text-center shadow-xs">
+        <p className="text-base sm:text-xl font-bold text-[#0b385e] font-literary tracking-wide">
+          «حكايات تلامس القلوب… وعِبر تبقى في العقول.»
+        </p>
+        <span className="text-xs text-[#8c6527] font-semibold mt-1 block">
+          مشاهد وخواطر وتجارب إنسانية مصورة من مسيرة الكاتب أ. نبيل بركات
+        </span>
+      </div>
+
+      {/* 2. Category & Novel Selector Tabs */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
             <BookOpen className="w-4 h-4 text-[#dfa85b]" />
-            <span>اختر الرواية لمشاهدة فصولها ومقاطعها المصورة:</span>
+            <span>اختر الرواية أو القسم لمشاهدة فصولها ومقاطعها المصورة:</span>
           </div>
           <span className="text-[11px] text-slate-500">
             إجمالي الفيديوهات: <strong className="text-[#0b385e]">{videos.length}</strong>
@@ -316,7 +371,7 @@ export const VideosSection: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
-          {/* All Novels Tab */}
+          {/* All Tab */}
           <button
             onClick={() => setSelectedNovelId('all')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
@@ -326,7 +381,7 @@ export const VideosSection: React.FC = () => {
             }`}
           >
             <Layers className="w-3.5 h-3.5 text-[#dfa85b]" />
-            <span>كل الروايات والمؤلفات</span>
+            <span>كل الروايات والأقسام</span>
             <span
               className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
                 selectedNovelId === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
@@ -335,6 +390,38 @@ export const VideosSection: React.FC = () => {
               {videos.length}
             </span>
           </button>
+
+          {/* 4 Special Categories Tabs requested by user */}
+          {specialCategoriesWithCounts.map((cat) => {
+            const isSelected = selectedNovelId === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedNovelId(cat.id)}
+                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
+                  isSelected
+                    ? 'bg-[#dfa85b] text-[#07243c] border-[#dfa85b] shadow-md ring-2 ring-[#0b385e]/30'
+                    : 'bg-amber-50/70 hover:bg-amber-100/70 text-[#0b385e] border-amber-200 shadow-2xs'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.title}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
+                    isSelected
+                      ? 'bg-black/15 text-[#07243c]'
+                      : cat.count > 0
+                      ? 'bg-amber-200/80 text-amber-900 font-bold'
+                      : 'bg-white/80 text-slate-400'
+                  }`}
+                >
+                  {cat.count > 0 ? `${cat.count}` : 'فارغ'}
+                </span>
+              </button>
+            );
+          })}
+
+          <div className="w-px h-6 bg-slate-300 mx-1 shrink-0" />
 
           {/* Individual Novel Tabs */}
           {novelsWithCounts.map(({ book, count }) => {
@@ -377,6 +464,35 @@ export const VideosSection: React.FC = () => {
         </div>
       </div>
 
+      {/* Special Category Highlight Card (When chosen) */}
+      {selectedSpecialCat && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-[#0b385e]/5 to-slate-50 border border-[#dfa85b]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0b385e] to-[#dfa85b] flex items-center justify-center text-2xl shadow-md shrink-0">
+            {selectedSpecialCat.icon}
+          </div>
+          <div className="flex-1 space-y-1 text-center sm:text-right">
+            <span className="text-xs font-bold text-[#c4924c] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              {selectedSpecialCat.badge}
+            </span>
+            <h3 className="text-lg sm:text-xl font-bold text-[#0b385e] font-literary">
+              قسم: {selectedSpecialCat.title}
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              «حكايات تلامس القلوب… وعِبر تبقى في العقول.» — مشاهد ومقاطع فيديو ملهمة للأستاذ نبيل بركات.
+            </p>
+          </div>
+          {isAuthorMode && (
+            <button
+              onClick={() => handleOpenAddModal(selectedSpecialCat.id)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#dfa85b]" />
+              <span>+ إضافة فيديو لهذا القسم</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 3. Selected Novel Highlight Card (When a specific novel is chosen) */}
       {selectedNovel && (
         <div className="bg-gradient-to-r from-[#0b385e]/5 via-[#dfa85b]/10 to-slate-50 border border-[#dfa85b]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center sm:items-start gap-4">
@@ -403,15 +519,17 @@ export const VideosSection: React.FC = () => {
               {selectedNovel.description || 'فصول درامية مصورة تجسد تفاصيل وشخصيات هذا العمل الأدبي.'}
             </p>
           </div>
-          <div className="shrink-0 flex sm:flex-col gap-2">
-            <button
-              onClick={() => handleOpenAddModal(selectedNovel.id)}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-[#dfa85b]" />
-              <span>+ تجسيد فصل جديد</span>
-            </button>
-          </div>
+          {isAuthorMode && (
+            <div className="shrink-0 flex sm:flex-col gap-2">
+              <button
+                onClick={() => handleOpenAddModal(selectedNovel.id)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#0b385e] hover:bg-[#082a47] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#dfa85b]" />
+                <span>+ تجسيد فصل جديد</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -423,21 +541,27 @@ export const VideosSection: React.FC = () => {
           </div>
           <div className="space-y-1.5 max-w-md mx-auto">
             <h4 className="font-bold text-slate-800 text-base">
-              {selectedNovel
+              {selectedSpecialCat
+                ? `لا توجد مقاطع فيديو مضافة لقسم «${selectedSpecialCat.title}» بعد`
+                : selectedNovel
                 ? `لا توجد فصول فيديو مضافة لرواية «${selectedNovel.title}» بعد`
                 : 'لا توجد فصول فيديو مضافة حتى الآن'}
             </h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              يمكنك إضافة وتجسيد أول مشهد بالفيديو بسهولة بوضع رابط المقطع من YouTube (عادي أو شورتس) ليظهر فوراً في هذه القائمة.
+              {isAuthorMode
+                ? 'يمكنك كـ مشرف إضافة وتجسيد أول مشهد بالفيديو بسهولة بوضع رابط المقطع من YouTube (عادي أو شورتس) ليظهر فوراً في هذه القائمة.'
+                : 'ترقبوا نشر فصول ومشاهد مرئية قريباً بإذن الله.'}
             </p>
           </div>
-          <button
-            onClick={() => handleOpenAddModal(selectedNovel?.id)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ إضافة أول مشهد فيديو {selectedNovel ? `لرواية «${selectedNovel.title}»` : ''}</span>
-          </button>
+          {isAuthorMode && (
+            <button
+              onClick={() => handleOpenAddModal(selectedSpecialCat?.id || selectedNovel?.id)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] font-black rounded-xl text-xs transition shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ إضافة أول مشهد فيديو {selectedSpecialCat ? `لقسم «${selectedSpecialCat.title}»` : selectedNovel ? `لرواية «${selectedNovel.title}»` : ''}</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -499,11 +623,17 @@ export const VideosSection: React.FC = () => {
                 {/* Video Content Details */}
                 <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                   <div className="space-y-2">
-                    {/* Chapter & Novel Badge */}
+                    {/* Chapter & Novel/Category Badge */}
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0b385e] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
                         <BookOpen className="w-3 h-3 text-[#dfa85b]" />
-                        <span>رواية {novelTitle}</span>
+                        <span>
+                          {video.category?.startsWith('رواية')
+                            ? video.category
+                            : video.bookTitle && !video.bookTitle.includes('نبيل بركات')
+                            ? `رواية ${video.bookTitle}`
+                            : video.category || 'مقطع أدبي'}
+                        </span>
                       </span>
 
                       {video.chapterNumber && (
@@ -552,35 +682,37 @@ export const VideosSection: React.FC = () => {
                       itemDescription={video.description}
                     />
 
-                    {/* Pin, Order and Edit Controls */}
-                    <div className="flex items-center justify-between pt-1 gap-1">
-                      <ItemOrderPinControls
-                        isPinned={!!video.isPinned}
-                        currentIndex={index}
-                        totalCount={displayedVideos.length}
-                        onTogglePin={() => togglePinVideo(video.id)}
-                        onMoveUp={() => moveVideoOrder(video.id, 'up')}
-                        onMoveDown={() => moveVideoOrder(video.id, 'down')}
-                        onSetPosition={(pos: number) => setVideoPosition(video.id, pos)}
-                      />
+                    {/* Pin, Order and Edit Controls - Strictly Supervisor Only */}
+                    {isAuthorMode && (
+                      <div className="flex items-center justify-between pt-1 gap-1">
+                        <ItemOrderPinControls
+                          isPinned={!!video.isPinned}
+                          currentIndex={index}
+                          totalCount={displayedVideos.length}
+                          onTogglePin={() => togglePinVideo(video.id)}
+                          onMoveUp={() => moveVideoOrder(video.id, 'up')}
+                          onMoveDown={() => moveVideoOrder(video.id, 'down')}
+                          onSetPosition={(pos: number) => setVideoPosition(video.id, pos)}
+                        />
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditModal(video)}
-                          className="p-1.5 text-slate-500 hover:text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                          title="تعديل رابط الفيديو أو عنوانه"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(video.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                          title="حذف هذا الفيديو"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(video)}
+                            className="p-1.5 text-slate-500 hover:text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                            title="تعديل رابط الفيديو أو عنوانه"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(video.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                            title="حذف هذا الفيديو"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </article>
@@ -614,19 +746,28 @@ export const VideosSection: React.FC = () => {
 
             {/* Modal Form */}
             <form onSubmit={handleSubmitVideoForm} className="p-5 space-y-4 text-xs">
-              {/* Novel Selection */}
+              {/* Novel / Category Selection */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الرواية المرتبطة بهذا المشهد:</label>
+                <label className="block font-bold text-slate-700 mb-1">القسم أو الرواية التابع لها هذا الفيديو:</label>
                 <select
                   value={formNovelId}
                   onChange={(e) => setFormNovelId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 font-bold text-slate-800 outline-none focus:border-[#dfa85b] focus:bg-white"
                 >
-                  {books.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.title} ({b.genre || 'رواية'})
-                    </option>
-                  ))}
+                  <optgroup label="الأقسام والسلاسل الخاصة">
+                    {SPECIAL_CATEGORIES.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.icon} {cat.title} ({cat.badge})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="الروايات والمؤلفات">
+                    {books.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        رواية «{b.title}» ({b.genre || 'رواية'})
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
 

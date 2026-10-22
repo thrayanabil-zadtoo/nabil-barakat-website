@@ -10,6 +10,7 @@ import {
   AnnouncementItem,
   VisitorComment,
   VisitorMessage,
+  AuthorPost,
 } from '../types';
 
 export enum OperationType {
@@ -70,6 +71,7 @@ export interface SyncedSiteData {
   announcements?: AnnouncementItem[];
   comments?: VisitorComment[];
   messages?: VisitorMessage[];
+  authorPosts?: AuthorPost[];
   updatedAt?: string;
   _isSeeded?: boolean;
 }
@@ -284,6 +286,22 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(messagesUnsub);
 
+  // 10. Listen to modular 'author_posts' document
+  const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
+  const postsUnsub = onSnapshot(
+    postsDocRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data?.authorPosts && Array.isArray(data.authorPosts)) {
+          onUpdate({ authorPosts: data.authorPosts, _isSeeded: true }, 'author_posts');
+        }
+      }
+    },
+    (err) => console.warn('[Firestore] Author posts sync notification:', err.message)
+  );
+  unsubs.push(postsUnsub);
+
   return () => {
     unsubs.forEach((unsub) => unsub());
   };
@@ -298,7 +316,7 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
 
   try {
     // 1. First read modular documents and individual books collection (guaranteed fresh and not subject to 1MB size limit)
-    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap] = await Promise.all([
+    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap, postsSnap] = await Promise.all([
       getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
       getDocs(collection(db, 'books')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
@@ -307,6 +325,7 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       getDoc(doc(db, COLLECTION_NAME, 'news')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'links')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'author_posts')).catch(() => null),
     ]);
 
     // Build books map from individual documents (authoritative single-doc source)
@@ -386,6 +405,14 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       const data = annSnap.data();
       if (data?.announcements && Array.isArray(data.announcements)) {
         result.announcements = data.announcements;
+        foundAny = true;
+      }
+    }
+
+    if (postsSnap && postsSnap.exists()) {
+      const data = postsSnap.data();
+      if (data?.authorPosts && Array.isArray(data.authorPosts)) {
+        result.authorPosts = data.authorPosts;
         foundAny = true;
       }
     }
@@ -591,6 +618,15 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         savePromises.push(
           setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }).catch((err) =>
             console.warn('[Firestore] Messages save notice:', err?.message)
+          )
+        );
+      }
+
+      if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
+        const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
+        savePromises.push(
+          setDoc(postsDocRef, { authorPosts: sanitized.authorPosts, updatedAt: nowIso }, { merge: true }).catch((err) =>
+            console.warn('[Firestore] Author posts save notice:', err?.message)
           )
         );
       }

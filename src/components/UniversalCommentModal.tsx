@@ -131,6 +131,8 @@ export const UniversalCommentModal: React.FC = () => {
         return 'صورة';
       case 'news':
         return 'خبر ومقال';
+      case 'post':
+        return 'منشور الكاتب';
       default:
         return 'سجل الزوار';
     }

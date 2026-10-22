@@ -8,6 +8,7 @@ import {
   VisitorComment,
   VisitorMessage,
   AnnouncementItem,
+  AuthorPost,
 } from '../types';
 import { shaymaaTableOfContents, shaymaaPages } from './shaymaaBookData';
 import { etirafatTableOfContents, etirafatPages } from './etirafatBookData';
@@ -638,3 +639,28 @@ export const initialAnnouncements: AnnouncementItem[] = [
     order: 3,
   },
 ];
+
+export const initialAuthorPosts: AuthorPost[] = [
+  {
+    id: 'post-1',
+    content: 'حين نكتب، لا نسرد حكايات لنملأ بها الفراغ، بل لننقذ جزءاً من أرواحنا من النسيان. الكلمة الصادقة كالبذرة الطيبة في أرض خصبة، قد تتأخر في الإزهار لكنها لا تموت أبداً في قلوب من تذوقوها.',
+    bgColor: 'navy',
+    date: '2026-10-21',
+    likesCount: 142,
+    isPinned: true,
+    linkUrl: '#books',
+    linkText: 'تصفح مؤلفاتي ورواياتي الكاملة ↗',
+  },
+  {
+    id: 'post-2',
+    content: '«حكايات تلامس القلوب… وعِبر تبقى في العقول.»\nيسعدني مشاركتكم سلسلة المقاطع المرئية الجديدة التي تجسد مشاهد الروايات ودروساً حية من السيرة الأدبية وتجارب الحياة. تابعونا وشاركونا آراءكم.',
+    bgColor: 'amber',
+    imageUrl: '/src/assets/images/cultural_salon_event_1790501249700.jpg',
+    date: '2026-10-20',
+    likesCount: 98,
+    isPinned: false,
+    linkUrl: '#videos',
+    linkText: 'مشاهدة فيديوهات وتجسيد الروايات 🎬',
+  },
+];
+

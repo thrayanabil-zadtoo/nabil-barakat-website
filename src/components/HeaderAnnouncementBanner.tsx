@@ -10,6 +10,7 @@ import {
   Edit2,
   Trash2,
   Eye,
+  EyeOff,
   Settings,
   X,
   Check,
@@ -29,10 +30,38 @@ export const HeaderAnnouncementBanner: React.FC<{ className?: string }> = ({ cla
     showToast,
   } = useApp();
 
-  // Filter only active announcements for visitors, supervisor sees all or active
-  const activeAnnouncements = isAuthorMode
-    ? announcements
-    : announcements.filter((a) => a.isActive);
+  // Filter only active announcements for display in revolving banner
+  const activeAnnouncements = announcements.filter((a) => a.isActive);
+
+  // Quick Upcoming Event («فعالية مرتقبة 🏛️») Helper
+  const upcomingEvent = announcements.find(
+    (a) => a.badge?.includes('فعالية مرتقبة') || a.id === 'ann-3' || a.title?.includes('الصالون الأدبي')
+  );
+  const isUpcomingEventActive = upcomingEvent ? !!upcomingEvent.isActive : false;
+
+  const handleToggleUpcomingEvent = () => {
+    if (upcomingEvent) {
+      const next = !upcomingEvent.isActive;
+      updateAnnouncement(upcomingEvent.id, { isActive: next });
+      showToast(
+        next
+          ? '✓ تم إظهار «فعالية مرتقبة 🏛️» في الموقع'
+          : '✓ تم إخفاء «فعالية مرتقبة 🏛️» من الموقع'
+      );
+    } else {
+      addAnnouncement({
+        badge: 'فعالية مرتقبة 🏛️',
+        title: 'أمسية حوارية مفتوحة وتوقيع مؤلفات في الصالون الأدبي الثقافي',
+        description: 'يسعد الكاتب بلقاء القراء والمهتمين بالأدب الرصين في نقاش تفاعلي حول مستقبل الرواية',
+        linkText: 'التفاصيل والتواصل للمشاركة ↗',
+        linkUrl: '#contact',
+        glowColor: 'emerald',
+        isActive: true,
+        order: 3,
+      });
+      showToast('✓ تم إنشاء وتفعيل «فعالية مرتقبة 🏛️» في الموقع');
+    }
+  };
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipping, setIsFlipping] = useState(false);
@@ -270,6 +299,21 @@ export const HeaderAnnouncementBanner: React.FC<{ className?: string }> = ({ cla
               >
                 <Plus className="w-3 h-3" />
                 <span>إضافة إعلان جديد</span>
+              </button>
+
+              {/* Quick Toggle for «فعالية مرتقبة 🏛️» */}
+              <button
+                type="button"
+                onClick={handleToggleUpcomingEvent}
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer border ${
+                  isUpcomingEventActive
+                    ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 hover:bg-amber-400/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 hover:bg-emerald-500/30'
+                }`}
+                title="إخفاء أو إظهار «فعالية مرتقبة 🏛️» من الموقع"
+              >
+                {isUpcomingEventActive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                <span>فعالية مرتقبة 🏛️: {isUpcomingEventActive ? 'إخفاء' : 'إظهار'}</span>
               </button>
 
               {currentItem && (
