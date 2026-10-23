@@ -77,21 +77,18 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     tableOfContents,
   };
 
-  const {
-    isPlaying: isMusicPlaying,
-    togglePlay: toggleMusicPlay,
-    selectedTrackId,
-    setSelectedTrackId,
-    currentTrack,
-    volume: musicVolume,
-    setVolume: setMusicVolume,
-    isMuted: isMusicMuted,
-    setIsMuted: setIsMusicMuted,
-    tracks: musicTracks,
-    pauseMusic,
-  } = useMusic();
+  const { pauseMusic } = useMusic();
   const [activeTab, setActiveTab] = useState<'reader' | 'toc' | 'gallery' | 'reviews'>('reader');
   const [currentPageIndex, setCurrentPageIndex] = useState(initialPageIndex ?? 0);
+
+  // Inline Romantic Female Speech states for reading the current page
+  const [isPageSpeaking, setIsPageSpeaking] = useState(false);
+  const [isPagePaused, setIsPagePaused] = useState(false);
+  const [isPageLoadingVoice, setIsPageLoadingVoice] = useState(false);
+  const [pageSpeechRate, setPageSpeechRate] = useState<number>(0.88);
+  const pageAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pageUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   const modalContainerRef = useRef<HTMLDivElement>(null);
   const readerTopRef = useRef<HTMLDivElement>(null);
 
@@ -136,14 +133,158 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     }
   }, [activeTab]);
 
-  // Stop music ONLY when closing/exiting the book reader modal (on unmount)
-  const pauseMusicRef = useRef(pauseMusic);
-  pauseMusicRef.current = pauseMusic;
+  // Completely stop any playing music upon entering the reader modal
   useEffect(() => {
+    pauseMusic();
     return () => {
-      pauseMusicRef.current();
+      stopPageAudio();
+      pauseMusic();
     };
   }, []);
+
+  // Stop audio speech when changing pages or changing books
+  useEffect(() => {
+    stopPageAudio();
+  }, [currentPageIndex, activeBookId, activeTab]);
+
+  const stopPageAudio = () => {
+    if (pageAudioRef.current) {
+      pageAudioRef.current.pause();
+      pageAudioRef.current.currentTime = 0;
+      pageAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPageSpeaking(false);
+    setIsPagePaused(false);
+    setIsPageLoadingVoice(false);
+  };
+
+  const handleTogglePageSpeech = async () => {
+    if (isPageSpeaking) {
+      if (!isPagePaused) {
+        if (pageAudioRef.current) {
+          pageAudioRef.current.pause();
+        } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.pause();
+        }
+        setIsPagePaused(true);
+      } else {
+        if (pageAudioRef.current) {
+          pageAudioRef.current.play();
+        } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.resume();
+        }
+        setIsPagePaused(false);
+      }
+      return;
+    }
+
+    const curPage = samplePages[currentPageIndex] || samplePages[0];
+    const textToRead = `${curPage?.title ? curPage.title + '.\n' : ''}${curPage?.content || activeBook.description || ''}`;
+    if (!textToRead.trim()) {
+      showToast('لا يوجد نص في هذه الصفحة للاستماع إليه');
+      return;
+    }
+
+    setIsPageLoadingVoice(true);
+    setIsPageSpeaking(true);
+    setIsPagePaused(false);
+
+    // 1. Try server-side Gemini 3.8 Flash Lite TTS (Kore female voice)
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: textToRead.slice(0, 1000),
+          voiceName: 'Kore',
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.audioBase64) {
+          const audio = new Audio(`data:${data.mimeType || 'audio/wav'};base64,${data.audioBase64}`);
+          pageAudioRef.current = audio;
+          audio.playbackRate = pageSpeechRate >= 1.0 ? pageSpeechRate : 0.95;
+
+          audio.onplay = () => {
+            setIsPageLoadingVoice(false);
+            setIsPageSpeaking(true);
+            setIsPagePaused(false);
+          };
+
+          audio.onended = () => {
+            stopPageAudio();
+          };
+
+          audio.onerror = () => {
+            speakPageWithBrowser(textToRead);
+          };
+
+          await audio.play();
+          return;
+        }
+      }
+    } catch (err) {
+      // Fallback
+    }
+
+    speakPageWithBrowser(textToRead);
+  };
+
+  const speakPageWithBrowser = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setIsPageLoadingVoice(false);
+      setIsPageSpeaking(false);
+      showToast('المتصفح لا يدعم القراءة الصوتية');
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    pageUtteranceRef.current = utterance;
+
+    const voices = window.speechSynthesis.getVoices();
+    const arabicVoices = voices.filter(
+      (v) => v.lang.startsWith('ar') || v.lang.includes('AR')
+    );
+    const femaleVoice = arabicVoices.find(
+      (v) =>
+        v.name.toLowerCase().includes('laila') ||
+        v.name.toLowerCase().includes('salma') ||
+        v.name.toLowerCase().includes('zeina') ||
+        v.name.toLowerCase().includes('maryam') ||
+        v.name.toLowerCase().includes('female') ||
+        v.name.includes('ليلى') ||
+        v.name.includes('سلمى') ||
+        v.name.includes('مريم')
+    ) || arabicVoices[0] || null;
+
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+    }
+    utterance.lang = 'ar-SA';
+    utterance.pitch = 1.18; // Sweet, warm romantic pitch
+    utterance.rate = pageSpeechRate; // 0.88 calm poetic pace
+    utterance.volume = 1.0;
+
+    utterance.onstart = () => {
+      setIsPageLoadingVoice(false);
+      setIsPageSpeaking(true);
+      setIsPagePaused(false);
+    };
+    utterance.onend = () => {
+      stopPageAudio();
+    };
+    utterance.onerror = () => {
+      stopPageAudio();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   useEffect(() => {
     if (initialPageIndex !== undefined && initialPageIndex >= 0) {
@@ -421,100 +562,15 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Mobile-only compact music toggle button */}
-            <button
-              type="button"
-              onClick={toggleMusicPlay}
-              className={`sm:hidden p-2 rounded-xl border border-amber-400/40 text-xs font-bold flex items-center justify-center transition cursor-pointer shadow-xs ${
-                isMusicPlaying
-                  ? 'bg-amber-400 text-[#07243c]'
-                  : 'bg-[#051829]/90 text-[#dfa85b]'
-              }`}
-              title={isMusicPlaying ? 'إيقاف الموسيقى' : 'تشغيل الموسيقى أثناء القراءة'}
-            >
-              <Headphones className="w-4 h-4" />
-            </button>
-
-            {/* Desktop / Tablet Integrated Music Player */}
-            <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 bg-[#051829]/90 border border-amber-400/40 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl shadow-inner">
-              <div className="flex items-center gap-1 text-xs text-[#dfa85b] font-bold">
-                <Headphones className="w-3.5 h-3.5 text-[#dfa85b]" />
-                <span className="hidden xl:inline text-white font-medium text-[11px]">أنغام القراءة:</span>
+            {isPageSpeaking && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-400/20 border border-amber-400/40 text-amber-200 text-xs font-bold animate-pulse">
+                <Headphones className="w-4 h-4 text-amber-400" />
+                <span className="hidden sm:inline">جاري الاستماع بصوت نسائي رومانسي...</span>
+                <span className="sm:hidden">استماع 🎧</span>
               </div>
+            )}
 
-              {/* Dropdown for track selection */}
-              <select
-                value={selectedTrackId}
-                onChange={(e) => {
-                  setSelectedTrackId(e.target.value);
-                  if (!isMusicPlaying) toggleMusicPlay();
-                }}
-                className="bg-[#07243c] text-amber-200 border border-white/20 text-xs font-bold rounded-lg px-2 py-1 outline-none cursor-pointer max-w-[130px] sm:max-w-[190px] truncate"
-                title="اختر نغمات الموسيقى المرافقة لقراءة الكتاب"
-              >
-                {musicTracks.map((t) => (
-                  <option key={t.id} value={t.id} className="bg-[#07243c] text-white">
-                    {t.icon} {t.title}
-                  </option>
-                ))}
-              </select>
-
-              {/* Play/Pause Button */}
-              <button
-                type="button"
-                onClick={toggleMusicPlay}
-                className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1 transition cursor-pointer shadow-xs ${
-                  isMusicPlaying
-                    ? 'bg-amber-400 text-[#07243c] hover:bg-amber-300'
-                    : 'bg-white/15 hover:bg-white/25 text-white'
-                }`}
-                title={isMusicPlaying ? 'إيقاف مؤقت للموسيقى' : 'تشغيل الموسيقى أثناء القراءة'}
-              >
-                {isMusicPlaying ? (
-                  <>
-                    <Pause className="w-3.5 h-3.5 fill-current" />
-                    <span className="hidden sm:inline">إيقاف</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span className="hidden sm:inline">تشغيل</span>
-                  </>
-                )}
-              </button>
-
-              {/* Animated Soundwaves */}
-              <div className="hidden sm:flex items-center gap-0.5 h-3.5 px-1">
-                {[40, 80, 50, 95, 60].map((h, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      height: isMusicPlaying ? `${h}%` : '25%',
-                      transition: 'height 0.2s ease-in-out',
-                    }}
-                    className={`w-0.5 rounded-full ${
-                      isMusicPlaying ? 'bg-[#dfa85b] animate-pulse' : 'bg-slate-500'
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Mute Button */}
-              <button
-                type="button"
-                onClick={() => setIsMusicMuted(!isMusicMuted)}
-                className="p-1 text-slate-300 hover:text-white rounded transition cursor-pointer"
-                title={isMusicMuted ? 'إلغاء الكتم' : 'كتم الصوت'}
-              >
-                {isMusicMuted || musicVolume === 0 ? (
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-[#dfa85b]" />
-                )}
-              </button>
-            </div>
-
-            <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold shadow-2xs">
+            <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold shadow-2xs">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span>محتوى محمي © {getSiteDomain()}</span>
             </span>
@@ -547,6 +603,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   type="button"
                   onClick={() => {
                     setActiveBookId(b.id);
+                    setCurrentPageIndex(0);
                   }}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 border ${
                     isCurrent
@@ -716,67 +773,39 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
           {activeTab === 'reader' && (
             <div className="space-y-6 max-w-2xl mx-auto">
               
-              {/* Reading Companion Music Banner (أنغام الموسيقى المرافقة لتصفح وقراءة الكتاب) */}
-              <div className="w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#07243c] via-[#0b385e] to-[#07243c] p-3 sm:p-4 text-white shadow-md border border-amber-400/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-400/20 flex items-center justify-center text-[#dfa85b] shrink-0 border border-amber-400/30 shadow-inner">
-                    <Headphones className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs sm:text-sm font-black text-white flex items-center gap-1 font-literary truncate">
-                      <span>أنغام مرافقة لتصفح الكتاب</span>
-                      <Sparkles className="w-3 h-3 text-[#dfa85b] shrink-0" />
-                    </div>
-                    <div className="text-[10px] sm:text-[11px] text-amber-200/90 truncate mt-0.5">
-                      {currentTrack.icon} {currentTrack.title}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end min-w-0">
-                  {/* Dropdown list */}
-                  <select
-                    value={selectedTrackId}
-                    onChange={(e) => {
-                      setSelectedTrackId(e.target.value);
-                      if (!isMusicPlaying) toggleMusicPlay();
-                    }}
-                    className="flex-1 sm:flex-none min-w-0 max-w-[200px] sm:max-w-[240px] truncate bg-[#051829] text-white border border-amber-400/40 text-xs font-bold rounded-xl px-2.5 py-1.5 outline-none cursor-pointer"
-                  >
-                    {musicTracks.map((t) => (
-                      <option key={t.id} value={t.id} className="bg-[#07243c] text-white">
-                        {t.icon} {t.title}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Play / Pause */}
-                  <button
-                    type="button"
-                    onClick={toggleMusicPlay}
-                    className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md ${
-                      isMusicPlaying
-                        ? 'bg-amber-400 text-[#07243c] hover:bg-amber-300'
-                        : 'bg-[#dfa85b] text-[#07243c] hover:bg-[#c4924c]'
-                    }`}
-                  >
-                    {isMusicPlaying ? (
-                      <>
-                        <Pause className="w-3.5 h-3.5 fill-current" />
-                        <span>إيقاف</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>تشغيل</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
               {/* Top scroll anchor for reading navigation */}
               <div ref={readerTopRef} className="scroll-mt-28" />
+
+              {/* Novel Title Banner Prominently at the Top of the Reading Page */}
+              <div className="bg-gradient-to-r from-[#07243c] via-[#0b385e] to-[#07243c] text-white p-5 sm:p-7 rounded-3xl shadow-lg border border-[#dfa85b]/40 text-center space-y-2 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-44 h-44 bg-[#dfa85b]/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-44 h-44 bg-sky-400/10 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#dfa85b]/20 border border-[#dfa85b]/40 text-[#f5cd72] text-xs font-bold shadow-xs">
+                  <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
+                  <span>تصفح وقراءة الرواية</span>
+                </div>
+
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#f5cd72] font-literary tracking-wide drop-shadow-md">
+                  {activeBook.title}
+                </h1>
+
+                <p className="text-xs sm:text-sm text-sky-100 font-bold">
+                  {activeBook.subtitle}
+                </p>
+
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] sm:text-xs text-slate-300 pt-1 font-medium">
+                  <span>بقلم: <strong className="text-white">الكاتب الروائي أ. نبيل بركات</strong></span>
+                  <span>·</span>
+                  <span className="text-[#f5cd72]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
+                  {activeBook.publicationYear && (
+                    <>
+                      <span>·</span>
+                      <span>سنة النشر: {activeBook.publicationYear}</span>
+                    </>
+                  )}
+                </div>
+              </div>
 
               {samplePages.length > 0 && currentPage ? (
                 <div
@@ -1215,6 +1244,51 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     </div>
                   </div>
 
+                  {/* First Page (بداية الرواية): Novel Cover Image at the top, and Dedication below it */}
+                  {currentPageIndex === 0 && (
+                    <div className="space-y-6 pt-3 pb-6 border-b-2 border-dashed border-[#dfa85b]/50 dark:border-amber-400/30">
+                      {/* Prominent Novel Cover in the Center */}
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <div className="relative group max-w-[240px] sm:max-w-[280px] w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-800 ring-4 ring-[#dfa85b]/40 bg-slate-900 transition-all hover:scale-[1.02]">
+                          <img
+                            src={activeBook.coverImage}
+                            alt={`غلاف رواية ${activeBook.title}`}
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none" />
+                          <div className="absolute bottom-3 inset-x-3 text-center">
+                            <span className="inline-block px-3 py-1 rounded-xl bg-black/75 backdrop-blur-xs text-xs font-bold text-[#f5cd72] border border-[#dfa85b]/50 shadow-md">
+                              غلاف الرواية الرسمي
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-center space-y-0.5">
+                          <p className="text-base sm:text-lg font-bold text-[#07243c] dark:text-amber-200 font-literary">
+                            {activeBook.title}
+                          </p>
+                          <p className="text-xs font-bold text-[#c4924c] dark:text-amber-300">
+                            {activeBook.subtitle}
+                          </p>
+                          <p className="text-[11px] text-[#64748b] dark:text-slate-400 font-mono">
+                            دار النشر: {activeBook.publisher || 'مؤسسة دار الهلال'} · {activeBook.publicationYear || '2025'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Dedication Header Ornament */}
+                      <div className="flex items-center justify-center gap-3 text-amber-500 py-1">
+                        <span className="h-px w-16 sm:w-28 bg-gradient-to-r from-transparent to-amber-400/70" />
+                        <span className="font-literary text-sm sm:text-base font-bold text-[#07243c] dark:text-amber-200 flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-[#dfa85b]" />
+                          <span>إهداء الرواية</span>
+                          <Sparkles className="w-4 h-4 text-[#dfa85b]" />
+                        </span>
+                        <span className="h-px w-16 sm:w-28 bg-gradient-to-l from-transparent to-amber-400/70" />
+                      </div>
+                    </div>
+                  )}
+
                   {/* العنوان العريض والبارز لكل صفحة */}
                   <div className="pt-4 pb-3 text-center border-b border-[#e2e8f0] bg-gradient-to-b from-[#f1f5f9]/60 to-transparent rounded-t-xl px-4">
                     <div className="inline-flex items-center justify-center gap-2 text-xs font-bold text-[#c4924c] mb-1.5">
@@ -1229,7 +1303,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   </div>
 
                   {/* صورة الصفحة إن وجدت */}
-                  {currentPage.image ? (
+                  {currentPage.image && currentPageIndex !== 0 ? (
                     <div className="my-5 flex flex-col items-center justify-center">
                       <div 
                         onClick={() => setEnlargedPageImage(currentPage.image!)}
@@ -1298,6 +1372,103 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     )
                   )}
 
+                  {/* زر الاستماع الصوتي في أعلى محتوى النص نفسه بصوت نسائي رومانسي */}
+                  <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-2 pb-3 mb-2 border-b border-[#e2e8f0]/80">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTogglePageSpeech}
+                        disabled={isPageLoadingVoice}
+                        className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer shadow-xs ${
+                          isPageSpeaking && !isPagePaused
+                            ? 'bg-amber-400 text-[#07243c] ring-2 ring-amber-300 font-black'
+                            : 'bg-[#0b385e] hover:bg-[#07243c] text-white'
+                        }`}
+                        title="استماع لمحتوى هذه الصفحة بصوت نسائي رومانسي عذب"
+                      >
+                        {isPageLoadingVoice ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            <span>جاري تحضير الصوت...</span>
+                          </>
+                        ) : isPageSpeaking ? (
+                          isPagePaused ? (
+                            <>
+                              <Play className="w-3.5 h-3.5 fill-current text-[#07243c]" />
+                              <span>متابعة الاستماع</span>
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="w-3.5 h-3.5 fill-current text-[#07243c]" />
+                              <span>إيقاف مؤقت</span>
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <Headphones className="w-4 h-4 text-[#dfa85b]" />
+                            <span>استمع لهذه الصفحة (صوت نسائي رومنسي)</span>
+                          </>
+                        )}
+                      </button>
+
+                      {isPageSpeaking && (
+                        <button
+                          type="button"
+                          onClick={stopPageAudio}
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer"
+                          title="إيقاف الاستماع"
+                        >
+                          إيقاف ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {isPageSpeaking && (
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>{isPagePaused ? 'موقف مؤقتاً' : 'جاري القراءة بصوت نسائي شاعري'}</span>
+                          <div className="flex items-center gap-0.5 h-3 px-1">
+                            {[5, 12, 16, 8, 14].map((h, i) => (
+                              <span
+                                key={i}
+                                style={{ height: `${h}px` }}
+                                className={`w-0.5 rounded-full ${isPagePaused ? 'bg-slate-400' : 'bg-amber-500 animate-pulse'}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1 text-[11px] text-gray-500">
+                        <span>السرعة:</span>
+                        {[
+                          { rate: 0.82, label: 'رومانسي هادئ' },
+                          { rate: 0.95, label: 'طبيعي' },
+                        ].map((s) => (
+                          <button
+                            key={s.rate}
+                            type="button"
+                            onClick={() => {
+                              setPageSpeechRate(s.rate);
+                              if (isPageSpeaking) {
+                                stopPageAudio();
+                                setTimeout(() => handleTogglePageSpeech(), 100);
+                              }
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                              Math.abs(pageSpeechRate - s.rate) < 0.08
+                                ? 'bg-[#dfa85b] text-[#07243c]'
+                                : 'hover:bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Page Text */}
                   <div
                     style={{ fontSize: `${readerFontSize}px`, lineHeight: 1.85 }}
@@ -1334,6 +1505,31 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   {/* Author Official Literary Seal */}
                   <div className="relative z-10 flex items-center justify-center pt-2 pb-1">
                     <AuthorSeal size="sm" showText={true} />
+                  </div>
+
+                  {/* Legal Deposit & International ISBN Footnote at the bottom of every page */}
+                  <div className="relative z-10 pt-3 pb-1 border-t border-dashed border-[#cbd5e1]/70 dark:border-slate-700/60 text-center select-none">
+                    <div className="inline-flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[11px] sm:text-xs text-[#64748b] dark:text-slate-400 font-medium">
+                      <span className="font-semibold text-[#0b385e] dark:text-amber-200">
+                        جميع الحقوق محفوظة للمؤلف والروائي أ. نبيل بركات © {activeBook.publicationYear || '2025'}
+                      </span>
+                      <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
+                      {activeBook.depositNumber && (
+                        <span className="inline-flex items-center gap-1 font-mono">
+                          <span className="text-[#c4924c] font-bold">رقم الإيداع:</span>
+                          <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.depositNumber}</span>
+                        </span>
+                      )}
+                      <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
+                      {activeBook.isbn && (
+                        <span className="inline-flex items-center gap-1 font-mono">
+                          <span className="text-[#c4924c] font-bold">الترقيم الدولي (ISBN):</span>
+                          <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.isbn}</span>
+                        </span>
+                      )}
+                      <span className="hidden md:inline text-gray-300 dark:text-slate-600">·</span>
+                      <span className="text-[10px] sm:text-[11px] text-[#8292a4]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
+                    </div>
                   </div>
 
                   {/* Page Navigation */}

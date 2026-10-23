@@ -10,6 +10,7 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { HomeHero } from './components/HomeHero';
 import { BooksSection } from './components/BooksSection';
+import { AuthorLicensesSection } from './components/AuthorLicensesSection';
 import { VideosSection } from './components/VideosSection';
 import { NewsSection } from './components/NewsSection';
 import { LinksSection } from './components/LinksSection';
@@ -220,6 +221,7 @@ const MainContent: React.FC = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-6 space-y-6">
             <HeaderAnnouncementBanner />
             {activeSection === 'books' && <BooksSection />}
+            {activeSection === 'licenses' && <AuthorLicensesSection />}
             {activeSection === 'videos' && <VideosSection />}
             {activeSection === 'photos' && <PhotosSection />}
             {activeSection === 'news' && <NewsSection />}

@@ -28,6 +28,7 @@ export interface Book {
   publicationYear: string;
   publisher: string;
   isbn: string;
+  depositNumber?: string;
   pagesCount: number;
   genre: string;
   description: string;

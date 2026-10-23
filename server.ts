@@ -4,9 +4,23 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
+import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize Gemini client if API key is provided
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const aiClient = geminiApiKey
+  ? new GoogleGenAI({
+      apiKey: geminiApiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    })
+  : null;
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -73,6 +87,77 @@ async function startServer() {
   // Health check API
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', serverTime: new Date().toISOString() });
+  });
+
+  // Text-to-Speech API endpoint with poetic romantic female voice
+  app.post('/api/tts', async (req, res) => {
+    try {
+      const { text, voiceName = 'Kore' } = req.body;
+      if (!text || typeof text !== 'string' || text.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'النص المطلوب قراءته غير موجود' });
+      }
+
+      if (!aiClient) {
+        return res.status(503).json({
+          success: false,
+          fallbackToSpeechSynthesis: true,
+          error: 'خدمة التحويل الصوتي المباشر غير مهيأة بمفتاح Gemini، سيتم استخدام القارئ الصوتي للمتصفح'
+        });
+      }
+
+      // Limit snippet for speech synthesis efficiency
+      const sanitizedText = text.slice(0, 1200);
+
+      const response = await aiClient.models.generateContent({
+        model: 'gemini-3.8-flash-lite-tts',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: sanitizedText,
+                speechMetadata: {
+                  style: 'Warm, poetic, romantic and expressive Arabic female voice with gentle literary emotion',
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceName || 'Kore' },
+            },
+          },
+        },
+      });
+
+      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+      if (!audioBase64) {
+        return res.status(500).json({
+          success: false,
+          fallbackToSpeechSynthesis: true,
+          error: 'لم يتم استلام مقطع صوتي من النموذج'
+        });
+      }
+
+      return res.json({
+        success: true,
+        audioBase64,
+        mimeType: 'audio/wav',
+        model: 'gemini-3.8-flash-lite-tts',
+        voiceName: voiceName || 'Kore',
+      });
+    } catch (err: any) {
+      console.error('[TTS API Error]:', err?.message || err);
+      return res.status(500).json({
+        success: false,
+        fallbackToSpeechSynthesis: true,
+        error: err?.message || 'فشل توليد الصوت'
+      });
+    }
   });
 
   // API endpoint: Video Upload with real file streaming and disk persistence

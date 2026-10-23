@@ -9,6 +9,7 @@ import { downloadFileSafely } from '../utils/downloadHelper';
 
 export const Footer: React.FC = () => {
   const {
+    setActiveSection,
     isAuthorMode,
     setIsAdminPanelOpen,
     setIsLoginModalOpen,
@@ -32,6 +33,18 @@ export const Footer: React.FC = () => {
 
             {/* Legal & About Links Bar */}
             <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection('licenses');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-3 py-1.5 rounded-xl hover:bg-white/10 text-amber-200 hover:text-white transition flex items-center gap-1.5 cursor-pointer bg-amber-400/10 border border-amber-400/30"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-[#dfa85b]" />
+                <span>تراخيص المؤلف والتوثيق</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setLegalModalTab('about')}

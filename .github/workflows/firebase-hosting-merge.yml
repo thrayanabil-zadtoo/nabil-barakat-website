@@ -26,20 +26,21 @@ jobs:
       - name: Build project
         run: npm run build
 
-      - name: Deploy to Firebase Hosting
+      - name: Deploy via Service Account or Token
         env:
-          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT }}
           CI_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || 'nabil-barakat-website' }}
         run: |
-          if [ -n "$CI_TOKEN" ]; then
-            echo "جاري النشر باستخدام FIREBASE_TOKEN..."
-            npx --yes firebase-tools deploy --only hosting --project nabil-barakat-website --token "$CI_TOKEN" --non-interactive
-          elif [ -n "$SERVICE_ACCOUNT" ]; then
-            echo "جاري النشر باستخدام حساب الخدمة..."
+          if [ -n "$SERVICE_ACCOUNT" ]; then
+            echo "::notice ::جاري المصادقة ونشر الموقع باستخدام حساب الخدمة المعتمد..."
             echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/service_account.json"
             export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/service_account.json"
-            npx --yes firebase-tools deploy --only hosting --project nabil-barakat-website --non-interactive
+            npx --yes firebase-tools deploy --only hosting --project "$PROJECT_ID" --non-interactive
+          elif [ -n "$CI_TOKEN" ]; then
+            echo "::notice ::جاري المصادقة ونشر الموقع باستخدام FIREBASE_TOKEN..."
+            npx --yes firebase-tools deploy --only hosting --project "$PROJECT_ID" --token "$CI_TOKEN" --non-interactive
           else
-            echo "خطأ: لم يتم العثور على أي مفتاح مصادقة في GitHub Secrets!"
+            echo "::error ::لم يتم العثور على أي مفتاح مصادقة في GitHub Secrets (FIREBASE_SERVICE_ACCOUNT أو FIREBASE_TOKEN)!"
             exit 1
           fi

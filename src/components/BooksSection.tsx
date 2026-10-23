@@ -28,6 +28,8 @@ import {
   Link2,
   Copy,
   Check,
+  Headphones,
+  ShieldCheck,
 } from 'lucide-react';
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -39,6 +41,7 @@ import { AddBookModal } from './AddBookModal';
 export const BooksSection: React.FC = () => {
   const {
     books,
+    setActiveSection,
     isAuthorMode,
     deleteBook,
     setIsAuthorMode,
@@ -201,16 +204,29 @@ export const BooksSection: React.FC = () => {
           </p>
         </div>
 
-        {/* Supervisor Action Button */}
-        {isAuthorMode && (
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
           <button
-            onClick={() => setIsAddBookModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082c4a] rounded-lg transition shadow-sm whitespace-nowrap self-start md:self-auto cursor-pointer"
+            onClick={() => {
+              setActiveSection('licenses');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-[#07243c] bg-[#dfa85b]/20 hover:bg-[#dfa85b]/35 border border-[#dfa85b]/50 rounded-lg transition shadow-2xs whitespace-nowrap cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-[#dfa85b]" />
-            <span>إضافة كتاب جديد للمكتبة</span>
+            <ShieldCheck className="w-4 h-4 text-[#07243c]" />
+            <span>تراخيص المؤلف وأرقام الإيداع (ISBN)</span>
           </button>
-        )}
+
+          {/* Supervisor Action Button */}
+          {isAuthorMode && (
+            <button
+              onClick={() => setIsAddBookModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082c4a] rounded-lg transition shadow-sm whitespace-nowrap cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-[#dfa85b]" />
+              <span>إضافة كتاب جديد للمكتبة</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter Tabs */}
@@ -347,6 +363,11 @@ export const BooksSection: React.FC = () => {
 
                   <div className="text-[11px] text-[#64748b] space-y-0.5 pt-1">
                     <div>دار النشر: <span className="text-[#1e293b] font-medium">{book.publisher}</span></div>
+                    {book.depositNumber && (
+                      <div className="font-mono text-amber-900">
+                        رقم الإيداع: <span className="font-semibold text-[#07243c]">{book.depositNumber}</span>
+                      </div>
+                    )}
                     {book.isbn && <div className="font-mono">الترقيم الدولي: <span className="text-[#1e293b] font-medium">{book.isbn}</span></div>}
                   </div>
                   <p className="text-xs text-[#475569] leading-relaxed line-clamp-3 pt-1">
@@ -554,6 +575,16 @@ export const BooksSection: React.FC = () => {
                 >
                   <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
                   <span>تصفح وقراءة الكتاب</span>
+                </button>
+
+                {/* Romantic Female Voice Listen Button */}
+                <button
+                  onClick={() => setSelectedBookForReading(book)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-linear-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-500 rounded-lg transition shadow-xs hover:shadow-md cursor-pointer border border-amber-300 group"
+                  title="استماع صوتي للرواية بصوت نسائي رومانسي عذب"
+                >
+                  <Headphones className="w-3.5 h-3.5 text-rose-700 fill-rose-600/30 group-hover:scale-110 transition" />
+                  <span>استماع للرواية (صوت نسائي رومنسي)</span>
                 </button>
 
                 {/* Share Button */}

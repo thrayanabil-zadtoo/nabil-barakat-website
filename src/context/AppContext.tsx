@@ -292,6 +292,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!loaded.portraitImage || loaded.portraitImage.includes('author_official')) {
       loaded.portraitImage = '/author.jpg';
     }
+    // Sanitize bio and extendedBio to reflect official title "كاتب روائي"
+    if (loaded.bio && loaded.bio.includes('كاتب وروائي ومفكر')) {
+      loaded.bio = loaded.bio.replace(/كاتب وروائي ومفكر/g, 'كاتب روائي');
+    }
+    if (loaded.extendedBio && loaded.extendedBio.includes('الكاتب والروائي والمفكر')) {
+      loaded.extendedBio = loaded.extendedBio.replace(/الكاتب والروائي والمفكر/g, 'الكاتب الروائي');
+    }
     return loaded;
   });
   const [books, setBooks] = useState<Book[]>(() => {
@@ -393,8 +400,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
 
+      // Sync official legal deposit number & ISBN from initialBooks
+      const defaultBook = initialBooks.find((ib) => ib.id === b.id);
+      const depositNumber = b.depositNumber || defaultBook?.depositNumber;
+      const isbn = (b.id === 'book-3' && (b.isbn === '978-9953-62-419-5' || !b.isbn))
+        ? '978-977-07-2058-5'
+        : (b.isbn || defaultBook?.isbn || '');
+
       return {
         ...b,
+        depositNumber,
+        isbn,
         tableOfContents: rawToc,
         coverImage: finalCover,
         galleryImages: cleanedGallery,
