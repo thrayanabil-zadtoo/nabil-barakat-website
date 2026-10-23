@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -26,9 +27,19 @@ jobs:
         run: npm run build
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_NABIL_BARAKAT }}
-          channelId: live
-          projectId: nabil-barakat-website
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          CI_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          if [ -n "$CI_TOKEN" ]; then
+            echo "جاري النشر باستخدام FIREBASE_TOKEN..."
+            npx --yes firebase-tools deploy --only hosting --project nabil-barakat-website --token "$CI_TOKEN" --non-interactive
+          elif [ -n "$SERVICE_ACCOUNT" ]; then
+            echo "جاري النشر باستخدام حساب الخدمة..."
+            echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/service_account.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/service_account.json"
+            npx --yes firebase-tools deploy --only hosting --project nabil-barakat-website --non-interactive
+          else
+            echo "خطأ: لم يتم العثور على أي مفتاح مصادقة في GitHub Secrets!"
+            exit 1
+          fi
