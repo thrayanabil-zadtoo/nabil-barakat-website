@@ -92,17 +92,18 @@ async function startServer() {
   // In-memory cache for synthesized audio to prevent duplicate API calls & rate limits
   const ttsAudioCache = new Map<string, { audioBase64: string; mimeType: string }>();
 
-  // Text-to-Speech API endpoint with strictly feminine voice (Aoede)
+  // Text-to-Speech API endpoint with strictly feminine voice (Kore)
   app.post('/api/tts', async (req, res) => {
     try {
-      const { text, voiceName = 'Aoede' } = req.body;
-      const targetVoice = voiceName || 'Aoede';
+      const { text, voiceName } = req.body;
+      // Kore is the primary gentle feminine voice in Gemini 3.8 TTS
+      const targetVoice = voiceName || 'Kore';
       if (!text || typeof text !== 'string' || text.trim().length === 0) {
         return res.status(400).json({ success: false, error: 'النص المطلوب قراءته غير موجود' });
       }
 
       // Check cache first for instant playback without rate limit
-      const sanitizedText = text.trim().slice(0, 1200);
+      const sanitizedText = text.trim().slice(0, 1000);
       const cacheKey = `${targetVoice}_${sanitizedText}`;
       if (ttsAudioCache.has(cacheKey)) {
         const cached = ttsAudioCache.get(cacheKey)!;
@@ -137,7 +138,7 @@ async function startServer() {
                   {
                     text: sanitizedText,
                     speechMetadata: {
-                      style: 'Natural, expressive, gentle Arabic female voice with clear and soothing tone',
+                      style: 'Natural, expressive, gentle, clear Arabic feminine reading voice with calm and warm literary tone',
                     },
                   },
                 ],

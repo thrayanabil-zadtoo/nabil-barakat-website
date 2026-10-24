@@ -92,6 +92,20 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
   const pageAudioRef = useRef<HTMLAudioElement | null>(null);
   const pageUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  // Preload and keep browser voices fresh for female speech selection
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      const onVoicesChanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+      window.speechSynthesis.addEventListener('voiceschanged', onVoicesChanged);
+      return () => {
+        window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+      };
+    }
+  }, []);
+
   const modalContainerRef = useRef<HTMLDivElement>(null);
   const readerTopRef = useRef<HTMLDivElement>(null);
 
@@ -195,14 +209,15 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     setIsPageSpeaking(true);
     setIsPagePaused(false);
 
-    // 1. Try server-side Gemini TTS with strictly feminine voice (Aoede)
+    // 1. Primary: Server-side Gemini TTS with strictly feminine voice (Kore)
     try {
+      const sanitizedChunk = textToRead.slice(0, 850);
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: textToRead.slice(0, 1000),
-          voiceName: 'Aoede',
+          text: sanitizedChunk,
+          voiceName: 'Kore',
         }),
       });
 
@@ -231,8 +246,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
           return;
         }
       }
-    } catch (err) {
-      // Fallback
+    } catch {
+      // Fallback to client synthesis below
     }
 
     speakPageWithBrowser(textToRead);
@@ -252,7 +267,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
 
     const voices = window.speechSynthesis.getVoices();
 
-    // Helper to check and filter out male voices
+    // Helper to check and strictly filter out all male voices across all OS and browsers
     const isMale = (v: SpeechSynthesisVoice) => {
       const n = (v.name + ' ' + (v.lang || '')).toLowerCase();
       return (
@@ -260,18 +275,34 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
         n.includes('maged') ||
         n.includes('naayf') ||
         n.includes('tarik') ||
+        n.includes('tariq') ||
         n.includes('shakir') ||
         n.includes('george') ||
         n.includes('david') ||
         n.includes('hamed') ||
+        n.includes('salman') ||
+        n.includes('bassam') ||
+        n.includes('bilal') ||
+        n.includes('faris') ||
+        n.includes('ali') ||
+        n.includes('youssef') ||
+        n.includes('kareem') ||
+        n.includes('omar') ||
+        n.includes('zayd') ||
+        n.includes('google عربي') ||
+        n.includes('google arabic') ||
         n.includes('wavenet-b') ||
         n.includes('wavenet-c') ||
         n.includes('neural2-b') ||
-        n.includes('neural2-c')
+        n.includes('neural2-c') ||
+        n.includes('standard-b') ||
+        n.includes('standard-c') ||
+        n.includes('ar-xa-x-ard') ||
+        n.includes('ar-xa-x-arc')
       );
     };
 
-    // Helper to identify female voices
+    // Helper to identify verified female voices
     const isFemale = (v: SpeechSynthesisVoice) => {
       const n = (v.name + ' ' + (v.lang || '')).toLowerCase();
       if (isMale(v)) return false;
@@ -283,23 +314,40 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
         n.includes('salma') ||
         n.includes('zeina') ||
         n.includes('maryam') ||
+        n.includes('mariam') ||
         n.includes('hoda') ||
         n.includes('zariyah') ||
         n.includes('fatima') ||
+        n.includes('fatimah') ||
         n.includes('nour') ||
+        n.includes('noor') ||
         n.includes('samira') ||
+        n.includes('sana') ||
+        n.includes('rana') ||
+        n.includes('amal') ||
+        n.includes('yara') ||
+        n.includes('amina') ||
         n.includes('wavenet-a') ||
         n.includes('wavenet-d') ||
         n.includes('neural2-a') ||
         n.includes('neural2-d') ||
         n.includes('standard-a') ||
         n.includes('standard-d') ||
+        n.includes('ar-xa-x-are') ||
+        n.includes('ar-xa-x-arz') ||
+        n.includes('ar-xa-x-ara') ||
         v.name.includes('ليلى') ||
         v.name.includes('سلمى') ||
         v.name.includes('مريم') ||
         v.name.includes('هدى') ||
         v.name.includes('نور') ||
-        v.name.includes('فاطمة')
+        v.name.includes('فاطمة') ||
+        v.name.includes('أمينة') ||
+        v.name.includes('سناء') ||
+        v.name.includes('زينة') ||
+        v.name.includes('رنا') ||
+        v.name.includes('أمل') ||
+        v.name.includes('يارا')
       );
     };
 
@@ -307,19 +355,23 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
       (v) => v.lang.startsWith('ar') || v.lang.includes('AR')
     );
 
-    // Prefer confirmed female Arabic voice
-    const femaleVoice = arabicVoices.find(isFemale) || voices.find(isFemale) || null;
+    // Prefer verified female Arabic voice
+    const femaleArabicVoice = arabicVoices.find(isFemale);
+    const anyFemaleVoice = femaleArabicVoice || voices.find(isFemale);
 
-    if (femaleVoice) {
-      utterance.voice = femaleVoice;
+    if (femaleArabicVoice) {
+      utterance.voice = femaleArabicVoice;
+      utterance.pitch = 1.15;
+    } else if (anyFemaleVoice) {
+      utterance.voice = anyFemaleVoice;
       utterance.pitch = 1.25;
     } else {
-      // Non-male voice with higher feminine pitch
-      const nonMaleVoice = arabicVoices.find((v) => !isMale(v));
+      // NEVER assign a male voice to utterance.voice
+      const nonMaleVoice = voices.find((v) => !isMale(v));
       if (nonMaleVoice) {
         utterance.voice = nonMaleVoice;
       }
-      utterance.pitch = 1.45; // Sweet feminine pitch register
+      utterance.pitch = 1.4; // Soft feminine pitch register
     }
 
     utterance.lang = 'ar-SA';
