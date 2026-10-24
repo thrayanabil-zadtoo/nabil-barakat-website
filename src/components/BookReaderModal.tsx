@@ -36,6 +36,9 @@ import {
   Music,
   Video,
   Film,
+  User,
+  Feather,
+  Award,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useMusic } from '../context/MusicContext';
@@ -55,7 +58,7 @@ interface BookReaderModalProps {
 }
 
 export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose, initialPageIndex }) => {
-  const { books, addBookComment, deleteBookComment, setBookCover, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos, processAndUploadImage, processAndUploadVideo } = useApp();
+  const { books, authorProfile, addBookComment, deleteBookComment, setBookCover, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos, processAndUploadImage, processAndUploadVideo } = useApp();
   const [confirmDeleteBookCommentId, setConfirmDeleteBookCommentId] = useState<string | null>(null);
   
   // Track active book ID so user can switch books right inside reader
@@ -192,14 +195,14 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     setIsPageSpeaking(true);
     setIsPagePaused(false);
 
-    // 1. Try server-side Gemini 3.8 Flash Lite TTS (Kore female voice)
+    // 1. Try server-side Gemini TTS with strictly feminine voice (Aoede)
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: textToRead.slice(0, 1000),
-          voiceName: 'Kore',
+          voiceName: 'Aoede',
         }),
       });
 
@@ -248,27 +251,79 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     pageUtteranceRef.current = utterance;
 
     const voices = window.speechSynthesis.getVoices();
+
+    // Helper to check and filter out male voices
+    const isMale = (v: SpeechSynthesisVoice) => {
+      const n = (v.name + ' ' + (v.lang || '')).toLowerCase();
+      return (
+        n.includes('male') ||
+        n.includes('maged') ||
+        n.includes('naayf') ||
+        n.includes('tarik') ||
+        n.includes('shakir') ||
+        n.includes('george') ||
+        n.includes('david') ||
+        n.includes('hamed') ||
+        n.includes('wavenet-b') ||
+        n.includes('wavenet-c') ||
+        n.includes('neural2-b') ||
+        n.includes('neural2-c')
+      );
+    };
+
+    // Helper to identify female voices
+    const isFemale = (v: SpeechSynthesisVoice) => {
+      const n = (v.name + ' ' + (v.lang || '')).toLowerCase();
+      if (isMale(v)) return false;
+      return (
+        n.includes('female') ||
+        n.includes('woman') ||
+        n.includes('girl') ||
+        n.includes('laila') ||
+        n.includes('salma') ||
+        n.includes('zeina') ||
+        n.includes('maryam') ||
+        n.includes('hoda') ||
+        n.includes('zariyah') ||
+        n.includes('fatima') ||
+        n.includes('nour') ||
+        n.includes('samira') ||
+        n.includes('wavenet-a') ||
+        n.includes('wavenet-d') ||
+        n.includes('neural2-a') ||
+        n.includes('neural2-d') ||
+        n.includes('standard-a') ||
+        n.includes('standard-d') ||
+        v.name.includes('ليلى') ||
+        v.name.includes('سلمى') ||
+        v.name.includes('مريم') ||
+        v.name.includes('هدى') ||
+        v.name.includes('نور') ||
+        v.name.includes('فاطمة')
+      );
+    };
+
     const arabicVoices = voices.filter(
       (v) => v.lang.startsWith('ar') || v.lang.includes('AR')
     );
-    const femaleVoice = arabicVoices.find(
-      (v) =>
-        v.name.toLowerCase().includes('laila') ||
-        v.name.toLowerCase().includes('salma') ||
-        v.name.toLowerCase().includes('zeina') ||
-        v.name.toLowerCase().includes('maryam') ||
-        v.name.toLowerCase().includes('female') ||
-        v.name.includes('ليلى') ||
-        v.name.includes('سلمى') ||
-        v.name.includes('مريم')
-    ) || arabicVoices[0] || null;
+
+    // Prefer confirmed female Arabic voice
+    const femaleVoice = arabicVoices.find(isFemale) || voices.find(isFemale) || null;
 
     if (femaleVoice) {
       utterance.voice = femaleVoice;
+      utterance.pitch = 1.25;
+    } else {
+      // Non-male voice with higher feminine pitch
+      const nonMaleVoice = arabicVoices.find((v) => !isMale(v));
+      if (nonMaleVoice) {
+        utterance.voice = nonMaleVoice;
+      }
+      utterance.pitch = 1.45; // Sweet feminine pitch register
     }
+
     utterance.lang = 'ar-SA';
-    utterance.pitch = 1.18; // Sweet, warm romantic pitch
-    utterance.rate = pageSpeechRate; // 0.88 calm poetic pace
+    utterance.rate = pageSpeechRate >= 1.0 ? 0.95 : 0.88;
     utterance.volume = 1.0;
 
     utterance.onstart = () => {
@@ -565,7 +620,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
             {isPageSpeaking && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-400/20 border border-amber-400/40 text-amber-200 text-xs font-bold animate-pulse">
                 <Headphones className="w-4 h-4 text-amber-400" />
-                <span className="hidden sm:inline">جاري الاستماع بصوت نسائي رومانسي...</span>
+                <span className="hidden sm:inline">جاري الاستماع...</span>
                 <span className="sm:hidden">استماع 🎧</span>
               </div>
             )}
@@ -707,7 +762,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
       </div>
 
       {/* Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-8 space-y-6">
+      <main className="flex-1 max-w-[1550px] w-full mx-auto p-3 sm:p-6 lg:p-8 space-y-6">
           
           {/* Hidden inputs for uploading Cover and Gallery */}
           <input
@@ -771,10 +826,122 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
           
           {/* TAB 1: Reader View */}
           {activeTab === 'reader' && (
-            <div className="space-y-6 max-w-2xl mx-auto">
-              
-              {/* Top scroll anchor for reading navigation */}
-              <div ref={readerTopRef} className="scroll-mt-28" />
+            <div className="w-full">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-8 items-start">
+                
+                {/* RIGHT SIDEBAR (Desktop/Laptop Only) - محتويات وسيرة الكاتب وتراخيص الرواية وفهرس الفصول */}
+                <aside className="hidden lg:block lg:col-span-3 space-y-5 select-none">
+                  
+                  {/* بطاقة الكاتب الرسمية من الصفحة الرئيسية */}
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="relative shrink-0 w-16 h-16 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-md bg-slate-100">
+                        <img
+                          src={authorProfile?.portraitImage || '/author.jpg'}
+                          alt={authorProfile?.name || 'أ. نبيل بركات'}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-0 inset-x-0 bg-[#07243c]/85 text-[9px] text-[#f5cd72] font-bold text-center py-0.5">
+                          المؤلف
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-extrabold text-sm sm:text-base text-[#07243c] font-literary truncate">
+                          {authorProfile?.name || 'الكاتب أ. نبيل بركات'}
+                        </h3>
+                        <p className="text-[11px] font-bold text-amber-700 leading-tight mt-0.5">
+                          عضو الجمعية المصرية لكتاب القصة والرواية
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                          كاتب روائي وشاعر
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-gradient-to-r from-amber-50 to-slate-50 rounded-2xl border border-amber-200/60 text-center">
+                      <p className="text-xs font-literary text-[#07243c] font-bold">
+                        « {authorProfile?.motto || 'حروفي مرآتي وصمتي قصيدة'} »
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center pt-1">
+                      <AuthorSeal size="sm" showText={true} />
+                    </div>
+                  </div>
+
+                  {/* تراخيص الرواية الحالية والتوثيق القانوني */}
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <h4 className="font-bold text-xs text-[#07243c]">
+                        توثيق وتراخيص الرواية
+                      </h4>
+                    </div>
+
+                    <div className="space-y-2 text-[11px]">
+                      {activeBook.depositNumber && (
+                        <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/70">
+                          <div className="text-[10px] font-bold text-amber-800">رقم الإيداع القانوني:</div>
+                          <div className="font-mono font-bold text-[#07243c] dir-ltr mt-0.5 text-xs">{activeBook.depositNumber}</div>
+                        </div>
+                      )}
+
+                      {activeBook.isbn && (
+                        <div className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-200/70">
+                          <div className="text-[10px] font-bold text-sky-800">الترقيم الدولي (ISBN):</div>
+                          <div className="font-mono font-bold text-[#07243c] dir-ltr mt-0.5 text-xs">{activeBook.isbn}</div>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-slate-500 pt-1 text-[10px]">
+                        <span>دار النشر: {activeBook.publisher || 'مؤسسة دار الهلال للنشر'}</span>
+                        <span>سنة: {activeBook.publicationYear || '2025'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* فهرس فصول الرواية المباشر أثناء القراءة */}
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <List className="w-4 h-4 text-[#c4924c]" />
+                        <h4 className="font-bold text-xs text-[#07243c]">فهرس الفصول السريع</h4>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">({samplePages.length} فصول)</span>
+                    </div>
+
+                    <div className="space-y-1 pl-1">
+                      {samplePages.map((page, idx) => {
+                        const isActive = currentPageIndex === idx;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setCurrentPageIndex(idx);
+                              scrollToReaderTop(true);
+                            }}
+                            className={`w-full text-right p-2 rounded-xl text-xs transition flex items-center justify-between gap-2 cursor-pointer ${
+                              isActive
+                                ? 'bg-[#07243c] text-[#f5cd72] font-bold shadow-xs'
+                                : 'hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate">{idx === 0 ? 'الغلاف والإهداء' : page.title}</span>
+                            <span className={`text-[10px] font-mono shrink-0 ${isActive ? 'text-amber-300' : 'text-slate-400'}`}>
+                              ص {page.pageNumber}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </aside>
+
+                {/* CENTER COLUMN: قراءة الرواية (Responsive: 100% on mobile, 6 cols on laptop) */}
+                <div className="lg:col-span-6 space-y-6 max-w-2xl w-full mx-auto">
+                  {/* Top scroll anchor for reading navigation */}
+                  <div ref={readerTopRef} className="scroll-mt-28" />
 
               {/* Novel Title Banner Prominently at the Top of the Reading Page */}
               <div className="bg-gradient-to-r from-[#07243c] via-[#0b385e] to-[#07243c] text-white p-5 sm:p-7 rounded-3xl shadow-lg border border-[#dfa85b]/40 text-center space-y-2 relative overflow-hidden">
@@ -795,7 +962,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                 </p>
 
                 <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] sm:text-xs text-slate-300 pt-1 font-medium">
-                  <span>بقلم: <strong className="text-white">الكاتب الروائي أ. نبيل بركات</strong></span>
+                  <span>بقلم: <strong className="text-white">الكاتب الروائي والشاعر أ. نبيل بركات</strong></span>
                   <span>·</span>
                   <span className="text-[#f5cd72]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
                   {activeBook.publicationYear && (
@@ -1271,7 +1438,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                             {activeBook.subtitle}
                           </p>
                           <p className="text-[11px] text-[#64748b] dark:text-slate-400 font-mono">
-                            دار النشر: {activeBook.publisher || 'مؤسسة دار الهلال'} · {activeBook.publicationYear || '2025'}
+                            دار النشر: {activeBook.publisher || 'مؤسسة دار الهلال للنشر'} · {activeBook.publicationYear || '2025'}
                           </p>
                         </div>
                       </div>
@@ -1372,7 +1539,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     )
                   )}
 
-                  {/* زر الاستماع الصوتي في أعلى محتوى النص نفسه بصوت نسائي رومانسي */}
+                  {/* شريط الاستماع الصوتي لمحتوى الصفحة */}
                   <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 pt-2 pb-3 mb-2 border-b border-[#e2e8f0]/80">
                     <div className="flex items-center gap-2">
                       <button
@@ -1384,7 +1551,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                             ? 'bg-amber-400 text-[#07243c] ring-2 ring-amber-300 font-black'
                             : 'bg-[#0b385e] hover:bg-[#07243c] text-white'
                         }`}
-                        title="استماع لمحتوى هذه الصفحة بصوت نسائي رومانسي عذب"
+                        title="استماع لمحتوى هذه الصفحة"
                       >
                         {isPageLoadingVoice ? (
                           <>
@@ -1406,7 +1573,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                         ) : (
                           <>
                             <Headphones className="w-4 h-4 text-[#dfa85b]" />
-                            <span>استمع لهذه الصفحة (صوت نسائي رومنسي)</span>
+                            <span>استمع لهذه الصفحة</span>
                           </>
                         )}
                       </button>
@@ -1427,7 +1594,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                       {isPageSpeaking && (
                         <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span>{isPagePaused ? 'موقف مؤقتاً' : 'جاري القراءة بصوت نسائي شاعري'}</span>
+                          <span>{isPagePaused ? 'موقف مؤقتاً' : 'جاري قراءة الصفحة...'}</span>
                           <div className="flex items-center gap-0.5 h-3 px-1">
                             {[5, 12, 16, 8, 14].map((h, i) => (
                               <span
@@ -1443,8 +1610,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                       <div className="flex items-center gap-1 text-[11px] text-gray-500">
                         <span>السرعة:</span>
                         {[
-                          { rate: 0.82, label: 'رومانسي هادئ' },
-                          { rate: 0.95, label: 'طبيعي' },
+                          { rate: 0.88, label: 'هادئ' },
+                          { rate: 1.0, label: 'طبيعي' },
                         ].map((s) => (
                           <button
                             key={s.rate}
@@ -1595,7 +1762,102 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                 </div>
               )}
             </div>
-          )}
+
+            {/* LEFT SIDEBAR (Desktop/Laptop Only) - بقية مؤلفات الكاتب، ومضات أدبية، مشاركة وتواصل */}
+            <aside className="hidden lg:block lg:col-span-3 space-y-5 select-none">
+              
+              {/* مؤلفات وروايات الكاتب الأخرى من الصفحة الرئيسية */}
+              <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-[#c4924c]" />
+                    <h4 className="font-bold text-xs text-[#07243c]">مؤلفات وروايات الكاتب</h4>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">({books.length})</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {books.map((b) => {
+                    const isCurrent = b.id === activeBook.id;
+                    return (
+                      <div
+                        key={b.id}
+                        onClick={() => {
+                          setActiveBookId(b.id);
+                          setCurrentPageIndex(0);
+                          scrollToReaderTop(true);
+                        }}
+                        className={`p-2.5 rounded-2xl border transition flex items-center gap-3 cursor-pointer group ${
+                          isCurrent
+                            ? 'bg-amber-50/90 border-amber-300 shadow-xs ring-2 ring-amber-300/40'
+                            : 'hover:bg-slate-50 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <img
+                          src={b.coverImage}
+                          alt={b.title}
+                          className="w-10 h-14 object-cover rounded-lg shadow-xs shrink-0 group-hover:scale-105 transition-transform bg-slate-100"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h5 className={`font-bold text-xs truncate ${isCurrent ? 'text-amber-900' : 'text-[#07243c]'}`}>
+                            {b.title}
+                          </h5>
+                          <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                            {b.subtitle}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400">
+                            <span>{b.pagesCount} صفحة</span>
+                            <span>·</span>
+                            <span className="text-[#c4924c] font-bold">{isCurrent ? 'الرواية المعروضة' : 'اضغط للتصفح'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ومضة أدبية من قلم الكاتب */}
+              <div className="bg-gradient-to-br from-[#07243c] to-[#0b385e] text-white rounded-3xl p-5 border border-[#dfa85b]/40 shadow-sm space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-[#dfa85b]/10 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center gap-2 text-xs font-bold text-[#f5cd72]">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>ومضة من صومعة الكاتب</span>
+                </div>
+                <p className="text-xs font-literary leading-relaxed text-slate-200">
+                  « الكتابة ليست مجرد حروف تُسكب على الورق، بل هي نبض روح، وعمر يُهدى لمن يبحث عن النور بين ظلال الحكاية. »
+                </p>
+                <div className="text-left text-[10px] text-[#f5cd72] font-bold">
+                  — أ. نبيل بركات
+                </div>
+              </div>
+
+              {/* أدوات سريعة وتواصل مباشر */}
+              <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-sm space-y-2 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setIsShareCardOpen(true)}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-amber-50 text-[#07243c] hover:text-amber-900 border border-slate-200 hover:border-amber-300 transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-[#c4924c]" />
+                  <span>مشاركة المقطع كبطاقة أدبية</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>العودة للمكتبة والموقع</span>
+                </button>
+              </div>
+
+            </aside>
+
+          </div>
+        </div>
+      )}
 
           {/* TAB 2: Table of Contents */}
           {activeTab === 'toc' && (

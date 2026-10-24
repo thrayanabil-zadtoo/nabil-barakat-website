@@ -577,14 +577,14 @@ export const BooksSection: React.FC = () => {
                   <span>تصفح وقراءة الكتاب</span>
                 </button>
 
-                {/* Romantic Female Voice Listen Button */}
+                {/* Voice Listen Button */}
                 <button
                   onClick={() => setSelectedBookForReading(book)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-linear-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-500 rounded-lg transition shadow-xs hover:shadow-md cursor-pointer border border-amber-300 group"
-                  title="استماع صوتي للرواية بصوت نسائي رومانسي عذب"
+                  title="استماع صوتي للرواية"
                 >
                   <Headphones className="w-3.5 h-3.5 text-rose-700 fill-rose-600/30 group-hover:scale-110 transition" />
-                  <span>استماع للرواية (صوت نسائي رومنسي)</span>
+                  <span>استماع للرواية</span>
                 </button>
 
                 {/* Share Button */}

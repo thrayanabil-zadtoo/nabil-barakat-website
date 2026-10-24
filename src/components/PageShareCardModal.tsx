@@ -184,7 +184,7 @@ export const PageShareCardModal: React.FC<PageShareCardModalProps> = ({
     link.click();
   };
 
-  const shareText = `من روائع الكاتب الروائي أ. نبيل بركات في كتابه «${bookTitle}» (صفحة ${pageNumber}):\n\n"${pageContent.slice(0, 180)}..."\n\nللقراءة الكاملة على الموقع الرسمي المعتمد:\n${getSiteBaseUrl()}`;
+  const shareText = `من روائع الكاتب الروائي والشاعر أ. نبيل بركات في كتابه «${bookTitle}» (صفحة ${pageNumber}):\n\n"${pageContent.slice(0, 180)}..."\n\nللقراءة الكاملة على الموقع الرسمي المعتمد:\n${getSiteBaseUrl()}`;
 
   const handleCopyTextAndLink = () => {
     navigator.clipboard.writeText(shareText);

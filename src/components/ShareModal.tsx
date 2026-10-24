@@ -20,7 +20,7 @@ export const ShareModal: React.FC = () => {
   const officialDomain = getSiteBaseUrl();
   const currentUrl = shareModalItem.url || officialDomain;
   const shareTitle = shareModalItem.title;
-  const shareText = `${shareTitle} - الكاتب الروائي أ. نبيل بركات\nالموقع الرسمي المعتمد: ${officialDomain}`;
+  const shareText = `${shareTitle} - الكاتب الروائي والشاعر أ. نبيل بركات\nالموقع الرسمي المعتمد: ${officialDomain}`;
 
   const handleCopyLink = async () => {
     try {

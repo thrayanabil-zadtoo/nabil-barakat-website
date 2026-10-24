@@ -161,7 +161,7 @@ export const AuthorLicensesSection: React.FC = () => {
           </div>
           <div>
             <div className="text-xs text-[#64748b] font-medium">دار النشر والتوزيع</div>
-            <div className="text-sm font-bold text-purple-900">مؤسسة دار الهلال</div>
+            <div className="text-sm font-bold text-purple-900">مؤسسة دار الهلال للنشر</div>
           </div>
         </div>
       </div>
@@ -254,7 +254,7 @@ export const AuthorLicensesSection: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Building className="w-3 h-3 text-[#c4924c]" />
-                        <span>{book.publisher || 'مؤسسة دار الهلال'}</span>
+                        <span>{book.publisher || 'مؤسسة دار الهلال للنشر'}</span>
                       </span>
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Calendar className="w-3 h-3 text-[#c4924c]" />

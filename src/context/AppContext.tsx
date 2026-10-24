@@ -23,6 +23,7 @@ import {
   initialVideos,
   initialAnnouncements,
   initialAuthorPosts,
+  officialBookAccreditations,
 } from '../data/initialData';
 import { safeSetItem, cleanupLegacyStorage, loadFromIndexedDB } from '../utils/storageManager';
 import { compressImage } from '../utils/imageCompressor';
@@ -237,7 +238,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const idbBooks = await loadFromIndexedDB<Book[]>('nabil_author_v4_books');
         if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
-          setBooks(idbBooks);
+          const sanitizedIdbBooks = idbBooks.map((b) => {
+            const official =
+              officialBookAccreditations[b.id] ||
+              (b.title.includes('شيماء') ? officialBookAccreditations['book-1'] :
+               b.title.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
+               b.title.includes('اعترافات') ? officialBookAccreditations['book-3'] :
+               b.title.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
+            if (official) {
+              return {
+                ...b,
+                depositNumber: official.depositNumber,
+                isbn: official.isbn,
+                publisher: official.publisher,
+                publicationYear: official.publicationYear,
+              };
+            }
+            return b;
+          });
+          setBooks(sanitizedIdbBooks);
+          safeSetItem('nabil_author_v4_books', sanitizedIdbBooks);
         }
         const idbProfile = await loadFromIndexedDB<AuthorProfile>('nabil_author_v4_profile');
         if (idbProfile && idbProfile.name) {
@@ -292,12 +312,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!loaded.portraitImage || loaded.portraitImage.includes('author_official')) {
       loaded.portraitImage = '/author.jpg';
     }
-    // Sanitize bio and extendedBio to reflect official title "كاتب روائي"
-    if (loaded.bio && loaded.bio.includes('كاتب وروائي ومفكر')) {
-      loaded.bio = loaded.bio.replace(/كاتب وروائي ومفكر/g, 'كاتب روائي');
+    // Sanitize bio and extendedBio to reflect official title "كاتب روائي وشاعر"
+    if (loaded.bio) {
+      if (loaded.bio.includes('كاتب وروائي ومفكر')) {
+        loaded.bio = loaded.bio.replace(/كاتب وروائي ومفكر/g, 'كاتب روائي وشاعر');
+      }
+      if (loaded.bio.includes('كاتب روائي') && !loaded.bio.includes('وشاعر')) {
+        loaded.bio = loaded.bio.replace('كاتب روائي', 'كاتب روائي وشاعر');
+      }
     }
-    if (loaded.extendedBio && loaded.extendedBio.includes('الكاتب والروائي والمفكر')) {
-      loaded.extendedBio = loaded.extendedBio.replace(/الكاتب والروائي والمفكر/g, 'الكاتب الروائي');
+    if (loaded.extendedBio) {
+      if (loaded.extendedBio.includes('الكاتب والروائي والمفكر')) {
+        loaded.extendedBio = loaded.extendedBio.replace(/الكاتب والروائي والمفكر/g, 'الكاتب الروائي والشاعر');
+      }
+      if (loaded.extendedBio.includes('الكاتب الروائي') && !loaded.extendedBio.includes('والشاعر')) {
+        loaded.extendedBio = loaded.extendedBio.replace('الكاتب الروائي', 'الكاتب الروائي والشاعر');
+      }
     }
     return loaded;
   });
@@ -400,17 +430,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       });
 
-      // Sync official legal deposit number & ISBN from initialBooks
+      // Sync official legal deposit number, ISBN, publisher, and year
       const defaultBook = initialBooks.find((ib) => ib.id === b.id);
-      const depositNumber = b.depositNumber || defaultBook?.depositNumber;
-      const isbn = (b.id === 'book-3' && (b.isbn === '978-9953-62-419-5' || !b.isbn))
-        ? '978-977-07-2058-5'
-        : (b.isbn || defaultBook?.isbn || '');
+      const official =
+        officialBookAccreditations[b.id] ||
+        (b.title.includes('شيماء') ? officialBookAccreditations['book-1'] :
+         b.title.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
+         b.title.includes('اعترافات') ? officialBookAccreditations['book-3'] :
+         b.title.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
+
+      const depositNumber = official?.depositNumber || defaultBook?.depositNumber || b.depositNumber || '';
+      const isbn = official?.isbn || defaultBook?.isbn || b.isbn || '';
+      const publisher = official?.publisher || defaultBook?.publisher || 'مؤسسة دار الهلال للنشر';
+      const publicationYear = official?.publicationYear || defaultBook?.publicationYear || '2025';
 
       return {
         ...b,
         depositNumber,
         isbn,
+        publisher,
+        publicationYear,
         tableOfContents: rawToc,
         coverImage: finalCover,
         galleryImages: cleanedGallery,
@@ -522,6 +561,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sanitizeBooksList = (inputBooks: Book[]): Book[] => {
+    return inputBooks.map((b) => {
+      const official =
+        officialBookAccreditations[b.id] ||
+        (b.title?.includes('شيماء') ? officialBookAccreditations['book-1'] :
+         b.title?.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
+         b.title?.includes('اعترافات') ? officialBookAccreditations['book-3'] :
+         b.title?.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
+      if (official) {
+        return {
+          ...b,
+          depositNumber: official.depositNumber,
+          isbn: official.isbn,
+          publisher: official.publisher,
+          publicationYear: official.publicationYear,
+        };
+      }
+      return b;
+    });
+  };
+
   // Subscribe to real-time changes from Firebase Firestore and load initial state
   useEffect(() => {
     // 1. Initial direct fetch from Cloud Firestore (ensures instant hydration on any device or incognito)
@@ -529,9 +589,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then((cloudData) => {
         if (cloudData && Object.keys(cloudData).length > 0) {
           if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
-            setBooks(cloudData.books);
-            booksRef.current = cloudData.books;
-            safeSetItem('nabil_author_v4_books', cloudData.books);
+            const sanitized = sanitizeBooksList(cloudData.books);
+            setBooks(sanitized);
+            booksRef.current = sanitized;
+            safeSetItem('nabil_author_v4_books', sanitized);
           }
           if (cloudData.authorProfile) {
             setAuthorProfile((prev) => ({ ...prev, ...cloudData.authorProfile }));
@@ -586,9 +647,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
         if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
-          setBooks(cloudData.books);
-          booksRef.current = cloudData.books;
-          safeSetItem('nabil_author_v4_books', cloudData.books);
+          const sanitized = sanitizeBooksList(cloudData.books);
+          setBooks(sanitized);
+          booksRef.current = sanitized;
+          safeSetItem('nabil_author_v4_books', sanitized);
         }
         const liveVideos = cloudData.videos;
         if (liveVideos && Array.isArray(liveVideos)) {
@@ -668,10 +730,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loadFromIndexedDB<Book[]>('nabil_author_v4_books')
         .then((idbB) => {
           if (idbB && Array.isArray(idbB) && idbB.length > 0) {
+            const sanitized = sanitizeBooksList(idbB);
             setBooks((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(idbB)) {
-                booksRef.current = idbB;
-                return idbB;
+              if (JSON.stringify(prev) !== JSON.stringify(sanitized)) {
+                booksRef.current = sanitized;
+                return sanitized;
               }
               return prev;
             });

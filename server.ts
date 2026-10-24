@@ -89,12 +89,30 @@ async function startServer() {
     res.json({ status: 'ok', serverTime: new Date().toISOString() });
   });
 
-  // Text-to-Speech API endpoint with poetic romantic female voice
+  // In-memory cache for synthesized audio to prevent duplicate API calls & rate limits
+  const ttsAudioCache = new Map<string, { audioBase64: string; mimeType: string }>();
+
+  // Text-to-Speech API endpoint with strictly feminine voice (Aoede)
   app.post('/api/tts', async (req, res) => {
     try {
-      const { text, voiceName = 'Kore' } = req.body;
+      const { text, voiceName = 'Aoede' } = req.body;
+      const targetVoice = voiceName || 'Aoede';
       if (!text || typeof text !== 'string' || text.trim().length === 0) {
         return res.status(400).json({ success: false, error: 'النص المطلوب قراءته غير موجود' });
+      }
+
+      // Check cache first for instant playback without rate limit
+      const sanitizedText = text.trim().slice(0, 1200);
+      const cacheKey = `${targetVoice}_${sanitizedText}`;
+      if (ttsAudioCache.has(cacheKey)) {
+        const cached = ttsAudioCache.get(cacheKey)!;
+        return res.json({
+          success: true,
+          audioBase64: cached.audioBase64,
+          mimeType: cached.mimeType || 'audio/wav',
+          voiceName: targetVoice,
+          cached: true,
+        });
       }
 
       if (!aiClient) {
@@ -105,35 +123,44 @@ async function startServer() {
         });
       }
 
-      // Limit snippet for speech synthesis efficiency
-      const sanitizedText = text.slice(0, 1200);
+      let audioBase64: string | undefined;
+      const modelsToTry = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts'];
 
-      const response = await aiClient.models.generateContent({
-        model: 'gemini-3.8-flash-lite-tts',
-        contents: [
-          {
-            role: 'user',
-            parts: [
+      for (const model of modelsToTry) {
+        try {
+          const response = await aiClient.models.generateContent({
+            model,
+            contents: [
               {
-                text: sanitizedText,
-                speechMetadata: {
-                  style: 'Warm, poetic, romantic and expressive Arabic female voice with gentle literary emotion',
-                },
+                role: 'user',
+                parts: [
+                  {
+                    text: sanitizedText,
+                    speechMetadata: {
+                      style: 'Natural, expressive, gentle Arabic female voice with clear and soothing tone',
+                    },
+                  },
+                ],
               },
             ],
-          },
-        ],
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: voiceName || 'Kore' },
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: targetVoice },
+                },
+              },
             },
-          },
-        },
-      });
+          });
 
-      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (audioBase64) {
+            break;
+          }
+        } catch (modelErr: any) {
+          console.warn(`[TTS] Model ${model} failed, trying next:`, modelErr?.message || modelErr);
+        }
+      }
 
       if (!audioBase64) {
         return res.status(500).json({
@@ -143,12 +170,14 @@ async function startServer() {
         });
       }
 
+      // Store in cache for future instant plays
+      ttsAudioCache.set(cacheKey, { audioBase64, mimeType: 'audio/wav' });
+
       return res.json({
         success: true,
         audioBase64,
         mimeType: 'audio/wav',
-        model: 'gemini-3.8-flash-lite-tts',
-        voiceName: voiceName || 'Kore',
+        voiceName: targetVoice,
       });
     } catch (err: any) {
       console.error('[TTS API Error]:', err?.message || err);

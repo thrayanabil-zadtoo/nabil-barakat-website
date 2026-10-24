@@ -189,7 +189,7 @@ export const HomeHero: React.FC = () => {
                 عضو الجمعية المصرية لكتاب القصة والرواية
               </p>
               <p className="text-sm sm:text-base lg:text-lg font-medium text-white/95 drop-shadow">
-                كاتب روائي
+                كاتب روائي وشاعر
               </p>
             </div>
 
@@ -447,7 +447,7 @@ export const HomeHero: React.FC = () => {
                     <button
                       onClick={() => setSelectedBookForReading(book)}
                       className="px-2 py-1 text-[10px] font-bold bg-linear-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-500 text-slate-950 rounded transition shadow-2xs cursor-pointer flex items-center justify-center gap-0.5 border border-amber-300"
-                      title="استماع صوتي لرواية الكاتب بصوت نسائي رومانسي عذب"
+                      title="استماع صوتي للرواية"
                     >
                       <Headphones className="w-2.5 h-2.5 text-rose-700 fill-current" />
                       <span>استمع</span>

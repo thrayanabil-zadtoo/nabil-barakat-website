@@ -20,8 +20,8 @@ export const initialAuthorProfile: AuthorProfile = {
   name: 'أ. نبيل بركات',
   title: 'الكاتب',
   motto: 'حروفي مرآتي وصمتي قصيدة',
-  bio: 'عضو الجمعية المصرية لكتاب القصة والرواية · كاتب روائي',
-  extendedBio: 'وُلد الكاتب الروائي أ. نبيل بركات، عضو الجمعية المصرية لكتاب القصة والرواية، وشُغف منذ صباه بسحر البيان العربي وعوالم الرواية والفلسفة. أصدر العديد من المؤلفات الأدبية والفكرية التي لاقت صدى واسعاً في الأوساط الثقافية ومعارض الكتب العربية.',
+  bio: 'عضو الجمعية المصرية لكتاب القصة والرواية · كاتب روائي وشاعر',
+  extendedBio: 'وُلد الكاتب الروائي والشاعر أ. نبيل بركات، عضو الجمعية المصرية لكتاب القصة والرواية، وشُغف منذ صباه بسحر البيان العربي وعوالم الرواية والفلسفة. أصدر العديد من المؤلفات الأدبية والفكرية التي لاقت صدى واسعاً في الأوساط الثقافية ومعارض الكتب العربية.',
   portraitImage: '/author.jpg',
   headerBannerImage: '',
   heroLandscapeImage: '/src/assets/images/hero_panoramic_landscape_1790502162873.jpg',
@@ -50,9 +50,9 @@ export const initialBooks: Book[] = [
       '/src/assets/images/broken_heart_art_1790583363158.jpg',
     ],
     publicationYear: '2025',
-    publisher: 'مؤسسة دار الهلال',
+    publisher: 'مؤسسة دار الهلال للنشر',
     isbn: '978-977-07-2062-2',
-    depositNumber: 'قيد الاستكمال والتزويد',
+    depositNumber: '2025/30886',
     pagesCount: 111,
     genre: 'رواية درامية واجتماعية ومضات أدبية',
     description: 'رواية ومضات أدبية بقلم الكاتب الروائي والشاعر أ. نبيل بركات، تسبر أغوار النفس البشرية في مواجهة الانجراف وراء العواطف، وصراع الوعي مع الخديعة في إطار سردي درامي شائق يوثّق رحلة الخيانة والغدر ثم التعافي واستعادة الذات.',
@@ -69,9 +69,9 @@ export const initialBooks: Book[] = [
       '/src/assets/images/coffee_morning_art_1790583344356.jpg',
     ],
     publicationYear: '2025',
-    publisher: 'مؤسسة دار الهلال',
+    publisher: 'مؤسسة دار الهلال للنشر',
     isbn: '978-977-07-2057-8',
-    depositNumber: 'قيد الاستكمال والتزويد',
+    depositNumber: '2025/19023',
     pagesCount: 70,
     genre: 'رواية سردية واقعية بلمسة رمزية',
     description: 'رواية تسبر أغوار الصدمة والخذلان والخيانة، ورحلة إسلام الرسام فى استعادة ألوان روحه والانتصار لأطفاله دون ضجيج، حتى يصل إلى البياض والنهاية النظيفة.',
@@ -86,9 +86,9 @@ export const initialBooks: Book[] = [
     coverImage: '/src/assets/images/book_soul_depths_1790502202654.jpg',
     galleryImages: [],
     publicationYear: '2025',
-    publisher: 'مؤسسة الانتشار الأدبي',
+    publisher: 'مؤسسة دار الهلال للنشر',
     isbn: '978-977-07-2058-5',
-    depositNumber: '19024 / 2025',
+    depositNumber: '2025/19024',
     pagesCount: 250,
     genre: 'نصوص أدبية وخواطر',
     description: 'بوح أدبي حميم يكشف ما تخفيه النظرات وتكتمه الأنفاس، تأملات في الحب والفقد والمسافات الفاصلة بين الحقيقة الصامتة وما نود قوله في لحظات الصدق النادرة.',
@@ -103,9 +103,9 @@ export const initialBooks: Book[] = [
     coverImage: '/src/assets/images/book_cover_heritage_1790501223547.jpg',
     galleryImages: [],
     publicationYear: '2025',
-    publisher: 'مؤسسة دار الهلال',
+    publisher: 'مؤسسة دار الهلال للنشر',
     isbn: '978-977-07-2063-9',
-    depositNumber: '31330 / 2025',
+    depositNumber: '2025/31330',
     pagesCount: 197,
     genre: 'ومضات أدبية ورواية وجدانية',
     description: 'كتاب ومضات أدبية بقلم الكاتب الروائي والشاعر أ. نبيل بركات، يضم باقة من أعمق نصوص العشق والوفاء والخذلان والتعافي، ورسائل الوجع والكرامة ومخاطبة الروح مصحوبة باللوحات التوضيحية الأصيلة.',
@@ -114,6 +114,36 @@ export const initialBooks: Book[] = [
     comments: richCommentsForBooks,
   },
 ];
+
+export const officialBookAccreditations: Record<
+  string,
+  { depositNumber: string; isbn: string; publisher: string; publicationYear: string }
+> = {
+  'book-1': {
+    depositNumber: '2025/30886',
+    isbn: '978-977-07-2062-2',
+    publisher: 'مؤسسة دار الهلال للنشر',
+    publicationYear: '2025',
+  },
+  'book-2': {
+    depositNumber: '2025/19023',
+    isbn: '978-977-07-2057-8',
+    publisher: 'مؤسسة دار الهلال للنشر',
+    publicationYear: '2025',
+  },
+  'book-3': {
+    depositNumber: '2025/19024',
+    isbn: '978-977-07-2058-5',
+    publisher: 'مؤسسة دار الهلال للنشر',
+    publicationYear: '2025',
+  },
+  'book-4': {
+    depositNumber: '2025/31330',
+    isbn: '978-977-07-2063-9',
+    publisher: 'مؤسسة دار الهلال للنشر',
+    publicationYear: '2025',
+  },
+};
 
 export const initialVideos: VideoItem[] = [
   {
