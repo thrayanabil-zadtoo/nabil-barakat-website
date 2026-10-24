@@ -9,8 +9,6 @@ import {
   FileText,
   Barcode,
   CheckCircle2,
-  Copy,
-  Check,
   Calendar,
   Building,
   Layers,
@@ -24,7 +22,6 @@ import {
 export const AuthorLicensesSection: React.FC = () => {
   const { books, isAuthorMode, updateBook, showToast } = useApp();
   const [selectedBookForReading, setSelectedBookForReading] = useState<Book | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Quick edit modal state for supervisor
   const [editingLicenseBook, setEditingLicenseBook] = useState<Book | null>(null);
@@ -32,16 +29,6 @@ export const AuthorLicensesSection: React.FC = () => {
   const [tempIsbn, setTempIsbn] = useState('');
   const [tempPublisher, setTempPublisher] = useState('');
   const [tempYear, setTempYear] = useState('');
-
-  const handleCopy = (text: string, key: string, label: string) => {
-    if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    showToast(`تم نسخ ${label} بنجاح: ${text}`);
-    setTimeout(() => {
-      setCopiedKey(null);
-    }, 2000);
-  };
 
   const handleStartEdit = (b: Book) => {
     setEditingLicenseBook(b);
@@ -276,79 +263,33 @@ export const AuthorLicensesSection: React.FC = () => {
                 <div className="space-y-2 pt-2">
                   
                   {/* 1. Legal Deposit Number */}
-                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 border border-amber-200/80 shadow-2xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4 text-amber-800" />
+                  <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 border border-amber-200/80 shadow-2xs">
+                    <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-amber-800" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-amber-900">
+                        رقم الإيداع القانوني
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-amber-900">
-                          رقم الإيداع القانوني
-                        </div>
-                        <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
-                          {book.depositNumber || 'قيد الاستكمال والتزويد'}
-                        </div>
+                      <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
+                        {book.depositNumber || 'قيد الاستكمال والتزويد'}
                       </div>
                     </div>
-
-                    {book.depositNumber && !book.depositNumber.includes('قيد') && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(book.depositNumber || '', `dep-${book.id}`, 'رقم الإيداع')}
-                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
-                        title="نسخ رقم الإيداع"
-                      >
-                        {copiedKey === `dep-${book.id}` ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">تم النسخ</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-amber-700" />
-                            <span>نسخ</span>
-                          </>
-                        )}
-                      </button>
-                    )}
                   </div>
 
                   {/* 2. International Standard Book Number (ISBN) */}
-                  <div className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-gradient-to-r from-sky-50/80 via-white to-sky-50/40 border border-sky-200/80 shadow-2xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 flex items-center justify-center shrink-0">
-                        <Barcode className="w-4 h-4 text-sky-800" />
+                  <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-50/80 via-white to-sky-50/40 border border-sky-200/80 shadow-2xs">
+                    <div className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 flex items-center justify-center shrink-0">
+                      <Barcode className="w-4 h-4 text-sky-800" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-sky-900">
+                        الترقيم الدولي الموحد (ISBN)
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold text-sky-900">
-                          الترقيم الدولي الموحد (ISBN)
-                        </div>
-                        <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
-                          {book.isbn || 'قيد الاستكمال'}
-                        </div>
+                      <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
+                        {book.isbn || 'قيد الاستكمال'}
                       </div>
                     </div>
-
-                    {book.isbn && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(book.isbn, `isbn-${book.id}`, 'الترقيم الدولي')}
-                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-sky-100 text-sky-900 border border-sky-300 text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow-2xs"
-                        title="نسخ الترقيم الدولي ISBN"
-                      >
-                        {copiedKey === `isbn-${book.id}` ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">تم النسخ</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-sky-700" />
-                            <span>نسخ</span>
-                          </>
-                        )}
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
