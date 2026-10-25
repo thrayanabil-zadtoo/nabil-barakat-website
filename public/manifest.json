@@ -1,0 +1,26 @@
+{
+  "name": "الموقع الرسمي للكاتب أ. نبيل بركات",
+  "short_name": "نبيل بركات",
+  "description": "الموقع الرسمي للكاتب والروائي والشاعر أ. نبيل بركات، عضو الجمعية المصرية لكتاب القصة والرواية",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07243c",
+  "theme_color": "#07243c",
+  "lang": "ar",
+  "dir": "rtl",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/author.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/author.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -17,11 +17,31 @@ import {
   Edit2,
   UserCheck,
   Info,
+  Link2,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { getLicensesPageUrl, getOfficialLicensesUrl } from '../config/siteDomain';
+import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
 
 export const AuthorLicensesSection: React.FC = () => {
-  const { books, isAuthorMode, updateBook, showToast } = useApp();
+  const { books, isAuthorMode, updateBook, showToast, setActiveSection } = useApp();
   const [selectedBookForReading, setSelectedBookForReading] = useState<Book | null>(null);
+  const [isLinkCopied, setIsLinkCopied] = useState(false);
+
+  const licensesDirectUrl = getLicensesPageUrl();
+  const officialLicensesUrl = getOfficialLicensesUrl();
+
+  const handleCopyLicensesLink = () => {
+    try {
+      navigator.clipboard.writeText(licensesDirectUrl);
+      setIsLinkCopied(true);
+      showToast('✓ تم نسخ رابط صفحة التراخيص المباشر بنجاح');
+      setTimeout(() => setIsLinkCopied(false), 2500);
+    } catch {
+      showToast('رابط صفحة التراخيص: ' + licensesDirectUrl);
+    }
+  };
 
   // Quick edit modal state for supervisor
   const [editingLicenseBook, setEditingLicenseBook] = useState<Book | null>(null);
@@ -79,8 +99,9 @@ export const AuthorLicensesSection: React.FC = () => {
                   <UserCheck className="w-5 h-5 shrink-0" />
                   <span>هذه المؤلفات الأدبية من تأليف:</span>
                 </div>
-                <p className="text-base sm:text-xl font-bold text-white pr-7">
-                  الكاتب أ. نبيل بركات
+                <p className="text-base sm:text-xl font-bold text-white pr-7 flex items-center gap-2">
+                  <span>الكاتب أ. نبيل بركات</span>
+                  <AldiwanVerifiedIcon size={20} />
                 </p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-sky-100 pr-7 font-medium">
                   <span className="inline-flex items-center gap-1.5">
@@ -92,12 +113,66 @@ export const AuthorLicensesSection: React.FC = () => {
                     عضو الجمعية المصرية لكتاب القصة والرواية
                   </span>
                 </div>
+                <div className="pr-7 pt-1">
+                  <AldiwanCertifiedBadge size="sm" variant="badge" />
+                </div>
               </div>
             </div>
 
             <p className="text-xs sm:text-sm text-[#cbd5e1] leading-relaxed pt-1">
               جميع المؤلفات والروايات المنشورة أدناه مسجلة رسمياً ومحمية قانونياً بأرقام الإيداع المعتمدة والترقيم الدولي الموحد (ISBN). يُمكنك الضغط على أي كتاب لتصفح فصوله وقراءة نصوصه كاملة.
             </p>
+
+            {/* Direct Link to Licenses Section Banner Card */}
+            <div className="pt-2">
+              <div className="p-3 sm:p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-inner">
+                <div className="flex items-center gap-2.5 min-w-0 w-full sm:w-auto">
+                  <div className="w-8 h-8 rounded-xl bg-[#dfa85b]/20 border border-[#dfa85b]/40 flex items-center justify-center shrink-0">
+                    <Link2 className="w-4 h-4 text-[#dfa85b]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] text-sky-200 font-medium">رابط صفحة التراخيص المباشر:</div>
+                    <div className="text-xs sm:text-sm font-bold text-[#f5cd72] font-mono dir-ltr truncate select-all">
+                      {officialLicensesUrl}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={handleCopyLicensesLink}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="نسخ رابط صفحة التراخيص"
+                  >
+                    {isLinkCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-900" />
+                        <span>تم النسخ بنجاح</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>نسخ الرابط</span>
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href="/licenses"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setActiveSection('licenses');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs transition border border-white/20 flex items-center justify-center cursor-pointer"
+                    title="تثبيت الرابط في المتصفح"
+                  >
+                    <ExternalLink className="w-4 h-4 text-sky-200" />
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="shrink-0 flex flex-col items-center gap-3">

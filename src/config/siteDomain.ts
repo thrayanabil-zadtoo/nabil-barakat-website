@@ -41,3 +41,14 @@ export const getCvDisplayLink = (cvId?: string): string => {
   const domain = getSiteDomain();
   return cvId ? `${domain}#cv-${cvId.slice(0, 6)}` : domain;
 };
+
+export const getLicensesPageUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/licenses`;
+  }
+  return `${getSiteBaseUrl()}/licenses`;
+};
+
+export const getOfficialLicensesUrl = (): string => {
+  return `${getSiteBaseUrl()}/licenses`;
+};

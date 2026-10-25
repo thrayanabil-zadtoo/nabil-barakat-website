@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Lock, LogOut, Settings, QrCode, ShieldCheck, FileText, User, Sparkles, Download } from 'lucide-react';
+import { Lock, LogOut, Settings, QrCode, ShieldCheck, FileText, User, Sparkles, Download, Bookmark } from 'lucide-react';
 import { LegalPagesModal, LegalTabType } from './LegalPagesModal';
 import { AuthorQrModal } from './AuthorQrModal';
 import { AuthorSeal } from './AuthorSeal';
@@ -80,6 +80,16 @@ export const Footer: React.FC = () => {
               >
                 <QrCode className="w-3.5 h-3.5 text-amber-300" />
                 <span>الباركود الرسمي (QR)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-exit-intent-modal'))}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="أضفنا للمفضلة أو ثبّت الموقع كتطبيق على جهازك"
+              >
+                <Bookmark className="w-3.5 h-3.5 text-emerald-300" />
+                <span>أضفنا للمفضلة / تثبيت الموقع ⭐</span>
               </button>
             </div>
           </div>

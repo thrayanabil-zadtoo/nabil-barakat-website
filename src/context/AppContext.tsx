@@ -157,6 +157,8 @@ interface AppContextType {
   setEditingAnnouncement: (ann: AnnouncementItem | null) => void;
   isAnnouncementModalOpen: boolean;
   setIsAnnouncementModalOpen: (val: boolean) => void;
+  isAnnouncementBannerVisible: boolean;
+  toggleAnnouncementBannerVisibility: () => void;
 
   // Add Book Modal state
   isAddBookModalOpen: boolean;
@@ -312,13 +314,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!loaded.portraitImage || loaded.portraitImage.includes('author_official')) {
       loaded.portraitImage = '/author.jpg';
     }
-    // Sanitize bio and extendedBio to reflect official title "كاتب روائي وشاعر"
+    // Sanitize bio to reflect official title "روائي وشاعر"
     if (loaded.bio) {
-      if (loaded.bio.includes('كاتب وروائي ومفكر')) {
-        loaded.bio = loaded.bio.replace(/كاتب وروائي ومفكر/g, 'كاتب روائي وشاعر');
+      if (loaded.bio.includes('كاتب روائي وشاعر')) {
+        loaded.bio = loaded.bio.replace(/كاتب روائي وشاعر/g, 'روائي وشاعر');
       }
-      if (loaded.bio.includes('كاتب روائي') && !loaded.bio.includes('وشاعر')) {
-        loaded.bio = loaded.bio.replace('كاتب روائي', 'كاتب روائي وشاعر');
+      if (loaded.bio.includes('كاتب وروائي ومفكر')) {
+        loaded.bio = loaded.bio.replace(/كاتب وروائي ومفكر/g, 'روائي وشاعر');
       }
     }
     if (loaded.extendedBio) {
@@ -488,12 +490,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const [editingAnnouncement, setEditingAnnouncement] = useState<AnnouncementItem | null>(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState<boolean>(false);
+  const [isAnnouncementBannerVisible, setIsAnnouncementBannerVisible] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('nabil_announcement_banner_visible');
+      if (stored !== null) return stored === 'true';
+    }
+    // Default to false (hidden) as explicitly requested by author
+    return false;
+  });
+
+  const toggleAnnouncementBannerVisibility = () => {
+    setIsAnnouncementBannerVisible((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nabil_announcement_banner_visible', String(next));
+      }
+      showToast(next ? '✓ تم إظهار الشريط الإعلاني في أعلى الموقع' : '✓ تم إخفاء الشريط الإعلاني تماماً عن الظهور');
+      return next;
+    });
+  };
+
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState<boolean>(false);
   const [authorPosts, setAuthorPosts] = useState<AuthorPost[]>(() =>
     loadState('author_posts', initialAuthorPosts)
   );
 
-  const [activeSection, setActiveSection] = useState<string>('home');
+  const getInitialSection = (): string => {
+    if (typeof window !== 'undefined') {
+      if ((window as any).__INITIAL_SECTION__) {
+        return (window as any).__INITIAL_SECTION__;
+      }
+
+      const rawPath = (window.location.pathname || '').toLowerCase();
+      const rawHash = (window.location.hash || '').toLowerCase();
+      const rawSearch = (window.location.search || '').toLowerCase();
+
+      if (
+        rawPath.includes('license') ||
+        rawPath.includes('تراخيص') ||
+        rawHash.includes('license') ||
+        rawHash.includes('تراخيص') ||
+        rawSearch.includes('license')
+      ) {
+        return 'licenses';
+      }
+      if (rawPath.includes('book') || rawHash.includes('book') || rawSearch.includes('book')) {
+        return 'books';
+      }
+      if (rawPath.includes('video') || rawHash.includes('video') || rawSearch.includes('video')) {
+        return 'videos';
+      }
+      if (rawPath.includes('photo') || rawHash.includes('photo') || rawSearch.includes('photo')) {
+        return 'photos';
+      }
+      if (rawPath.includes('news') || rawHash.includes('news') || rawSearch.includes('news')) {
+        return 'news';
+      }
+      if (rawPath.includes('link') || rawHash.includes('link') || rawSearch.includes('link')) {
+        return 'links';
+      }
+      if (rawPath.includes('contact') || rawHash.includes('contact') || rawSearch.includes('contact')) {
+        return 'contact';
+      }
+      if (rawPath.includes('cv') || rawHash.includes('cv') || rawSearch.includes('cv')) {
+        return 'cv';
+      }
+    }
+    return 'home';
+  };
+
+  const [activeSection, setActiveSectionInternal] = useState<string>(getInitialSection);
+
+  const setActiveSection = (section: string) => {
+    setActiveSectionInternal(section);
+    if (typeof window !== 'undefined') {
+      try {
+        if (section === 'home') {
+          if (window.location.pathname !== '/' || (window.location.hash && !window.location.hash.startsWith('#cv-'))) {
+            history.pushState(null, '', '/');
+          }
+        } else {
+          const targetPath = `/${section}`;
+          if (window.location.pathname !== targetPath && !window.location.hash.startsWith('#cv-')) {
+            history.pushState({ section }, '', targetPath);
+          }
+        }
+      } catch {
+        if (section === 'home') {
+          window.location.hash = '';
+        } else {
+          window.location.hash = section;
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const initial = getInitialSection();
+    if (initial && initial !== 'home') {
+      setActiveSectionInternal(initial);
+    }
+    const handleUrlSync = () => {
+      const resolved = getInitialSection();
+      setActiveSectionInternal(resolved);
+    };
+    window.addEventListener('popstate', handleUrlSync);
+    window.addEventListener('hashchange', handleUrlSync);
+    return () => {
+      window.removeEventListener('popstate', handleUrlSync);
+      window.removeEventListener('hashchange', handleUrlSync);
+    };
+  }, []);
   const [isAuthorMode, setIsAuthorMode] = useState<boolean>(() => {
     return localStorage.getItem('isSupervisorLoggedIn') === 'true';
   });
@@ -2109,6 +2217,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setEditingAnnouncement,
         isAnnouncementModalOpen,
         setIsAnnouncementModalOpen,
+        isAnnouncementBannerVisible,
+        toggleAnnouncementBannerVisibility,
         isAddBookModalOpen,
         setIsAddBookModalOpen,
         authorPosts,

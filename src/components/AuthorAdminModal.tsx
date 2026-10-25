@@ -86,6 +86,8 @@ export const AuthorAdminModal: React.FC = () => {
     addAnnouncement,
     updateAnnouncement,
     toggleAnnouncementActive,
+    isAnnouncementBannerVisible,
+    toggleAnnouncementBannerVisibility,
   } = useApp();
 
   // Upcoming Event Toggle Helper for «فعالية مرتقبة 🏛️»
@@ -342,6 +344,60 @@ export const AuthorAdminModal: React.FC = () => {
               <X className="w-5 h-5" />
             </button>
           </div>
+        </div>
+
+        {/* Master Toggle for Top Announcement Banner («الجزء الإعلاني الذي في الأعلى») */}
+        <div className="bg-gradient-to-r from-amber-500/10 via-sky-500/10 to-indigo-500/10 border-b border-[#e2e8f0] px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">📢</span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-[#0b385e] text-xs">
+                  الجزء الإعلاني الذي في الأعلى (شريط الإعلانات):
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    isAnnouncementBannerVisible
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-rose-100 text-rose-800 border-rose-300'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isAnnouncementBannerVisible ? 'bg-emerald-600 animate-pulse' : 'bg-rose-500'
+                    }`}
+                  />
+                  <span>{isAnnouncementBannerVisible ? 'ظاهر الآن في الموقع 🟢' : 'مخفي تماماً عن الظهور 🔴'}</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 hidden sm:block mt-0.5">
+                يمكنك إخفاء أو إظهار كامل الجزء الإعلاني في أعلى الموقع بنقرة واحدة
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleAnnouncementBannerVisibility}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs transition shadow-sm cursor-pointer border active:scale-95 ${
+              isAnnouncementBannerVisible
+                ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+            }`}
+            title={isAnnouncementBannerVisible ? 'إخفاء الجزء الإعلاني العلوي بالكامل' : 'إظهار الجزء الإعلاني العلوي'}
+          >
+            {isAnnouncementBannerVisible ? (
+              <>
+                <EyeOff className="w-4 h-4 text-white" />
+                <span>إخفاء الجزء الإعلاني بالكامل</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4 text-amber-300" />
+                <span>إظهار الجزء الإعلاني في الموقع</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Quick Upcoming Event Toggle Banner («فعالية مرتقبة 🏛️») */}

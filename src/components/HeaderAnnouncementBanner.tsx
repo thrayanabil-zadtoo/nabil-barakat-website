@@ -28,6 +28,8 @@ export const HeaderAnnouncementBanner: React.FC<{ className?: string }> = ({ cla
     isAuthorMode,
     setActiveSection,
     showToast,
+    isAnnouncementBannerVisible,
+    toggleAnnouncementBannerVisibility,
   } = useApp();
 
   // Filter only active announcements for display in revolving banner
@@ -134,7 +136,12 @@ export const HeaderAnnouncementBanner: React.FC<{ className?: string }> = ({ cla
 
   const currentItem = activeAnnouncements[currentIndex];
 
-  if (!currentItem && !isAuthorMode) {
+  // If banner is turned off, do not display at all
+  if (!isAnnouncementBannerVisible) {
+    return null;
+  }
+
+  if (!currentItem) {
     return null;
   }
 
@@ -310,10 +317,20 @@ export const HeaderAnnouncementBanner: React.FC<{ className?: string }> = ({ cla
                     ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 hover:bg-amber-400/30'
                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 hover:bg-emerald-500/30'
                 }`}
-                title="إخفاء أو إظهار «فعالية مرتقبة 🏛️» من الموقع"
+                title={isUpcomingEventActive ? 'إيقاف إعلان فعالية مرتقبة' : 'تفعيل إعلان فعالية مرتقبة'}
               >
                 {isUpcomingEventActive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                <span>فعالية مرتقبة 🏛️: {isUpcomingEventActive ? 'إخفاء' : 'إظهار'}</span>
+                <span>{isUpcomingEventActive ? 'إخفاء «فعالية مرتقبة»' : 'تفعيل «فعالية مرتقبة»'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleAnnouncementBannerVisibility}
+                className="flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer border bg-rose-600/30 text-rose-300 border-rose-500/40 hover:bg-rose-600/50"
+                title="إخفاء كامل الشريط الإعلاني عن الموقع"
+              >
+                <EyeOff className="w-3 h-3" />
+                <span>إخفاء كامل الشريط الإعلاني</span>
               </button>
 
               {currentItem && (

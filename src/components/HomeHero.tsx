@@ -26,6 +26,15 @@ import {
   Film,
   Headphones,
   ShieldCheck,
+  Mail,
+  Star,
+  Bookmark,
+  Download,
+  FileText,
+  CheckCircle2,
+  QrCode,
+  Award,
+  Check,
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { BookReaderModal } from './BookReaderModal';
@@ -36,6 +45,8 @@ import { ContentInteractionBar } from './ContentInteractionBar';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { AuthorFeedSection } from './AuthorFeedSection';
 import { AddBookModal } from './AddBookModal';
+import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
+import { AuthorSeal } from './AuthorSeal';
 import { Book, PhotoItem } from '../types';
 
 export const HomeHero: React.FC = () => {
@@ -98,8 +109,22 @@ export const HomeHero: React.FC = () => {
     setTimeout(() => setFormSent(false), 4500);
   };
 
+  // Newsletter subscription state
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterSuccess, setNewsletterSuccess] = useState(false);
+
+  const handleNewsletterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newsletterEmail.trim()) return;
+    setNewsletterSuccess(true);
+    setTimeout(() => {
+      setNewsletterEmail('');
+      setNewsletterSuccess(false);
+    }, 4000);
+  };
+
   const featuredBooks = books.slice(0, 4);
-  const featuredNews = news.slice(0, 3);
+  const featuredNews = news.slice(0, 4);
   const featuredPhotos = photos.slice(0, 4);
 
   // Only approved comments are displayed publicly
@@ -171,8 +196,9 @@ export const HomeHero: React.FC = () => {
             </div>
 
             {/* Author Name */}
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight font-literary leading-tight drop-shadow-md">
-              {authorProfile.name || 'أ. نبيل بركات'}
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight font-literary leading-tight drop-shadow-md flex items-center justify-center lg:justify-start gap-2.5 flex-wrap">
+              <span>{authorProfile.name || 'أ. نبيل بركات'}</span>
+              <AldiwanVerifiedIcon size={30} className="text-[#1D9BF0]" />
             </h1>
 
             {/* Literary Divider */}
@@ -184,12 +210,18 @@ export const HomeHero: React.FC = () => {
             </p>
 
             {/* Association & Role */}
-            <div className="space-y-1.5 text-center lg:text-right py-1">
+            <div className="space-y-2 text-center lg:text-right py-1">
               <p className="text-base sm:text-lg lg:text-xl font-bold text-[#dfa85b] drop-shadow-md">
                 عضو الجمعية المصرية لكتاب القصة والرواية
               </p>
+
+              {/* شاعر معتمد في الدِّيوَان مع علامة النجمة الزرقاء الموثقة بالحركات كما بالصورة */}
+              <div className="flex items-center justify-center lg:justify-start pt-0.5">
+                <AldiwanCertifiedBadge size="lg" variant="badge" />
+              </div>
+
               <p className="text-sm sm:text-base lg:text-lg font-medium text-white/95 drop-shadow">
-                كاتب روائي وشاعر
+                روائي وشاعر
               </p>
             </div>
 
@@ -531,9 +563,267 @@ export const HomeHero: React.FC = () => {
                       compact={true}
                     />
                   </div>
+
+                  {/* Playlist of other video chapters */}
+                  {videos.length > 1 && (
+                    <div className="pt-2 border-t border-[#edf2f7] space-y-1.5">
+                      <div className="text-[10px] font-bold text-[#07375a] flex items-center justify-between">
+                        <span>مشاهد وفصول أخرى من الروايات:</span>
+                        <span className="text-[9px] text-[#50738b]">{videos.length} مقاطع</span>
+                      </div>
+                      <div className="space-y-1 max-h-36 overflow-y-auto">
+                        {videos.slice(0, 4).map((v, idx) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setCurrentVideoIdx(idx)}
+                            className={`w-full p-1.5 rounded-lg text-right flex items-center justify-between text-xs transition cursor-pointer ${
+                              currentVideoIdx === idx
+                                ? 'bg-[#07375a] text-white font-bold'
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Play className={`w-3 h-3 shrink-0 ${currentVideoIdx === idx ? 'text-[#dfa85b]' : 'text-slate-400'}`} />
+                              <span className="truncate text-[11px]">{v.title}</span>
+                            </div>
+                            {currentVideoIdx === idx && (
+                              <span className="text-[9px] text-amber-300 font-bold shrink-0">يعمل الآن</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
+          </div>
+
+          {/* 3. Card: معرض الصور والفعاليات الثقافية */}
+          {photos.length > 0 && (
+            <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-[#07375a]" />
+                  <h3 className="text-sm font-bold text-[#07375a]">معرض الصور والفعاليات</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection('photos');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="text-xs text-[#50738b] hover:text-[#07375a] flex items-center gap-0.5 font-medium cursor-pointer"
+                >
+                  <span>عرض الألبوم</span>
+                  <span>←</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {photos.slice(0, 4).map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setLightboxPhoto(p)}
+                    className="group relative aspect-4/3 rounded-lg overflow-hidden border border-slate-200 cursor-pointer shadow-2xs hover:shadow-md transition"
+                    title={p.title}
+                  >
+                    <img
+                      src={p.imageUrl}
+                      alt={p.title}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1.5">
+                      <span className="text-[10px] text-white font-bold truncate">{p.title}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Card: التراخيص والعضويات الرسمية والأرقام الدولية */}
+          <div className="bg-gradient-to-br from-[#07243c] via-[#093254] to-[#041523] text-white rounded-xl border border-[#dfa85b]/40 p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-white/15 pb-2.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#dfa85b]" />
+                <h3 className="text-sm font-bold text-[#f5cd72]">التراخيص والاعتماد الرسمي</h3>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                موثق رسمياً ✓
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <span className="text-[#dfa85b]">🏛️</span>
+                  <span>عضو الجمعية المصرية لكتاب القصة والرواية</span>
+                </div>
+                <p className="text-[10px] text-slate-300 leading-relaxed">
+                  عضوية رسمية مسجلة وفاعلة في اتحاد كتاب القصة والرواية.
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-1">
+                <div className="font-bold text-white flex items-center gap-1.5">
+                  <AldiwanVerifiedIcon className="w-3.5 h-3.5" />
+                  <span>شاعر معتمد في الدِّيْـوَانِ</span>
+                </div>
+                <p className="text-[10px] text-slate-300 leading-relaxed">
+                  حساب موثق وشاعر معتمد في الموسوعة الشعرية الكبرى (الديوان).
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('licenses');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-[#dfa85b] to-[#c5943b] hover:from-[#c5943b] hover:to-[#dfa85b] text-[#07243c] font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>أرقام الإيداع (ISBN) والتراخيص ←</span>
+            </button>
+          </div>
+
+          {/* 5. Card: رواية مختارة للقراءة الفورية */}
+          {books.length > 0 && (
+            <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  <h3 className="text-sm font-bold text-[#07375a]">إصدار أدبي مختار</h3>
+                </div>
+                <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-bold">
+                  قراءة رقمية
+                </span>
+              </div>
+
+              {(() => {
+                const spotlightBook = books[1] || books[0];
+                return (
+                  <div className="space-y-2.5">
+                    <div className="flex gap-3 items-center">
+                      <div
+                        className="w-16 h-22 rounded-lg overflow-hidden shadow-md shrink-0 border border-slate-200 cursor-pointer"
+                        onClick={() => setSelectedBookForReading(spotlightBook)}
+                      >
+                        <img
+                          src={spotlightBook.coverImage || '/src/assets/images/book_cover_heritage_1790501223547.jpg'}
+                          alt={spotlightBook.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 space-y-1">
+                        <h4
+                          onClick={() => setSelectedBookForReading(spotlightBook)}
+                          className="text-xs font-bold text-[#07375a] hover:underline cursor-pointer truncate"
+                        >
+                          {spotlightBook.title}
+                        </h4>
+                        <p className="text-[10px] text-[#6f8291] line-clamp-2 leading-relaxed">
+                          {spotlightBook.description || spotlightBook.subtitle}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] text-[#50738b]">
+                          <span>{spotlightBook.pagesCount || 180} صفحة</span>
+                          <span>·</span>
+                          <span className="text-amber-600 font-bold">متاح مجاناً</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBookForReading(spotlightBook)}
+                      className="w-full py-1.5 px-3 rounded-lg bg-[#07375a] hover:bg-[#05263f] text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
+                      <span>اقرأ فصول الرواية الآن 📖</span>
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* 6. Card: تسجيلات صوتية ومقاطع شعرية */}
+          <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
+              <div className="flex items-center gap-2">
+                <Headphones className="w-4 h-4 text-rose-600" />
+                <h3 className="text-sm font-bold text-[#07375a]">نبض صوتي وشعري</h3>
+              </div>
+              <span className="text-[10px] text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 font-bold">
+                إلقاء صوتي
+              </span>
+            </div>
+
+            <p className="text-[11px] text-[#6f8291] leading-relaxed">
+              استمع إلى مقاطع ملقاة بأداء شاعري معبّر من ديوان وروايات الكاتب.
+            </p>
+
+            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Headphones className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-[#07375a] truncate">حروفي مرآتي وصمتي قصيدة</div>
+                  <div className="text-[10px] text-slate-500">أ. نبيل بركات</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (books.length > 0) setSelectedBookForReading(books[0]);
+                }}
+                className="px-2.5 py-1 text-[11px] bg-[#07375a] hover:bg-[#05263f] text-white rounded-md font-bold transition shrink-0 cursor-pointer"
+              >
+                استمع الآن
+              </button>
+            </div>
+          </div>
+
+          {/* 7. STICKY DESKTOP COMPANION: تضمن بقاء العمود الأيمن ممتلئاً مهما طالت المنشورات بالمنتصف للكمبيوتر */}
+          <div className="hidden lg:block lg:sticky lg:top-20 z-10 space-y-3">
+            <div className="bg-gradient-to-br from-[#07243c] to-[#0b385e] text-white rounded-xl p-4 border border-[#dfa85b]/40 shadow-md space-y-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-[#dfa85b]" />
+                <h4 className="text-xs font-bold text-[#f5cd72]">مكتبة نبيل بركات الرقمية</h4>
+              </div>
+              <p className="text-[11px] text-slate-200 leading-relaxed">
+                تصفح كافة المؤلفات، الروايات، والمقاطع المرئية بحرية كاملة مع دعم القراءة الرقمية.
+              </p>
+              <div className="pt-1 flex flex-col gap-1.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection('books');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition text-right flex items-center justify-between cursor-pointer"
+                >
+                  <span>استعراض كافة الكتب ({books.length})</span>
+                  <span>←</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection('licenses');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition text-right flex items-center justify-between cursor-pointer"
+                >
+                  <span>التراخيص وأرقام الإيداع</span>
+                  <span>←</span>
+                </button>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -596,14 +886,15 @@ export const HomeHero: React.FC = () => {
             </form>
           </div>
 
-          {/* Card: آخر التعليقات */}
+          {/* Card: سجل زوار الموقع وكلمات القراء */}
           <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2">
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-[#07375a]" />
-                <h3 className="text-sm font-bold text-[#07375a]">آخر التعليقات</h3>
+                <h3 className="text-sm font-bold text-[#07375a]">سجل الزوار والقراء</h3>
               </div>
               <button
+                type="button"
                 onClick={() =>
                   openCommentModal({
                     targetType: 'general',
@@ -612,93 +903,99 @@ export const HomeHero: React.FC = () => {
                 }
                 className="text-[11px] text-[#d8a83e] hover:underline font-bold cursor-pointer"
               >
-                + إضافة تعليق
+                + أضف كلمة
               </button>
             </div>
 
-            {latestComment ? (
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-[#07375a] text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      {latestComment.senderName.charAt(0)}
+            {approvedComments.length > 0 ? (
+              <div className="space-y-2.5">
+                {approvedComments.slice(0, 3).map((c) => (
+                  <div key={c.id} className="space-y-1 text-xs border-b border-slate-100 last:border-b-0 pb-2 last:pb-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded-md bg-[#07375a] text-white flex items-center justify-center text-[10px] font-bold shadow-2xs">
+                          {c.senderName.charAt(0)}
+                        </div>
+                        <div className="font-bold text-[#143b59] text-[11px]">{c.senderName}</div>
+                        {c.country && (
+                          <span className="text-[9px] text-[#6f8291]">({c.country})</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => likeComment(c.id)}
+                        className="flex items-center gap-1 text-[10px] text-rose-500 hover:text-rose-600 cursor-pointer"
+                      >
+                        <Heart className="w-3 h-3 fill-rose-50" />
+                        <span>{c.likesCount || 0}</span>
+                      </button>
                     </div>
-                    <div>
-                      <div className="font-bold text-[#143b59]">{latestComment.senderName}</div>
-                      {latestComment.country && (
-                        <div className="text-[10px] text-[#6f8291]">{latestComment.country}</div>
-                      )}
-                    </div>
+
+                    <p className="text-[#60798b] text-[11px] leading-relaxed bg-[#f8fafc] p-2 rounded-md border border-[#eef2f6]">
+                      "{c.content}"
+                    </p>
                   </div>
-                  <button
-                    onClick={() => likeComment(latestComment.id)}
-                    className="flex items-center gap-1 text-[11px] text-rose-500 hover:text-rose-600 cursor-pointer"
-                  >
-                    <Heart className="w-3.5 h-3.5 fill-rose-50" />
-                    <span>{latestComment.likesCount || 0}</span>
-                  </button>
-                </div>
+                ))}
 
-                <p className="text-[#60798b] text-xs leading-relaxed bg-[#f8fafc] p-2.5 rounded-lg border border-[#eef2f6]">
-                  "{latestComment.content}"
-                </p>
-
-                <div className="flex items-center justify-between text-[10px] text-[#7890a0] pt-1">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-2.5 h-2.5" />
-                    {latestComment.date}
-                  </span>
-                  <button
-                    onClick={() =>
-                      openShareModal({
-                        title: `تعليق من ${latestComment.senderName}: "${latestComment.content}"`,
-                        type: 'general',
-                      })
-                    }
-                    className="text-[#07375a] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Share2 className="w-3 h-3 text-[#d8a83e]" />
-                    <span>مشاركة</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSection('contact');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="w-full text-center text-[11px] text-[#07375a] hover:underline font-bold pt-1 block"
+                >
+                  استعراض كافة كلمات القراء ({approvedComments.length}) ←
+                </button>
               </div>
             ) : (
-              <div className="text-xs text-gray-500 text-center py-3">
-                لا توجد تعليقات منشورة بعد.
+              <div className="text-xs text-gray-500 text-center py-2">
+                كن أول من يترك كلمة للأديب في سجل الزوار.
               </div>
             )}
           </div>
 
-          {/* Card: صورة في خبر */}
+          {/* Card: صورة في خبر والمقالات الصحفية */}
           <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
               <div className="flex items-center gap-1.5">
                 <Newspaper className="w-4 h-4 text-[#07375a]" />
-                <h3 className="text-sm font-bold text-[#07375a]">صورة في خبر</h3>
+                <h3 className="text-sm font-bold text-[#07375a]">صورة في خبر ومقالات</h3>
               </div>
               <button
-                onClick={() => setActiveSection('news')}
+                type="button"
+                onClick={() => {
+                  setActiveSection('news');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className="text-[11px] text-[#50738b] hover:text-[#07375a] flex items-center font-medium cursor-pointer"
               >
                 <span>عرض الكل ←</span>
               </button>
             </div>
 
-            <div className="space-y-2.5">
-              {featuredNews.slice(0, 2).map((item) => (
+            <div className="space-y-2">
+              {featuredNews.slice(0, 3).map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => setActiveSection('news')}
+                  onClick={() => {
+                    setActiveSection('news');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                   className="group flex gap-2.5 items-center cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition"
                 >
-                  <div className="w-14 h-11 rounded-lg overflow-hidden bg-slate-900 shrink-0 border border-[#dce8ef]">
-                    {Boolean(item.coverImage) && (
+                  <div className="w-12 h-10 rounded-lg overflow-hidden bg-slate-900 shrink-0 border border-[#dce8ef]">
+                    {Boolean(item.coverImage) ? (
                       <img
                         src={item.coverImage}
                         alt={item.title}
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                       />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
+                        <Newspaper className="w-3.5 h-3.5" />
+                      </div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -714,7 +1011,7 @@ export const HomeHero: React.FC = () => {
             </div>
           </div>
 
-          {/* Card: الروابط والمواقع */}
+          {/* Card: الروابط والمواقع الأدبية */}
           <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
               <div className="flex items-center gap-1.5">
@@ -722,7 +1019,11 @@ export const HomeHero: React.FC = () => {
                 <h3 className="text-sm font-bold text-[#07375a]">الروابط والمواقع</h3>
               </div>
               <button
-                onClick={() => setActiveSection('links')}
+                type="button"
+                onClick={() => {
+                  setActiveSection('links');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 className="text-[11px] text-[#50738b] hover:text-[#07375a] flex items-center font-medium cursor-pointer"
               >
                 <span>عرض الكل ←</span>
@@ -730,7 +1031,7 @@ export const HomeHero: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              {links.slice(0, 4).map((l) => (
+              {links.slice(0, 6).map((l) => (
                 <a
                   key={l.id}
                   href={l.url}
@@ -739,9 +1040,151 @@ export const HomeHero: React.FC = () => {
                   className="border border-[#e1e9ee] rounded-lg p-2 text-right no-underline text-[#07375a] hover:border-[#07375a] hover:bg-[#f6f9fb] transition flex items-center gap-1.5 text-xs font-bold truncate group"
                 >
                   <span className="text-[#d8a83e] shrink-0">🔗</span>
-                  <span className="truncate">{l.title}</span>
+                  <span className="truncate text-[11px]">{l.title}</span>
                 </a>
               ))}
+            </div>
+          </div>
+
+          {/* Card: خدمة صانع السيرة الذاتية المجانية */}
+          <div className="bg-gradient-to-br from-[#07243c] via-[#093254] to-[#041523] text-white rounded-xl border border-[#dfa85b]/40 p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-white/15 pb-2">
+              <div className="flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-[#dfa85b]" />
+                <h3 className="text-sm font-bold text-[#f5cd72]">صانع السيرة الذاتية</h3>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                مجاناً 100%
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              خدمة ذكية مقدمة مجاناً لكافة زوار الموقع لتصميم سيرة ذاتية احترافية بدون تسجيل مسبق، مع قوالب عصرية وتصدير PDF فوري.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('cv');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-[#dfa85b] to-[#c5943b] hover:from-[#c5943b] hover:to-[#dfa85b] text-[#07243c] font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>ابدأ تصميم سيرتك الآن مجاناً ←</span>
+            </button>
+          </div>
+
+          {/* Card: حكمة اليوم ومقتطف أدبي */}
+          <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-2.5">
+            <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2">
+              <div className="flex items-center gap-1.5">
+                <Feather className="w-4 h-4 text-[#07375a]" />
+                <h3 className="text-sm font-bold text-[#07375a]">حكمة اليوم الأدبية</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  openShareModal({
+                    title: '«الكلمة الصادقة كالشجرة الطيبة، تمتد جذورها في وجدان القارئ وتهب ثمارها للأجيال» — نبيل بركات',
+                    type: 'quote',
+                  })
+                }
+                className="text-[11px] text-[#d8a83e] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Share2 className="w-3 h-3" />
+                <span>مشاركة</span>
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#f8fafc] rounded-lg border border-[#edf2f7] space-y-1">
+              <p className="text-xs text-[#07375a] font-literary italic leading-relaxed text-center">
+                « الكلمة الصادقة كالشجرة الطيبة، تمتد جذورها في وجدان القارئ وتهب ثمارها للأجيال »
+              </p>
+              <div className="text-[10px] text-[#6f8291] text-left font-bold font-literary">
+                — أ. نبيل بركات
+              </div>
+            </div>
+          </div>
+
+          {/* Card: النشرة الثقافية البريدية */}
+          <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 border-b border-[#edf2f7] pb-2">
+              <Mail className="w-4 h-4 text-[#07375a]" />
+              <div>
+                <h3 className="text-sm font-bold text-[#07375a]">النشرة الثقافية</h3>
+                <p className="text-[10px] text-[#6f8291]">جديد الروايات والأمسيات</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleNewsletterSubmit} className="space-y-2">
+              <input
+                type="email"
+                required
+                value={newsletterEmail}
+                onChange={(e) => setNewsletterEmail(e.target.value)}
+                placeholder="أدخل بريدك الإلكتروني..."
+                className="w-full bg-[#fbfdfe] border border-[#d7e3ea] rounded-lg px-3 py-1.5 text-xs text-[#143b59] focus:outline-none focus:border-[#07375a]"
+              />
+              <button
+                type="submit"
+                className="w-full py-1.5 bg-[#07375a] hover:bg-[#062b47] text-white rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                {newsletterSuccess ? '✓ تم الاشتراك بنجاح!' : 'اشترك مجاناً'}
+              </button>
+            </form>
+          </div>
+
+          {/* Card: الباركود الرسمي للموقع */}
+          <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-2 text-center">
+            <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2 text-right">
+              <div className="flex items-center gap-1.5">
+                <QrCode className="w-4 h-4 text-[#07375a]" />
+                <h3 className="text-sm font-bold text-[#07375a]">الباركود الرسمي</h3>
+              </div>
+              <span className="text-[10px] text-[#6f8291]">للمشاركة السريعة</span>
+            </div>
+            <p className="text-[11px] text-[#6f8291]">
+              امسح الكود بكاميرا هاتفك للوصول المباشر ومشاركة المنصة
+            </p>
+            <div className="flex justify-center py-1">
+              <div className="p-2 bg-slate-50 border border-slate-200 rounded-xl inline-block shadow-2xs">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent('https://nb.zadtoo.com')}&color=07243c&bgcolor=ffffff`}
+                  alt="QR Code"
+                  className="w-20 h-20"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* STICKY DESKTOP COMPANION: تضمن بقاء العمود الأيسر ممتلئاً مهما طالت المنشورات بالمنتصف للكمبيوتر */}
+          <div className="hidden lg:block lg:sticky lg:top-20 z-10 space-y-3">
+            <div className="bg-gradient-to-br from-[#07243c] to-[#041624] text-white rounded-xl p-4 border border-[#dfa85b]/40 shadow-md space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="w-4 h-4 text-[#dfa85b]" />
+                  <h4 className="text-xs font-bold text-[#f5cd72]">ابقَ على مقربة دائماً</h4>
+                </div>
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              </div>
+
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                أضف المنصة إلى مفضلتك أو ثبّتها كتطبيق خفيف على جهازك للوصول المباشر بضغطة زر.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-exit-intent-modal'))}
+                className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Bookmark className="w-3.5 h-3.5" />
+                <span>أضف للمفضلة / تثبيت الموقع ⭐</span>
+              </button>
+
+              <div className="pt-2 border-t border-white/10 flex justify-center">
+                <AuthorSeal size="sm" showText={false} />
+              </div>
             </div>
           </div>
 

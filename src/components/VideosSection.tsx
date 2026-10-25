@@ -321,30 +321,6 @@ export const VideosSection: React.FC = () => {
               <span>+ إضافة فيديو / مشهد جديد</span>
             </button>
           )}
-
-          {/* Auto Refresh Toggle */}
-          <button
-            onClick={toggleAutoRefresh}
-            className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer border ${
-              autoRefreshEnabled
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-            }`}
-            title="تفعيل أو إيقاف التحديث التلقائي لمنع الكاش وجلب التعديلات فورا"
-          >
-            <span className={`w-2 h-2 rounded-full ${autoRefreshEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-            <span>{autoRefreshEnabled ? 'تحديث تلقائي: نشط 🟢' : 'تحديث تلقائي: متوقف ⚪'}</span>
-          </button>
-
-          {/* Force bypass cache */}
-          <button
-            onClick={() => refreshAndBypassCache(true)}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer whitespace-nowrap"
-            title="تحديث الصفحة فوراً ومسح كاش المتصفح"
-          >
-            <RotateCw className="w-3.5 h-3.5 text-[#dfa85b]" />
-            <span>تحديث وتجاوز الكاش 🔄</span>
-          </button>
         </div>
       </div>
 

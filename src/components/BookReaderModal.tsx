@@ -50,6 +50,7 @@ import { saveReadingProgress, getDeviceInfo } from '../utils/deviceDetector';
 import { compressImage } from '../utils/imageCompressor';
 import { getSiteDomain } from '../config/siteDomain';
 import { initialBooks } from '../data/initialData';
+import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
 
 interface BookReaderModalProps {
   book: Book;
@@ -898,14 +899,18 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-extrabold text-sm sm:text-base text-[#07243c] font-literary truncate">
-                          {authorProfile?.name || 'الكاتب أ. نبيل بركات'}
+                        <h3 className="font-extrabold text-sm sm:text-base text-[#07243c] font-literary truncate flex items-center gap-1.5">
+                          <span>{authorProfile?.name || 'الكاتب أ. نبيل بركات'}</span>
+                          <AldiwanVerifiedIcon size={16} />
                         </h3>
                         <p className="text-[11px] font-bold text-amber-700 leading-tight mt-0.5">
                           عضو الجمعية المصرية لكتاب القصة والرواية
                         </p>
+                        <div className="mt-1">
+                          <AldiwanCertifiedBadge size="sm" variant="badge" />
+                        </div>
                         <p className="text-[10px] text-slate-500 font-medium mt-0.5">
-                          كاتب روائي وشاعر
+                          روائي وشاعر
                         </p>
                       </div>
                     </div>
@@ -1017,6 +1022,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   <span>بقلم: <strong className="text-white">الكاتب الروائي والشاعر أ. نبيل بركات</strong></span>
                   <span>·</span>
                   <span className="text-[#f5cd72]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
+                  <span>·</span>
+                  <AldiwanCertifiedBadge size="sm" variant="gold" />
                   {activeBook.publicationYear && (
                     <>
                       <span>·</span>
@@ -1748,6 +1755,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                       )}
                       <span className="hidden md:inline text-gray-300 dark:text-slate-600">·</span>
                       <span className="text-[10px] sm:text-[11px] text-[#8292a4]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
+                      <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
+                      <AldiwanCertifiedBadge size="sm" variant="subtle" />
                     </div>
                   </div>
 

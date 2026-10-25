@@ -49,10 +49,6 @@ export const CvEditor: React.FC<CvEditorProps> = ({
 
   // AI assistant polish for summary
   const handleAiPolishSummary = () => {
-    if (!isProUser) {
-      onOpenAuthModal();
-      return;
-    }
     const role = cv.personalInfo.jobTitle || (isAr ? 'متخصص محترف' : 'Professional');
     const enhancedAr = `${role} متميز ومتحمس بخبرة عملية وسجل حافل بالإنجازات. أتمتع بمهارات تواصل وحل مشكلات قوية، وقدرة عالية على قيادة المبادرات والتعاون ضمن فرق العمل المتعددة لتقديم أعلى قيمة للمؤسسة والعملاء.`;
     const enhancedEn = `Accomplished and driven ${role} with a proven track record of delivering impactful results. Known for strong analytical, communication, and problem-solving skills, with a passion for innovation, operational efficiency, and team collaboration.`;

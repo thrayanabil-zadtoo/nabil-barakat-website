@@ -12,13 +12,48 @@
     <meta property="og:description" content="الموقع الرسمي للكاتب أ. نبيل بركات، عضو الجمعية المصرية لكتاب القصة والرواية: مؤلفات وروايات، مقاطع وفيديوهات فكرية، ألبوم صور وفعاليات ثقافية، مقالات وأخبار، وروابط وتواصل." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#07243c" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/jpeg" href="/author.jpg" />
+    <link rel="apple-touch-icon" href="/author.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
     <script async src="https://www.tiktok.com/embed.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').catch(function() {});
+        });
+      }
+    </script>
   </head>
   <body class="bg-[#0c0e12] text-[#e8eaed] antialiased selection:bg-[#c59b27]/30 selection:text-[#f3e5ab]">
     <div id="root"></div>
+    <script>
+      (function() {
+        try {
+          var p = (window.location.pathname || '').toLowerCase();
+          var h = (window.location.hash || '').toLowerCase();
+          var s = (window.location.search || '').toLowerCase();
+          if (p.indexOf('license') !== -1 || p.indexOf('تراخيص') !== -1 || h.indexOf('license') !== -1 || h.indexOf('تراخيص') !== -1 || s.indexOf('license') !== -1) {
+            window.__INITIAL_SECTION__ = 'licenses';
+          } else if (p.indexOf('book') !== -1 || h.indexOf('book') !== -1 || s.indexOf('book') !== -1) {
+            window.__INITIAL_SECTION__ = 'books';
+          } else if (p.indexOf('video') !== -1 || h.indexOf('video') !== -1 || s.indexOf('video') !== -1) {
+            window.__INITIAL_SECTION__ = 'videos';
+          } else if (p.indexOf('photo') !== -1 || h.indexOf('photo') !== -1 || s.indexOf('photo') !== -1) {
+            window.__INITIAL_SECTION__ = 'photos';
+          } else if (p.indexOf('news') !== -1 || h.indexOf('news') !== -1 || s.indexOf('news') !== -1) {
+            window.__INITIAL_SECTION__ = 'news';
+          } else if (p.indexOf('link') !== -1 || h.indexOf('link') !== -1 || s.indexOf('link') !== -1) {
+            window.__INITIAL_SECTION__ = 'links';
+          } else if (p.indexOf('contact') !== -1 || h.indexOf('contact') !== -1 || s.indexOf('contact') !== -1) {
+            window.__INITIAL_SECTION__ = 'contact';
+          }
+        } catch(e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

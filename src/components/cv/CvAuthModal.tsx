@@ -8,7 +8,7 @@ interface CvAuthModalProps {
   onClose: () => void;
   onSuccess: (user: CvUserAccount) => void;
   isAr: boolean;
-  cvFeesEnabled: boolean;
+  cvFeesEnabled?: boolean;
 }
 
 export const CvAuthModal: React.FC<CvAuthModalProps> = ({
@@ -16,11 +16,9 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
   onClose,
   onSuccess,
   isAr,
-  cvFeesEnabled,
 }) => {
   const [isRegisterMode, setIsRegisterMode] = useState(true);
-  const [name, setName] = useState('');
-  const [emailOrPhone, setEmailOrPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -30,20 +28,20 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
     e.preventDefault();
     setErrorMsg('');
 
-    if (!emailOrPhone.trim()) {
-      setErrorMsg(isAr ? 'يرجى إدخال البريد الإلكتروني أو رقم الهاتف' : 'Please enter email or phone');
+    if (!email.trim()) {
+      setErrorMsg(isAr ? 'يرجى إدخال البريد الإلكتروني' : 'Please enter your email');
       return;
     }
 
-    if (isRegisterMode && !name.trim()) {
-      setErrorMsg(isAr ? 'يرجى إدخال الاسم' : 'Please enter your name');
+    if (!password.trim()) {
+      setErrorMsg(isAr ? 'يرجى إدخال كلمة المرور' : 'Please enter a password');
       return;
     }
 
     const user: CvUserAccount = {
       id: 'usr_' + Date.now().toString(36),
-      name: name.trim() || (isAr ? 'مستخدم السيرة الذاتية' : 'CV User'),
-      emailOrPhone: emailOrPhone.trim(),
+      name: email.split('@')[0] || (isAr ? 'مستخدم السيرة الذاتية' : 'CV User'),
+      emailOrPhone: email.trim(),
       password: password.trim(),
       createdAt: new Date().toISOString(),
       isPro: true,
@@ -79,14 +77,14 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
             <Sparkles className="w-5 h-5 text-[#dfa85b]" />
             <h3 className="font-bold text-base text-white">
               {isRegisterMode
-                ? (isAr ? 'التسجيل المجاني لفتح كافة المزايا' : 'Free Registration - Unlock All Features')
-                : (isAr ? 'تسجيل الدخول لحسابك' : 'Sign In to Your Account')}
+                ? (isAr ? 'حفظ السيرة الذاتية للتعديل لاحقاً' : 'Save Resume for Future Edits')
+                : (isAr ? 'تسجيل الدخول لتعديل سيرتك' : 'Sign In to Edit Your Resume')}
             </h3>
           </div>
           <p className="text-xs text-sky-100 leading-relaxed">
-            {cvFeesEnabled
-              ? (isAr ? 'سجل حسابك للوصول إلى القوالب الاحترافية والذكاء الاصطناعي' : 'Sign up to access Pro templates & AI tools')
-              : (isAr ? 'الخدمة مفتوحة ومجانية 100% بدون أي رسوم! سجل لحفظ وتعديل سيرتك الذاتية لاحقاً.' : '100% Free Service without fees! Sign up to save and edit your resume anytime.')}
+            {isAr
+              ? 'الخدمة مجانية بالكامل. ضع الإيميل وكلمة المرور فقط لحفظ بياناتك والرجوع لتعديلها في أي وقت (بدون الحاجة لحساب جوجل أو تأكيد).'
+              : '100% Free Service. Enter your email and password only to save and edit your resume anytime (no Google or verification required).'}
           </p>
         </div>
 
@@ -94,15 +92,11 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
         <div className="bg-sky-50/70 p-3.5 border-b border-sky-100 text-xs text-slate-700 space-y-1.5">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{isAr ? 'فتح جميع القوالب الاحترافية الستة (الشركات، الإبداعي، الأكاديمي)' : 'Unlock all 6 professional templates'}</span>
+            <span>{isAr ? 'الخدمة مجانية 100% لكافة القوالب وتوليد الـ PDF' : '100% Free for all templates and PDF exports'}</span>
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{isAr ? 'مساعد الذكاء الاصطناعي لتحسين وصياغة السيرة المهنية' : 'AI Assistant for professional wording & polish'}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{isAr ? 'الاحتفاظ بالسيرة الذاتية للتعديل والتصدير حتى بعد شهر أو أكثر' : 'Permanent device & account storage for future edits'}</span>
+            <span>{isAr ? 'إمكانية الرجوع وتعديل سيرتك من أي جهاز وبأي وقت' : 'Resume saved permanently for future updates'}</span>
           </div>
         </div>
 
@@ -114,42 +108,27 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
             </div>
           )}
 
-          {isRegisterMode && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                {isAr ? 'الاسم الكريم *' : 'Your Name *'}
-              </label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={isAr ? 'مثال: عبد الله السعيد' : 'e.g. John Smith'}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b385e]"
-              />
-            </div>
-          )}
-
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {isAr ? 'البريد الإلكتروني أو رقم الهاتف *' : 'Email or Phone Number *'}
+              {isAr ? 'البريد الإلكتروني *' : 'Email Address *'}
             </label>
             <input
-              type="text"
+              type="email"
               required
-              value={emailOrPhone}
-              onChange={(e) => setEmailOrPhone(e.target.value)}
-              placeholder={isAr ? 'user@example.com أو 05xxxxxxxx' : 'user@example.com'}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
               className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-[#0b385e]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              {isAr ? 'كلمة المرور' : 'Password'}
+              {isAr ? 'كلمة المرور *' : 'Password *'}
             </label>
             <input
               type="password"
+              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
@@ -164,7 +143,7 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
             {isRegisterMode ? (
               <>
                 <UserPlus className="w-4 h-4" />
-                <span>{isAr ? 'تسجيل مجاني فوري (بدون أي رسوم)' : 'Instant Free Registration (No Fees)'}</span>
+                <span>{isAr ? 'حفظ السيرة ومتابعة التعديل لاحقاً' : 'Save Resume & Edit Later'}</span>
               </>
             ) : (
               <>
@@ -184,8 +163,8 @@ export const CvAuthModal: React.FC<CvAuthModalProps> = ({
               className="text-xs text-[#0b385e] hover:underline font-semibold cursor-pointer"
             >
               {isRegisterMode
-                ? (isAr ? 'لديك حساب بالفعل؟ تسجيل الدخول' : 'Already have an account? Sign In')
-                : (isAr ? 'مستخدم جديد؟ إنشاء حساب مجاناً' : 'New user? Create free account')}
+                ? (isAr ? 'لديك حساب سابق؟ تسجيل الدخول' : 'Already have an account? Sign In')
+                : (isAr ? 'حفظ بريد جديد؟ تسجيل' : 'Save new email? Register')}
             </button>
           </div>
         </form>

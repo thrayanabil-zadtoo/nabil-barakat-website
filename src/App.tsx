@@ -22,6 +22,7 @@ import { UniversalCommentModal } from './components/UniversalCommentModal';
 import { SupervisorLoginModal } from './components/SupervisorLoginModal';
 import { Toast } from './components/Toast';
 import { UploadProgressModal } from './components/UploadProgressModal';
+import { ExitIntentModal } from './components/ExitIntentModal';
 import { PoeticMarquee } from './components/PoeticMarquee';
 import { HeaderAnnouncementBanner } from './components/HeaderAnnouncementBanner';
 import { ReadingResumeBanner } from './components/ReadingResumeBanner';
@@ -34,6 +35,7 @@ import { PhotosSection } from './components/PhotosSection';
 import { CvMakerPlatform } from './components/cv/CvMakerPlatform';
 import { CvPublicViewer } from './components/cv/CvPublicViewer';
 import { getPublicCvRecord, createDefaultCv } from './utils/cvStorage';
+import { AldiwanVerifiedIcon } from './components/AldiwanVerifiedBadge';
 
 const MainContent: React.FC = () => {
   const {
@@ -127,9 +129,14 @@ const MainContent: React.FC = () => {
       {/* Top Notification / Supervisor Quick Status Bar */}
       <div className="bg-[#07243c] border-b border-[#051c2f] px-4 py-1.5 text-[11px] text-[#cbe0f0]">
         <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ShieldCheck className="w-3.5 h-3.5 text-[#dfa85b]" />
             <span>الموقع الرسمي للكاتب أ. نبيل بركات · عضو الجمعية المصرية لكتاب القصة والرواية</span>
+            <span className="hidden sm:inline text-sky-400">·</span>
+            <span className="inline-flex items-center gap-1 text-[#f5cd72] font-semibold">
+              <span>شاعر معتمد في الدِّيْـوَانِ</span>
+              <AldiwanVerifiedIcon size={13} />
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -251,6 +258,9 @@ const MainContent: React.FC = () => {
 
       {/* Cloud Upload Visual Progress Indicator */}
       <UploadProgressModal />
+
+      {/* Exit Intent Modal (أضفنا للمفضلة وتثبيت الموقع) */}
+      <ExitIntentModal />
 
       {/* Resume Reading Active Book Modal */}
       {activeResumeBook && (

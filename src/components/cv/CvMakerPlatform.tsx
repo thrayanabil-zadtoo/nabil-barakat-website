@@ -46,6 +46,7 @@ import {
   FileCheck,
   ChevronRight,
   QrCode,
+  Save,
 } from 'lucide-react';
 
 export const CvMakerPlatform: React.FC = () => {
@@ -86,7 +87,7 @@ export const CvMakerPlatform: React.FC = () => {
   }, [cv]);
 
   const isAr = cv.lang === 'ar';
-  const isProUser = Boolean(userAccount?.isPro);
+  const isProUser = true; // Fully 100% free for all visitors without registration
 
   const handleLanguageChange = (newLang: CvLanguage) => {
     setCv((prev) => ({
@@ -107,11 +108,6 @@ export const CvMakerPlatform: React.FC = () => {
   };
 
   const handleTemplateSelect = (templateId: CvTemplateId) => {
-    const isProTemplate = templateId === 'corporate' || templateId === 'creative' || templateId === 'academic';
-    if (isProTemplate && !isProUser) {
-      setIsAuthModalOpen(true);
-      return;
-    }
     setCv((prev) => ({ ...prev, templateId }));
     setCurrentView('builder');
     setActiveTab('editor');
@@ -981,6 +977,48 @@ export const CvMakerPlatform: React.FC = () => {
 
               {/* Quick Actions */}
               <div className="flex items-center gap-2 text-xs">
+                {userAccount ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200 font-medium hidden sm:inline">
+                      ✓ حساب نشط: {userAccount.emailOrPhone || userAccount.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveCvToDevice(cv);
+                        showToast(isAr ? 'تم حفظ التعديلات على حسابك بنجاح' : 'Changes saved to your account');
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-bold shadow-xs"
+                      title="حفظ التعديلات الآن"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>حفظ التعديلات</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logoutCvUser();
+                        setUserAccount(null);
+                        showToast(isAr ? 'تم تسجيل الخروج بنجاح' : 'Logged out');
+                      }}
+                      className="text-slate-400 hover:text-red-500 px-1 py-1 text-[11px] cursor-pointer"
+                      title="تسجيل الخروج"
+                    >
+                      خروج
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="bg-gradient-to-r from-[#07243c] to-[#0b385e] hover:from-[#0b385e] hover:to-[#07243c] text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer font-bold shadow-xs border border-[#dfa85b]/40 text-xs"
+                    title="سجّل بريدك وكلمة المرور فقط لحفظ السيرة والتعديل لاحقاً من أي مكان"
+                  >
+                    <Save className="w-3.5 h-3.5 text-[#dfa85b]" />
+                    <span>حفظ للتعديل لاحقاً 💾</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleResetCv}
