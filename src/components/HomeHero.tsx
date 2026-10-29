@@ -217,7 +217,7 @@ export const HomeHero: React.FC = () => {
 
               {/* شاعر معتمد في الدِّيوَان مع علامة النجمة الزرقاء الموثقة بالحركات كما بالصورة */}
               <div className="flex items-center justify-center lg:justify-start pt-0.5">
-                <AldiwanCertifiedBadge size="lg" variant="badge" />
+                <AldiwanCertifiedBadge size="lg" variant="badge" theme="dark" />
               </div>
 
               <p className="text-sm sm:text-base lg:text-lg font-medium text-white/95 drop-shadow">

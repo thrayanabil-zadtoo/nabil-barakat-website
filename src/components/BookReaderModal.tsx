@@ -907,7 +907,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                           عضو الجمعية المصرية لكتاب القصة والرواية
                         </p>
                         <div className="mt-1">
-                          <AldiwanCertifiedBadge size="sm" variant="badge" />
+                          <AldiwanCertifiedBadge size="sm" variant="badge" theme="light" />
                         </div>
                         <p className="text-[10px] text-slate-500 font-medium mt-0.5">
                           روائي وشاعر
@@ -1023,7 +1023,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                   <span>·</span>
                   <span className="text-[#f5cd72]">عضو الجمعية المصرية لكتاب القصة والرواية</span>
                   <span>·</span>
-                  <AldiwanCertifiedBadge size="sm" variant="gold" />
+                  <AldiwanCertifiedBadge size="sm" variant="gold" theme="dark" />
                   {activeBook.publicationYear && (
                     <>
                       <span>·</span>

@@ -114,7 +114,7 @@ export const AuthorLicensesSection: React.FC = () => {
                   </span>
                 </div>
                 <div className="pr-7 pt-1">
-                  <AldiwanCertifiedBadge size="sm" variant="badge" />
+                  <AldiwanCertifiedBadge size="sm" variant="badge" theme="dark" />
                 </div>
               </div>
             </div>

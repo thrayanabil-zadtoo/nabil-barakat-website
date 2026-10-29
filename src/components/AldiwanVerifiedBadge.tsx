@@ -44,15 +44,18 @@ export const AldiwanVerifiedIcon: React.FC<AldiwanBadgeIconProps> = ({
 interface AldiwanTagProps {
   size?: 'sm' | 'md' | 'lg';
   variant?: 'gold' | 'badge' | 'subtle';
+  theme?: 'light' | 'dark' | 'auto';
   className?: string;
 }
 
 /**
- * شارة: «شاعر معتمد في الدِّيوَان» مع علامة النجمة الزرقاء الموثقة
+ * شارة: «شاعر معتمد في الدِّيْـوَانِ» مع علامة النجمة الزرقاء الموثقة
+ * تدعم التباين العالي سواء على الخلفيات الفاتحة أو الداكنة
  */
 export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
   size = 'md',
   variant = 'badge',
+  theme = 'light',
   className = '',
 }) => {
   const iconSize = size === 'sm' ? 15 : size === 'lg' ? 22 : 18;
@@ -63,14 +66,29 @@ export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
       ? 'text-base sm:text-lg'
       : 'text-sm sm:text-base';
 
+  const isDark = theme === 'dark';
+
   if (variant === 'badge') {
     return (
       <div
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-sky-500/15 via-[#1D9BF0]/20 to-sky-500/15 border border-[#1D9BF0]/40 text-sky-200 font-bold ${textSize} shadow-xs backdrop-blur-xs select-none ${className}`}
-        title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيوَان"
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full select-none font-bold ${textSize} transition-colors ${
+          isDark
+            ? 'bg-gradient-to-r from-sky-500/20 via-[#1D9BF0]/25 to-sky-500/20 border border-[#1D9BF0]/50 text-sky-200 shadow-xs backdrop-blur-xs'
+            : 'bg-gradient-to-r from-sky-50 via-sky-100/70 to-blue-50 border border-[#1D9BF0]/50 text-[#0369a1] shadow-2xs'
+        } ${className}`}
+        title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
       >
-        <span>شاعر معتمد في <strong className="text-white font-extrabold font-literary">الدِّيْـوَانِ</strong></span>
         <AldiwanVerifiedIcon size={iconSize} />
+        <span>
+          شاعر معتمد في{' '}
+          <strong
+            className={`font-black font-literary ${
+              isDark ? 'text-white' : 'text-[#07243c]'
+            }`}
+          >
+            الدِّيْـوَانِ
+          </strong>
+        </span>
       </div>
     );
   }
@@ -78,22 +96,48 @@ export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
   if (variant === 'gold') {
     return (
       <div
-        className={`inline-flex items-center gap-1.5 text-[#f5cd72] font-bold ${textSize} drop-shadow-md select-none ${className}`}
-        title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيوَان"
+        className={`inline-flex items-center gap-1.5 font-bold ${textSize} select-none ${
+          isDark
+            ? 'text-[#f5cd72] drop-shadow-md'
+            : 'text-amber-800'
+        } ${className}`}
+        title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
       >
-        <span>شاعر معتمد في <strong className="text-white font-extrabold font-literary">الدِّيْـوَانِ</strong></span>
         <AldiwanVerifiedIcon size={iconSize} />
+        <span>
+          شاعر معتمد في{' '}
+          <strong
+            className={`font-black font-literary ${
+              isDark ? 'text-white' : 'text-[#07243c]'
+            }`}
+          >
+            الدِّيْـوَانِ
+          </strong>
+        </span>
       </div>
     );
   }
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 text-sky-100 font-semibold ${textSize} select-none ${className}`}
-      title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيوَان"
+      className={`inline-flex items-center gap-1.5 font-semibold ${textSize} select-none ${
+        isDark
+          ? 'text-sky-200'
+          : 'text-[#0369a1]'
+      } ${className}`}
+      title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
     >
-      <span>شاعر معتمد في <strong className="text-white font-bold font-literary">الدِّيْـوَانِ</strong></span>
       <AldiwanVerifiedIcon size={iconSize} />
+      <span>
+        شاعر معتمد في{' '}
+        <strong
+          className={`font-black font-literary ${
+            isDark ? 'text-white' : 'text-[#07243c]'
+          }`}
+        >
+          الدِّيْـوَانِ
+        </strong>
+      </span>
     </div>
   );
 };
