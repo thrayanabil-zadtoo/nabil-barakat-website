@@ -526,6 +526,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const rawSearch = (window.location.search || '').toLowerCase();
 
       if (
+        rawPath.includes('community') ||
+        rawPath.includes('مجتمع') ||
+        rawHash.includes('community') ||
+        rawHash.includes('مجتمع') ||
+        rawSearch.includes('community')
+      ) {
+        return 'community';
+      }
+      if (
         rawPath.includes('license') ||
         rawPath.includes('تراخيص') ||
         rawHash.includes('license') ||
@@ -735,8 +744,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
           }
           if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
-            setAuthorPosts(cloudData.authorPosts);
-            safeSetItem('nabil_author_v4_author_posts', cloudData.authorPosts);
+            setAuthorPosts((prev) => {
+              const cloudList = cloudData.authorPosts || [];
+              const map = new Map<string, AuthorPost>();
+              // Keep local posts first so recently drafted posts are never wiped
+              prev.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+              cloudList.forEach((p: AuthorPost) => {
+                if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
+              });
+              const merged = Array.from(map.values());
+              safeSetItem('nabil_author_v4_author_posts', merged);
+              return merged;
+            });
           }
           setIsCloudSynced(true);
           isCloudHydrated.current = true;
@@ -783,8 +802,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
         }
         if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
-          setAuthorPosts(cloudData.authorPosts);
-          safeSetItem('nabil_author_v4_author_posts', cloudData.authorPosts);
+          setAuthorPosts((prev) => {
+            const cloudList = cloudData.authorPosts || [];
+            const map = new Map<string, AuthorPost>();
+            // Keep local posts first so newly drafted posts are never wiped
+            prev.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+            cloudList.forEach((p: AuthorPost) => {
+              if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
+            });
+            const merged = Array.from(map.values());
+            safeSetItem('nabil_author_v4_author_posts', merged);
+            return merged;
+          });
         }
         if (cloudData.comments && Array.isArray(cloudData.comments)) {
           setComments(cloudData.comments);
@@ -1988,7 +2017,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('تم حذف التعليق');
   };
 
-  // Author Posts (Facebook-style thoughts feed)
+  // Author Posts (مجتمع الكاتب والقصائد الأدبية)
   const addAuthorPost = (postData: Omit<AuthorPost, 'id' | 'date'>) => {
     const newPost: AuthorPost = {
       ...postData,
@@ -2000,17 +2029,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthorPosts((prev) => {
       const next = [newPost, ...prev];
       safeSetItem('nabil_author_v4_author_posts', next);
-      executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة وحفظها سحابياً بنجاح', 'منشور الكاتب');
+      executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة أو القصيدة في قسم المجتمع وحفظها سحابياً', 'منشور المجتمع');
       return next;
     });
-    showToast('تم نشر منشورك الأدبي بنجاح على الصفحة الرئيسية!');
+    showToast('✓ تم نشر النص في قسم المجتمع بنجاح وحفظه سحابياً!');
   };
 
   const updateAuthorPost = (id: string, updated: Partial<AuthorPost>) => {
     setAuthorPosts((prev) => {
       const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
       safeSetItem('nabil_author_v4_author_posts', next);
-      executeCloudSave({ authorPosts: next }, 'تم تحديث المنشور سحابياً', 'تعديل المنشور');
+      executeCloudSave({ authorPosts: next }, 'تم تحديث المنشور في قسم المجتمع سحابياً', 'تعديل منشور المجتمع');
       return next;
     });
     showToast('تم تحديث المنشور بنجاح');

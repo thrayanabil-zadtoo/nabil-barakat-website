@@ -133,7 +133,7 @@ export interface VisitorComment {
 export interface AuthorPost {
   id: string;
   content: string;
-  bgColor?: string; // Pre-selected gradient background for Facebook-style card (e.g. 'navy', 'amber', 'purple', 'emerald', 'crimson', 'none')
+  bgColor?: string; // Pre-selected gradient background for Facebook-style card (e.g. 'red', 'crimson', 'ruby', 'navy', 'amber', 'purple', 'emerald', 'midnight', 'none')
   imageUrl?: string;
   linkUrl?: string;
   linkText?: string;
@@ -141,6 +141,8 @@ export interface AuthorPost {
   likesCount?: number;
   isLiked?: boolean;
   isPinned?: boolean;
+  category?: 'قصيدة' | 'خاطرة' | 'مقال' | 'حكمة' | 'عام' | string;
+  title?: string;
 }
 
 export interface AuthorProfile {

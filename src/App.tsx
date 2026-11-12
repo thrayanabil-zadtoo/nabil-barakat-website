@@ -9,6 +9,7 @@ import { MusicProvider } from './context/MusicContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { HomeHero } from './components/HomeHero';
+import { CommunitySection } from './components/CommunitySection';
 import { BooksSection } from './components/BooksSection';
 import { AuthorLicensesSection } from './components/AuthorLicensesSection';
 import { VideosSection } from './components/VideosSection';
@@ -36,6 +37,7 @@ import { CvMakerPlatform } from './components/cv/CvMakerPlatform';
 import { CvPublicViewer } from './components/cv/CvPublicViewer';
 import { getPublicCvRecord, createDefaultCv } from './utils/cvStorage';
 import { AldiwanVerifiedIcon } from './components/AldiwanVerifiedBadge';
+import { DesktopRightSidebar, DesktopLeftSidebar } from './components/DesktopCompanionSidebars';
 
 const MainContent: React.FC = () => {
   const {
@@ -225,15 +227,31 @@ const MainContent: React.FC = () => {
         {activeSection === 'home' ? (
           <HomeHero />
         ) : (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-6 space-y-6">
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 w-full py-6 space-y-6">
             <HeaderAnnouncementBanner />
-            {activeSection === 'books' && <BooksSection />}
-            {activeSection === 'licenses' && <AuthorLicensesSection />}
-            {activeSection === 'videos' && <VideosSection />}
-            {activeSection === 'photos' && <PhotosSection />}
-            {activeSection === 'news' && <NewsSection />}
-            {activeSection === 'links' && <LinksSection />}
-            {activeSection === 'contact' && <ContactAndGuestbookSection />}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              {/* Right Column for Desktop (للكمبيوتر فقط وليس للموبايل) */}
+              <aside className="hidden lg:block lg:col-span-3 space-y-4">
+                <DesktopRightSidebar />
+              </aside>
+
+              {/* Middle Section Content (القسم النشط بالمنتصف) */}
+              <div className="w-full lg:col-span-6 min-w-0 space-y-6">
+                {activeSection === 'community' && <CommunitySection />}
+                {activeSection === 'books' && <BooksSection />}
+                {activeSection === 'licenses' && <AuthorLicensesSection />}
+                {activeSection === 'videos' && <VideosSection />}
+                {activeSection === 'photos' && <PhotosSection />}
+                {activeSection === 'news' && <NewsSection />}
+                {activeSection === 'links' && <LinksSection />}
+                {activeSection === 'contact' && <ContactAndGuestbookSection />}
+              </div>
+
+              {/* Left Column for Desktop (للكمبيوتر فقط وليس للموبايل) */}
+              <aside className="hidden lg:block lg:col-span-3 space-y-4">
+                <DesktopLeftSidebar />
+              </aside>
+            </div>
           </div>
         )}
       </main>

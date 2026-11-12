@@ -73,17 +73,17 @@ export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
       <div
         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full select-none font-bold ${textSize} transition-colors ${
           isDark
-            ? 'bg-gradient-to-r from-sky-500/20 via-[#1D9BF0]/25 to-sky-500/20 border border-[#1D9BF0]/50 text-sky-200 shadow-xs backdrop-blur-xs'
-            : 'bg-gradient-to-r from-sky-50 via-sky-100/70 to-blue-50 border border-[#1D9BF0]/50 text-[#0369a1] shadow-2xs'
+            ? 'bg-sky-950/80 border border-sky-400 text-sky-100 shadow-sm'
+            : 'bg-sky-100/90 border-2 border-[#0284c7]/50 text-[#072c49] shadow-xs'
         } ${className}`}
         title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
       >
         <AldiwanVerifiedIcon size={iconSize} />
-        <span>
+        <span className={isDark ? 'text-white font-bold' : 'text-[#072c49] font-extrabold'}>
           شاعر معتمد في{' '}
           <strong
             className={`font-black font-literary ${
-              isDark ? 'text-white' : 'text-[#07243c]'
+              isDark ? 'text-amber-300' : 'text-[#03446a]'
             }`}
           >
             الدِّيْـوَانِ
@@ -99,16 +99,16 @@ export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
         className={`inline-flex items-center gap-1.5 font-bold ${textSize} select-none ${
           isDark
             ? 'text-[#f5cd72] drop-shadow-md'
-            : 'text-amber-800'
+            : 'text-amber-900 font-extrabold'
         } ${className}`}
         title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
       >
         <AldiwanVerifiedIcon size={iconSize} />
-        <span>
+        <span className={isDark ? 'text-amber-200' : 'text-[#072c49] font-extrabold'}>
           شاعر معتمد في{' '}
           <strong
             className={`font-black font-literary ${
-              isDark ? 'text-white' : 'text-[#07243c]'
+              isDark ? 'text-white' : 'text-[#03446a]'
             }`}
           >
             الدِّيْـوَانِ
@@ -120,19 +120,19 @@ export const AldiwanCertifiedBadge: React.FC<AldiwanTagProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 font-semibold ${textSize} select-none ${
+      className={`inline-flex items-center gap-1.5 font-bold ${textSize} select-none ${
         isDark
-          ? 'text-sky-200'
-          : 'text-[#0369a1]'
+          ? 'text-sky-100'
+          : 'text-[#072c49]'
       } ${className}`}
       title="عضوية شاعر موثّق · أنت شاعر معتمد في الدِّيْـوَانِ"
     >
       <AldiwanVerifiedIcon size={iconSize} />
-      <span>
+      <span className={isDark ? 'text-sky-100' : 'text-[#072c49] font-extrabold'}>
         شاعر معتمد في{' '}
         <strong
           className={`font-black font-literary ${
-            isDark ? 'text-white' : 'text-[#07243c]'
+            isDark ? 'text-white' : 'text-[#03446a]'
           }`}
         >
           الدِّيْـوَانِ

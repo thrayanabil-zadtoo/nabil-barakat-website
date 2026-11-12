@@ -302,6 +302,27 @@ export function subscribeToCloudSiteData(
   );
   unsubs.push(postsUnsub);
 
+  // 10b. Listen to individual community_posts collection for atomic updates
+  const communityPostsCol = collection(db, 'community_posts');
+  const communityPostsUnsub = onSnapshot(
+    communityPostsCol,
+    (snapshot) => {
+      if (!snapshot.empty) {
+        const loaded: any[] = [];
+        snapshot.forEach((d) => {
+          if (d.id && !d.id.includes('test')) {
+            loaded.push(d.data());
+          }
+        });
+        if (loaded.length > 0) {
+          onUpdate({ authorPosts: loaded, _isSeeded: true }, 'community_posts');
+        }
+      }
+    },
+    (err) => console.warn('[Firestore] Community posts collection sync notice:', err.message)
+  );
+  unsubs.push(communityPostsUnsub);
+
   return () => {
     unsubs.forEach((unsub) => unsub());
   };
@@ -315,8 +336,8 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   let foundAny = false;
 
   try {
-    // 1. First read modular documents and individual books collection (guaranteed fresh and not subject to 1MB size limit)
-    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap, postsSnap] = await Promise.all([
+    // 1. First read modular documents and individual books and community_posts collections
+    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap, postsSnap, communityColSnap] = await Promise.all([
       getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
       getDocs(collection(db, 'books')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
@@ -326,6 +347,7 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       getDoc(doc(db, COLLECTION_NAME, 'links')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'author_posts')).catch(() => null),
+      getDocs(collection(db, 'community_posts')).catch(() => null),
     ]);
 
     // Build books map from individual documents (authoritative single-doc source)
@@ -409,12 +431,33 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       }
     }
 
+    const loadedCommunityPostsMap = new Map<string, any>();
+    if (communityColSnap && !communityColSnap.empty) {
+      communityColSnap.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          loadedCommunityPostsMap.set(d.id, d.data());
+        }
+      });
+    }
+
     if (postsSnap && postsSnap.exists()) {
       const data = postsSnap.data();
       if (data?.authorPosts && Array.isArray(data.authorPosts)) {
-        result.authorPosts = data.authorPosts;
+        const mergedPosts = [...data.authorPosts];
+        loadedCommunityPostsMap.forEach((colPost, colId) => {
+          const existingIdx = mergedPosts.findIndex((p: any) => p.id === colId);
+          if (existingIdx >= 0) {
+            mergedPosts[existingIdx] = { ...mergedPosts[existingIdx], ...colPost };
+          } else {
+            mergedPosts.unshift(colPost);
+          }
+        });
+        result.authorPosts = mergedPosts;
         foundAny = true;
       }
+    } else if (loadedCommunityPostsMap.size > 0) {
+      result.authorPosts = Array.from(loadedCommunityPostsMap.values());
+      foundAny = true;
     }
 
     // 2. Fallback to main aggregate doc if modular docs didn't populate all fields
@@ -623,6 +666,18 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       }
 
       if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
+        // 1. Save each post individually to community_posts collection for atomic persistence
+        sanitized.authorPosts.forEach((post: any) => {
+          if (post.id) {
+            savePromises.push(
+              setDoc(doc(db, 'community_posts', post.id), { ...post, updatedAt: nowIso }, { merge: true }).catch((err) =>
+                console.warn(`[Firestore] Community post doc ${post.id} notice:`, err?.message)
+              )
+            );
+          }
+        });
+
+        // 2. Save to aggregate modular author_posts document
         const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
         savePromises.push(
           setDoc(postsDocRef, { authorPosts: sanitized.authorPosts, updatedAt: nowIso }, { merge: true }).catch((err) =>

@@ -75,12 +75,36 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["updatedAt"]
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "Poems, thoughts, and literary community posts by the author",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "content": { "type": "string" },
+        "title": { "type": "string" },
+        "bgColor": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "linkUrl": { "type": "string" },
+        "linkText": { "type": "string" },
+        "date": { "type": "string" },
+        "likesCount": { "type": "number" },
+        "isPinned": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "content"]
     }
   },
   "firestore": {
     "/site_content/{contentId}": {
       "schema": "SiteContent",
       "description": "Full synchronized website content and updates"
+    },
+    "/community_posts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Individual community posts and poems collection"
     },
     "/books/{bookId}": {
       "schema": "Book",

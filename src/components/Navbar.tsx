@@ -17,6 +17,7 @@ import {
   FileText,
   Sparkles,
   RotateCw,
+  Users,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -39,6 +40,7 @@ export const Navbar: React.FC = () => {
 
   const navItems = [
     { id: 'home', label: 'الرئيسية', icon: Home },
+    { id: 'community', label: 'المجتمع', icon: Users },
     { id: 'books', label: 'المؤلفات', icon: BookOpen },
     { id: 'licenses', label: 'تراخيص المؤلف', icon: ShieldCheck },
     { id: 'videos', label: 'فيديو يجسد الروايات', icon: Video },

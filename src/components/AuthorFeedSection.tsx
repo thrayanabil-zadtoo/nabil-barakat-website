@@ -19,17 +19,9 @@ import {
   Pin,
   ExternalLink,
   ShieldCheck,
+  Users,
 } from 'lucide-react';
-
-const COLOR_PRESETS: { id: string; label: string; class: string; preview: string }[] = [
-  { id: 'none', label: 'بدون لون (أبيض)', class: 'bg-white text-slate-800', preview: 'bg-white border-2 border-slate-300' },
-  { id: 'navy', label: 'أزرق ملكي كحلي', class: 'bg-gradient-to-br from-[#07243c] via-[#0b385e] to-[#0d4573] text-white', preview: 'bg-[#0b385e]' },
-  { id: 'amber', label: 'عنبر أدبي مذهب', class: 'bg-gradient-to-br from-[#78350f] via-[#b45309] to-[#dfa85b] text-white', preview: 'bg-[#b45309]' },
-  { id: 'crimson', label: 'قرمزي كلاسيكي', class: 'bg-gradient-to-br from-[#4c0519] via-[#881337] to-[#be123c] text-white', preview: 'bg-[#881337]' },
-  { id: 'emerald', label: 'زمردي عميق', class: 'bg-gradient-to-br from-[#022c22] via-[#064e3b] to-[#047857] text-white', preview: 'bg-[#064e3b]' },
-  { id: 'purple', label: 'بنفسجي شاعري', class: 'bg-gradient-to-br from-[#2e1065] via-[#4c1d95] to-[#7c3aed] text-white', preview: 'bg-[#4c1d95]' },
-  { id: 'midnight', label: 'ليلي فاحم', class: 'bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#1e293b] text-white', preview: 'bg-[#0f172a]' },
-];
+import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset } from '../utils/communityPostColors';
 
 export const AuthorFeedSection: React.FC = () => {
   const {
@@ -47,6 +39,7 @@ export const AuthorFeedSection: React.FC = () => {
     openShareModal,
     processAndUploadImage,
     showToast,
+    setActiveSection,
   } = useApp();
 
   // Post composer state
@@ -142,10 +135,38 @@ export const AuthorFeedSection: React.FC = () => {
     }, 8000);
   };
 
-  const selectedPresetObj = COLOR_PRESETS.find((c) => c.id === selectedBg) || COLOR_PRESETS[0];
+  const selectedPresetObj = getCommunityColorPreset(selectedBg);
 
   return (
     <div className="space-y-4" dir="rtl">
+      {/* Quick Community Section Gateway */}
+      <div className="bg-gradient-to-r from-red-50 via-amber-50 to-sky-50 rounded-2xl border border-red-200/70 p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-xs sm:text-sm text-[#07243c]">
+              قسم المجتمع الأدبي والقصائد
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              جميع ما يُكتب في هذا الصندوق يندرج ويحفظ تحت قسم المجتمع
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveSection('community');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1 shadow-xs cursor-pointer shrink-0"
+        >
+          <span>تصفح المجتمع الكامل</span>
+          <span>←</span>
+        </button>
+      </div>
+
       {/* 1. Facebook-Style Composer (ONLY FOR SUPERVISOR) */}
       {isAuthorMode ? (
         <div className="bg-white rounded-2xl border border-[#d6e0ea] shadow-sm p-4 space-y-3">
@@ -159,12 +180,12 @@ export const AuthorFeedSection: React.FC = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className="font-bold text-[#0b385e] text-sm">أ. نبيل بركات</h4>
-                <span className="text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                  لوحة نشر الخواطر والمنشورات ✍️
+                <span className="text-[10px] font-bold text-red-900 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                  قسم المجتمع الأدبي ✍️
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 truncate">
-                انشر ما يخطر ببالك ليظهر فوراً في منتصف الصفحة الرئيسية للزوار
+                انشر ما يخطر ببالك ليظهر فوراً في قسم المجتمع وفي الصفحة الرئيسية
               </p>
             </div>
           </div>
@@ -244,17 +265,17 @@ export const AuthorFeedSection: React.FC = () => {
               </div>
             )}
 
-            {/* Facebook-like Color Swatches */}
+            {/* Facebook-like Color Swatches (Including RED) */}
             <div className="space-y-1.5 pt-1">
-              <span className="text-[11px] font-bold text-slate-600">اختر لون أو بطاقة مسبقة لخاطرتك:</span>
+              <span className="text-[11px] font-bold text-slate-600">اختر لون أو بطاقة مسبقة لخاطرتك أو قصيدتك (خاصة الأحمر):</span>
               <div className="flex items-center gap-2 flex-wrap">
-                {COLOR_PRESETS.map((preset) => (
+                {COMMUNITY_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
                     type="button"
                     onClick={() => setSelectedBg(preset.id)}
                     className={`w-7 h-7 rounded-lg ${preset.preview} transition transform cursor-pointer ${
-                      selectedBg === preset.id ? 'ring-2 ring-offset-2 ring-[#0b385e] scale-110 shadow-sm' : 'opacity-80 hover:opacity-100 hover:scale-105'
+                      selectedBg === preset.id ? 'ring-2 ring-offset-2 ring-red-600 scale-110 shadow-sm' : 'opacity-80 hover:opacity-100 hover:scale-105'
                     }`}
                     title={preset.label}
                   />
@@ -328,7 +349,7 @@ export const AuthorFeedSection: React.FC = () => {
       {/* 2. FEED OF AUTHOR POSTS */}
       <div className="space-y-4">
         {authorPosts.map((post) => {
-          const presetObj = COLOR_PRESETS.find((c) => c.id === post.bgColor) || COLOR_PRESETS[0];
+          const presetObj = getCommunityColorPreset(post.bgColor);
           const isColorCard = post.bgColor && post.bgColor !== 'none';
           const postComments = comments.filter((c) => c.targetType === 'post' && c.targetId === post.id);
           const approvedComments = postComments.filter((c) => c.isApproved);
@@ -641,15 +662,16 @@ export const AuthorFeedSection: React.FC = () => {
 
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-slate-600">اللون المسبق:</span>
-              <div className="flex items-center gap-1.5">
-                {COLOR_PRESETS.map((preset) => (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {COMMUNITY_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
                     type="button"
                     onClick={() => setEditingPost({ ...editingPost, bgColor: preset.id })}
                     className={`w-6 h-6 rounded-md ${preset.preview} ${
-                      editingPost.bgColor === preset.id ? 'ring-2 ring-[#0b385e]' : 'opacity-70'
+                      editingPost.bgColor === preset.id ? 'ring-2 ring-red-600 scale-105' : 'opacity-70'
                     }`}
+                    title={preset.label}
                   />
                 ))}
               </div>
