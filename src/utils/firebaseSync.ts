@@ -1,5 +1,6 @@
-import { doc, getDoc, setDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { sortCommunityPostsNewestFirst } from './communityPostColors';
 import {
   AuthorProfile,
   Book,
@@ -294,7 +295,7 @@ export function subscribeToCloudSiteData(
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data?.authorPosts && Array.isArray(data.authorPosts)) {
-          onUpdate({ authorPosts: data.authorPosts, _isSeeded: true }, 'author_posts');
+          onUpdate({ authorPosts: sortCommunityPostsNewestFirst(data.authorPosts), _isSeeded: true }, 'author_posts');
         }
       }
     },
@@ -315,7 +316,7 @@ export function subscribeToCloudSiteData(
           }
         });
         if (loaded.length > 0) {
-          onUpdate({ authorPosts: loaded, _isSeeded: true }, 'community_posts');
+          onUpdate({ authorPosts: sortCommunityPostsNewestFirst(loaded), _isSeeded: true }, 'community_posts');
         }
       }
     },
@@ -452,11 +453,11 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
             mergedPosts.unshift(colPost);
           }
         });
-        result.authorPosts = mergedPosts;
+        result.authorPosts = sortCommunityPostsNewestFirst(mergedPosts);
         foundAny = true;
       }
     } else if (loadedCommunityPostsMap.size > 0) {
-      result.authorPosts = Array.from(loadedCommunityPostsMap.values());
+      result.authorPosts = sortCommunityPostsNewestFirst(Array.from(loadedCommunityPostsMap.values()));
       foundAny = true;
     }
 
@@ -666,8 +667,11 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       }
 
       if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
+        const sortedPosts = sortCommunityPostsNewestFirst(sanitized.authorPosts);
+        sanitized.authorPosts = sortedPosts;
+
         // 1. Save each post individually to community_posts collection for atomic persistence
-        sanitized.authorPosts.forEach((post: any) => {
+        sortedPosts.forEach((post: any) => {
           if (post.id) {
             savePromises.push(
               setDoc(doc(db, 'community_posts', post.id), { ...post, updatedAt: nowIso }, { merge: true }).catch((err) =>
@@ -680,7 +684,7 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
         // 2. Save to aggregate modular author_posts document
         const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
         savePromises.push(
-          setDoc(postsDocRef, { authorPosts: sanitized.authorPosts, updatedAt: nowIso }, { merge: true }).catch((err) =>
+          setDoc(postsDocRef, { authorPosts: sortedPosts, updatedAt: nowIso }, { merge: true }).catch((err) =>
             console.warn('[Firestore] Author posts save notice:', err?.message)
           )
         );
@@ -741,4 +745,16 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       resolve(ok);
     }, 150);
   });
+}
+
+/**
+ * Deletes an individual post document from the community_posts collection in Firestore.
+ */
+export async function deleteCommunityPostFromCloud(postId: string): Promise<void> {
+  if (!postId) return;
+  try {
+    await deleteDoc(doc(db, 'community_posts', postId));
+  } catch (err: any) {
+    console.warn(`[Firestore] Failed to delete community_posts/${postId}:`, err?.message);
+  }
 }

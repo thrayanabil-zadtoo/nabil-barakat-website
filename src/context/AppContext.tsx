@@ -31,7 +31,14 @@ import { uploadImageToCloud } from '../utils/cloudStorageHelper';
 import { uploadVideoToServer } from '../utils/videoUploadHelper';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { parseVideoUrl } from '../utils/videoUtils';
-import { subscribeToCloudSiteData, saveSiteDataToCloud, fetchCloudSiteData, SyncedSiteData } from '../utils/firebaseSync';
+import {
+  subscribeToCloudSiteData,
+  saveSiteDataToCloud,
+  fetchCloudSiteData,
+  deleteCommunityPostFromCloud,
+  SyncedSiteData,
+} from '../utils/firebaseSync';
+import { sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
 
 interface AppContextType {
   authorProfile: AuthorProfile;
@@ -512,7 +519,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState<boolean>(false);
   const [authorPosts, setAuthorPosts] = useState<AuthorPost[]>(() =>
-    loadState('author_posts', initialAuthorPosts)
+    sortCommunityPostsNewestFirst(loadState('author_posts', initialAuthorPosts))
   );
 
   const getInitialSection = (): string => {
@@ -752,7 +759,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               cloudList.forEach((p: AuthorPost) => {
                 if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
               });
-              const merged = Array.from(map.values());
+              const merged = sortCommunityPostsNewestFirst(Array.from(map.values()));
               safeSetItem('nabil_author_v4_author_posts', merged);
               return merged;
             });
@@ -810,7 +817,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             cloudList.forEach((p: AuthorPost) => {
               if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
             });
-            const merged = Array.from(map.values());
+            const merged = sortCommunityPostsNewestFirst(Array.from(map.values()));
             safeSetItem('nabil_author_v4_author_posts', merged);
             return merged;
           });
@@ -2019,15 +2026,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Author Posts (مجتمع الكاتب والقصائد الأدبية)
   const addAuthorPost = (postData: Omit<AuthorPost, 'id' | 'date'>) => {
+    const nowMs = Date.now();
     const newPost: AuthorPost = {
       ...postData,
-      id: `post-${Date.now()}`,
-      date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
+      id: `post-${nowMs}`,
+      createdAt: nowMs,
+      date: new Date(nowMs).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
       likesCount: 0,
       isLiked: false,
     };
     setAuthorPosts((prev) => {
-      const next = [newPost, ...prev];
+      const next = sortCommunityPostsNewestFirst([newPost, ...prev]);
       safeSetItem('nabil_author_v4_author_posts', next);
       executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة أو القصيدة في قسم المجتمع وحفظها سحابياً', 'منشور المجتمع');
       return next;
@@ -2037,7 +2046,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateAuthorPost = (id: string, updated: Partial<AuthorPost>) => {
     setAuthorPosts((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, ...updated } : p));
+      const next = sortCommunityPostsNewestFirst(prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
       safeSetItem('nabil_author_v4_author_posts', next);
       executeCloudSave({ authorPosts: next }, 'تم تحديث المنشور في قسم المجتمع سحابياً', 'تعديل منشور المجتمع');
       return next;
@@ -2046,8 +2055,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteAuthorPost = (id: string) => {
+    deleteCommunityPostFromCloud(id);
     setAuthorPosts((prev) => {
-      const next = prev.filter((p) => p.id !== id);
+      const next = sortCommunityPostsNewestFirst(prev.filter((p) => p.id !== id));
       safeSetItem('nabil_author_v4_author_posts', next);
       executeCloudSave({ authorPosts: next }, 'تم حذف المنشور وتحديث السحابة', 'حذف المنشور');
       return next;
@@ -2123,7 +2133,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(data.links)) setLinks(data.links);
       if (Array.isArray(data.announcements)) setAnnouncements(data.announcements);
       if (Array.isArray(data.comments)) setComments(data.comments);
-      if (Array.isArray(data.authorPosts)) setAuthorPosts(data.authorPosts);
+      if (Array.isArray(data.authorPosts)) setAuthorPosts(sortCommunityPostsNewestFirst(data.authorPosts));
 
       showToast('تم استيراد كافة البيانات والأغلفة بنجاح وتحديث الموقع على هذا الجهاز!');
       return true;

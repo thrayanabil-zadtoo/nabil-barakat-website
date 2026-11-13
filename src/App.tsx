@@ -23,7 +23,7 @@ import { UniversalCommentModal } from './components/UniversalCommentModal';
 import { SupervisorLoginModal } from './components/SupervisorLoginModal';
 import { Toast } from './components/Toast';
 import { UploadProgressModal } from './components/UploadProgressModal';
-import { ExitIntentModal } from './components/ExitIntentModal';
+import { InstallAppBanner } from './components/InstallAppBanner';
 import { PoeticMarquee } from './components/PoeticMarquee';
 import { HeaderAnnouncementBanner } from './components/HeaderAnnouncementBanner';
 import { ReadingResumeBanner } from './components/ReadingResumeBanner';
@@ -109,6 +109,7 @@ const MainContent: React.FC = () => {
             setActiveSection('home');
           }}
         />
+        <InstallAppBanner />
         <Footer />
       </div>
     );
@@ -120,6 +121,7 @@ const MainContent: React.FC = () => {
       <div className="min-h-screen flex flex-col bg-[#f1f5f9]">
         <CvMakerPlatform />
         <Toast />
+        <InstallAppBanner />
         <Footer />
       </div>
     );
@@ -277,8 +279,8 @@ const MainContent: React.FC = () => {
       {/* Cloud Upload Visual Progress Indicator */}
       <UploadProgressModal />
 
-      {/* Exit Intent Modal (أضفنا للمفضلة وتثبيت الموقع) */}
-      <ExitIntentModal />
+      {/* On-demand PWA Install Dialog (triggered from menu/footer, never permanent at bottom) */}
+      <InstallAppBanner />
 
       {/* Resume Reading Active Book Modal */}
       {activeResumeBook && (

@@ -1,0 +1,216 @@
+لتفعيل ميزة «تثبيت التطبيق على الشاشة والعمل بدون إنترنت (PWA)» في أي موقع آخر، تحتاج إلى 3 عناصر أساسية فقط:
+1️⃣ كود المكون في React: InstallAppBanner.tsx
+انسخ هذا الملف وضعه في مشروعك، ويمكنك تغيير اسم التطبيق والنصوص كما تشاء:
+Tsx
+import React, { useState, useEffect } from 'react';
+import { Download, X, Smartphone, Share, PlusSquare } from 'lucide-react';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+export const InstallAppBanner: React.FC = () => {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showBanner, setShowBanner] = useState<boolean>(false);
+  const [isIOS, setIsIOS] = useState<boolean>(false);
+  const [showIOSGuide, setShowIOSGuide] = useState<boolean>(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
+
+  useEffect(() => {
+    // التحقق مما إذا كان الموقع مثبتاً بالفعل على الجهاز
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    if (isStandalone) {
+      setIsInstalled(true);
+      return;
+    }
+
+    // عدم إزعاج المستخدم إذا أغلق الإشعار مؤخراً (خلال 3 أيام)
+    const dismissed = localStorage.getItem('my_app_pwa_dismissed');
+    if (dismissed && Date.now() - parseInt(dismissed, 10) < 86400000 * 3) {
+      return;
+    }
+
+    // اكتشاف أجهزة آيفون / آيباد (iOS)
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
+    setIsIOS(isIOSDevice);
+
+    // استقبال حدث التثبيت في متصفحات أندرويد وكروم
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setShowBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+    // إذا كان آيفون ولم يثبت التطبيق بعد، نظهر الشعار بعد 3 ثوانٍ
+    if (isIOSDevice && !isStandalone) {
+      const timer = setTimeout(() => setShowBanner(true), 3000);
+      return () => clearTimeout(timer);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (isIOS) {
+      setShowIOSGuide(true);
+      return;
+    }
+
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      setIsInstalled(true);
+      setShowBanner(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  const handleDismiss = () => {
+    setShowBanner(false);
+    setShowIOSGuide(false);
+    try {
+      localStorage.setItem('my_app_pwa_dismissed', Date.now().toString());
+    } catch {}
+  };
+
+  if (isInstalled || !showBanner) return null;
+
+  return (
+    <div className="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50 bg-stone-900 text-white rounded-2xl p-4 shadow-2xl border border-amber-500/40" dir="rtl">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-emerald-800 border border-amber-400/50 flex items-center justify-center shrink-0 shadow-md">
+            <Smartphone className="w-6 h-6 text-amber-300" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-amber-100">تثبيت التطبيق على جهازك</h4>
+            <p className="text-xs text-stone-300 mt-0.5 leading-snug">
+              تصفح سريع بدون إنترنت ووصول فوري من شاشتك الرئيسية
+            </p>
+          </div>
+        </div>
+
+        <button 
+          onClick={handleDismiss}
+          className="text-stone-400 hover:text-white p-1 rounded-lg transition-colors"
+          title="إغلاق"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {showIOSGuide ? (
+        <div className="mt-3 pt-3 border-t border-stone-800 text-xs text-stone-200 bg-black/30 p-2.5 rounded-xl">
+          <p className="font-bold text-amber-300 mb-1">طريقة التثبيت على أجهزة iPhone / iPad:</p>
+          <ol className="list-decimal list-inside space-y-1 text-[11px]">
+            <li>اضغط على زر المشاركة <Share className="w-3 h-3 inline mx-0.5 text-blue-400" /> في أسفل متصفح Safari.</li>
+            <li>اختر من القائمة <span className="font-bold text-white">«إضافة إلى الصفحة الرئيسية»</span> <PlusSquare className="w-3 h-3 inline mx-0.5 text-stone-300" />.</li>
+            <li>اضغط على «إضافة» في الزاوية العلوية.</li>
+          </ol>
+        </div>
+      ) : (
+        <div className="mt-3.5 flex items-center gap-2">
+          <button
+            onClick={handleInstallClick}
+            className="flex-1 py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-colors cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>تثبيت التطبيق الآن مجاناً</span>
+          </button>
+          <button
+            onClick={handleDismiss}
+            className="py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs transition-colors cursor-pointer"
+          >
+            لاحقاً
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+2️⃣ ملف تعريف التطبيق: public/manifest.webmanifest
+ضعه داخل مجلد public:
+JSON
+{
+  "name": "اسم موقعك الكامل",
+  "short_name": "اسم التطبيق",
+  "description": "وصف مختصر للموقع وتطبيقه",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#064e3b",
+  "theme_color": "#064e3b",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+3️⃣ ملف الكاش ليعمل بدون إنترنت: public/sw.js
+ضعه في مجلد public:
+JavaScript
+const CACHE_NAME = 'app-cache-v1';
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      return (
+        cached ||
+        fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        }).catch(() => cached)
+      );
+    })
+  );
+});
+4️⃣ الربط في index.html:
+أضف داخل <head> في ملف index.html:
+Html
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#064e3b" />
+<script>
+  if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+</script>
+ثم في App.tsx الخاص بموقعك تضع فقط:
+Tsx
+import { InstallAppBanner } from './components/InstallAppBanner';
+
+// وضع المكون داخل الصفحة:
+<InstallAppBanner />
+بمجرد وضعها، سيظهر شريط التثبيت التلقائي الذكي على هواتف أندرويد وآيفون والكمبيوتر لأي موقع!

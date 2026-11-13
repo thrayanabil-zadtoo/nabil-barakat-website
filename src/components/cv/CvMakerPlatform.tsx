@@ -11,6 +11,7 @@ import { CvEditor } from './CvEditor';
 import { CvPreview } from './CvPreview';
 import { CvAuthModal } from './CvAuthModal';
 import { useApp } from '../../context/AppContext';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { exportCvToPdf } from '../../utils/pdfGenerator';
 import {
   FileText,
@@ -80,6 +81,7 @@ export const CvMakerPlatform: React.FC = () => {
 
   // Mobile navigation drawer (showing author sections + return button)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isInstalled, triggerInstall } = usePWAInstall();
 
   // Auto-save to device on changes
   useEffect(() => {
@@ -485,6 +487,28 @@ export const CvMakerPlatform: React.FC = () => {
                   );
                 })}
               </div>
+            </div>
+
+            {/* PWA Install Command inside Three-Bars Menu */}
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  void triggerInstall();
+                }}
+                className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 transition cursor-pointer ${
+                  isInstalled
+                    ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4" />
+                  <span>{isInstalled ? 'الموقع مُثبّت بالفعل كتطبيق' : 'تثبيت الموقع كتطبيق'}</span>
+                </span>
+                {!isInstalled && <Download className="w-4 h-4" />}
+              </button>
             </div>
           </div>
         )}

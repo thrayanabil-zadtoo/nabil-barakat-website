@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Lock, LogOut, Settings, QrCode, ShieldCheck, FileText, User, Sparkles, Download, Bookmark } from 'lucide-react';
+import { Lock, LogOut, Settings, QrCode, ShieldCheck, FileText, User, Download, Smartphone, CheckCircle2 } from 'lucide-react';
 import { LegalPagesModal, LegalTabType } from './LegalPagesModal';
 import { AuthorQrModal } from './AuthorQrModal';
 import { AuthorSeal } from './AuthorSeal';
 import { getSiteDomain } from '../config/siteDomain';
 import { downloadFileSafely } from '../utils/downloadHelper';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 
 export const Footer: React.FC = () => {
   const {
@@ -17,6 +18,7 @@ export const Footer: React.FC = () => {
     showToast,
   } = useApp();
 
+  const { isInstalled, triggerInstall } = usePWAInstall();
   const [legalModalTab, setLegalModalTab] = useState<LegalTabType | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
@@ -84,12 +86,26 @@ export const Footer: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-exit-intent-modal'))}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                title="أضفنا للمفضلة أو ثبّت الموقع كتطبيق على جهازك"
+                onClick={() => void triggerInstall()}
+                className={`px-3.5 py-1.5 rounded-xl border transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                  isInstalled
+                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                    : 'bg-gradient-to-r from-[#dfa85b]/25 to-amber-500/20 hover:from-[#dfa85b]/35 hover:to-amber-500/30 text-[#f5cd72] border-[#dfa85b]/50'
+                }`}
+                title="تثبيت الموقع الرسمي للكاتب نبيل بركات كتطبيق على جهازك"
               >
-                <Bookmark className="w-3.5 h-3.5 text-emerald-300" />
-                <span>أضفنا للمفضلة / تثبيت الموقع ⭐</span>
+                {isInstalled ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>الموقع مُثبّت كتطبيق</span>
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="w-3.5 h-3.5 text-[#dfa85b]" />
+                    <span>تثبيت الموقع كتطبيق</span>
+                    <Download className="w-3 h-3 text-[#dfa85b]" />
+                  </>
+                )}
               </button>
             </div>
           </div>

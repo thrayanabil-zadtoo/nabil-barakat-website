@@ -27,6 +27,8 @@ import {
   FileText,
   QrCode,
   Users,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -35,6 +37,7 @@ import { AuthorSeal } from './AuthorSeal';
 import { BookReaderModal } from './BookReaderModal';
 import { Book, PhotoItem } from '../types';
 import { formatArabicNumber } from '../utils/dynamicStats';
+import { openPWAInstallDialog } from '../hooks/usePWAInstall';
 
 /**
  * =========================================================================
@@ -997,23 +1000,23 @@ export const DesktopLeftSidebar: React.FC = () => {
         <div className="bg-gradient-to-br from-[#07243c] to-[#041624] text-white rounded-xl p-4 border border-[#dfa85b]/40 shadow-md space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bookmark className="w-4 h-4 text-[#dfa85b]" />
-              <h4 className="text-xs font-bold text-[#f5cd72]">ابقَ على مقربة دائماً</h4>
+              <Smartphone className="w-4 h-4 text-[#dfa85b]" />
+              <h4 className="text-xs font-bold text-[#f5cd72]">تثبيت الموقع كتطبيق</h4>
             </div>
             <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
           </div>
 
           <p className="text-[11px] text-slate-300 leading-relaxed">
-            أضف المنصة إلى مفضلتك أو ثبّتها كتطبيق خفيف على جهازك للوصول المباشر بضغطة زر.
+            ثبّت منصة الكاتب أ. نبيل بركات كتطبيق خفيف على جهازك للوصول الفوري بضغطة زر.
           </p>
 
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-exit-intent-modal'))}
-            className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+            onClick={openPWAInstallDialog}
+            className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-[#dfa85b] to-[#c5943b] hover:from-[#ecc07d] hover:to-[#d3a043] text-[#07243c] font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
           >
-            <Bookmark className="w-3.5 h-3.5" />
-            <span>أضف للمفضلة / تثبيت الموقع ⭐</span>
+            <Download className="w-3.5 h-3.5" />
+            <span>تثبيت الموقع كتطبيق</span>
           </button>
 
           <div className="pt-2 border-t border-white/10 flex justify-center">

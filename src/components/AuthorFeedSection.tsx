@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react';
-import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset } from '../utils/communityPostColors';
+import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
 
 export const AuthorFeedSection: React.FC = () => {
   const {
@@ -348,7 +348,7 @@ export const AuthorFeedSection: React.FC = () => {
 
       {/* 2. FEED OF AUTHOR POSTS */}
       <div className="space-y-4">
-        {authorPosts.map((post) => {
+        {sortCommunityPostsNewestFirst(authorPosts).map((post) => {
           const presetObj = getCommunityColorPreset(post.bgColor);
           const isColorCard = post.bgColor && post.bgColor !== 'none';
           const postComments = comments.filter((c) => c.targetType === 'post' && c.targetId === post.id);

@@ -23,7 +23,7 @@ import {
   Lock,
   Plus,
 } from 'lucide-react';
-import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset } from '../utils/communityPostColors';
+import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
 import { AuthorSeal } from './AuthorSeal';
 
@@ -148,39 +148,47 @@ export const CommunitySection: React.FC = () => {
     }, 7000);
   };
 
-  // Filter Posts
-  const filteredPosts = authorPosts.filter((post) => {
-    const textMatch =
-      !searchQuery.trim() ||
-      post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (post.title && post.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (post.category && post.category.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Filter & Sort Posts: Newest First (الأحدث في البداية)
+  const filteredPosts = (() => {
+    const matched = authorPosts.filter((post) => {
+      const textMatch =
+        !searchQuery.trim() ||
+        post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (post.title && post.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (post.category && post.category.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    if (!textMatch) return false;
+      if (!textMatch) return false;
 
-    if (activeFilter === 'poems') {
-      return (
-        post.category === 'قصيدة' ||
-        post.content.includes('\n') ||
-        post.content.includes('قصيد') ||
-        post.content.includes('شعر')
-      );
-    }
-    if (activeFilter === 'colored') {
-      return post.bgColor && post.bgColor !== 'none';
-    }
-    if (activeFilter === 'thoughts') {
-      return post.category === 'خاطرة' || post.category === 'حكمة';
-    }
-    if (activeFilter === 'images') {
-      return !!post.imageUrl;
-    }
+      if (activeFilter === 'poems') {
+        return (
+          post.category === 'قصيدة' ||
+          post.content.includes('\n') ||
+          post.content.includes('قصيد') ||
+          post.content.includes('شعر')
+        );
+      }
+      if (activeFilter === 'colored') {
+        return post.bgColor && post.bgColor !== 'none';
+      }
+      if (activeFilter === 'thoughts') {
+        return post.category === 'خاطرة' || post.category === 'حكمة';
+      }
+      if (activeFilter === 'images') {
+        return !!post.imageUrl;
+      }
+      if (activeFilter === 'popular') {
+        return (post.likesCount || 0) >= 50;
+      }
+
+      return true;
+    });
+
+    const newestFirst = sortCommunityPostsNewestFirst(matched);
     if (activeFilter === 'popular') {
-      return (post.likesCount || 0) >= 50;
+      return [...newestFirst].sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
     }
-
-    return true;
-  });
+    return newestFirst;
+  })();
 
   const selectedPresetObj = getCommunityColorPreset(selectedBg);
 
@@ -517,6 +525,15 @@ export const CommunitySection: React.FC = () => {
             ))}
           </div>
         </div>
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+          <span className="font-bold text-[#07243c] flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-red-600" />
+            <span>الترتيب النشط: الأحدث في البداية</span>
+          </span>
+          <span className="font-bold text-slate-500">
+            إجمالي المعروض: {filteredPosts.length}
+          </span>
+        </div>
       </section>
 
       {/* 4. Posts Feed */}
@@ -603,10 +620,32 @@ export const CommunitySection: React.FC = () => {
                 {/* Post Content */}
                 {isColorCard ? (
                   /* Brilliant Color Card with Poetic Styling */
-                  <div className={`p-8 sm:p-12 ${presetObj.class} text-center flex items-center justify-center min-h-[180px] shadow-inner select-text`}>
-                    <p className="font-literary text-lg sm:text-2xl font-black leading-relaxed whitespace-pre-line tracking-wide drop-shadow-sm">
-                      {post.content}
-                    </p>
+                  <div>
+                    <div className={`p-8 sm:p-12 ${presetObj.class} text-center flex items-center justify-center min-h-[180px] shadow-inner select-text`}>
+                      <p className="font-literary text-lg sm:text-2xl font-black leading-relaxed whitespace-pre-line tracking-wide drop-shadow-sm">
+                        {post.content}
+                      </p>
+                    </div>
+                    {(post.imageUrl || post.linkUrl) && (
+                      <div className="p-4 space-y-3 bg-white">
+                        {post.imageUrl && (
+                          <div className="rounded-2xl overflow-hidden border border-slate-200 max-h-96 bg-slate-900">
+                            <img src={post.imageUrl} alt="مرفق" className="w-full h-full object-contain max-h-96" />
+                          </div>
+                        )}
+                        {post.linkUrl && (
+                          <a
+                            href={post.linkUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl border border-red-200 transition"
+                          >
+                            <Link2 className="w-3.5 h-3.5" />
+                            <span>{post.linkText || post.linkUrl}</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* Standard Card */
