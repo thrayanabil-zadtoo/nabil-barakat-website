@@ -7,6 +7,7 @@ import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
+import { getItemShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
 
 export const PhotosSection: React.FC = () => {
   const {
@@ -396,7 +397,8 @@ export const PhotosSection: React.FC = () => {
                     onClick={() =>
                       openShareModal({
                         title: `${photo.mediaType === 'video' ? 'فيديو' : 'صورة'}: ${photo.title}`,
-                        description: photo.caption,
+                        description: buildShortShareExcerpt(photo.caption, 150),
+                        url: getItemShareUrl(photo.mediaType === 'video' ? 'video' : 'photo', photo.id),
                         image: photo.imageUrl,
                         type: photo.mediaType === 'video' ? 'video' : 'photo',
                       })
@@ -521,7 +523,8 @@ export const PhotosSection: React.FC = () => {
                   onClick={() =>
                     openShareModal({
                       title: `${activeLightboxPhoto.mediaType === 'video' ? 'فيديو' : 'صورة'}: ${activeLightboxPhoto.title}`,
-                      description: activeLightboxPhoto.caption,
+                      description: buildShortShareExcerpt(activeLightboxPhoto.caption, 150),
+                      url: getItemShareUrl(activeLightboxPhoto.mediaType === 'video' ? 'video' : 'photo', activeLightboxPhoto.id),
                       image: activeLightboxPhoto.imageUrl,
                       type: activeLightboxPhoto.mediaType === 'video' ? 'video' : 'photo',
                     })

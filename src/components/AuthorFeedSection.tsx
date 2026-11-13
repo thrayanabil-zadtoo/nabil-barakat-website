@@ -20,8 +20,11 @@ import {
   ExternalLink,
   ShieldCheck,
   Users,
+  Eye,
 } from 'lucide-react';
 import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
+import { getCommunityPostStats, formatArabicNumber } from '../utils/dynamicStats';
+import { getCommunityPostShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
 
 export const AuthorFeedSection: React.FC = () => {
   const {
@@ -73,7 +76,6 @@ export const AuthorFeedSection: React.FC = () => {
       imageUrl: imageUrl.trim() || undefined,
       linkUrl: linkUrl.trim() || undefined,
       linkText: linkText.trim() || undefined,
-      likesCount: 0,
       isLiked: false,
     });
 
@@ -351,6 +353,7 @@ export const AuthorFeedSection: React.FC = () => {
         {sortCommunityPostsNewestFirst(authorPosts).map((post) => {
           const presetObj = getCommunityColorPreset(post.bgColor);
           const isColorCard = post.bgColor && post.bgColor !== 'none';
+          const postStats = getCommunityPostStats(post);
           const postComments = comments.filter((c) => c.targetType === 'post' && c.targetId === post.id);
           const approvedComments = postComments.filter((c) => c.isApproved);
           const pendingComments = postComments.filter((c) => c.status === 'pending');
@@ -462,7 +465,17 @@ export const AuthorFeedSection: React.FC = () => {
               )}
 
               {/* Interaction Bar */}
-              <div className="p-3 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs">
+              <div className="p-3 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2">
+                {/* Views Counter */}
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200/80 text-slate-600 font-bold"
+                  title="عدد المشاهدات"
+                >
+                  <Eye className="w-4 h-4 text-sky-600" />
+                  <span className="font-mono">{formatArabicNumber(postStats.views)}</span>
+                  <span className="text-[11px] text-slate-500 font-medium">مشاهدة</span>
+                </div>
+
                 {/* Like Button */}
                 <button
                   onClick={() => toggleLikeAuthorPost(post.id)}
@@ -472,8 +485,8 @@ export const AuthorFeedSection: React.FC = () => {
                       : 'hover:bg-slate-100 text-slate-600'
                   }`}
                 >
-                  <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-500 text-rose-500' : 'text-slate-500'}`} />
-                  <span>{post.likesCount || 0}</span>
+                  <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-500 text-rose-500' : 'text-rose-500'}`} />
+                  <span className="font-mono">{formatArabicNumber(postStats.likes)}</span>
                 </button>
 
                 {/* Comment Toggle Button */}
@@ -491,9 +504,12 @@ export const AuthorFeedSection: React.FC = () => {
                 <button
                   onClick={() =>
                     openShareModal({
-                      title: `خاطرة للأستاذ نبيل بركات: "${post.content.slice(0, 50)}..."`,
-                      description: post.content,
-                      image: post.imageUrl,
+                      title: post.title
+                        ? `${post.title} — مجتمع الكاتب نبيل بركات`
+                        : `${post.category || 'خاطرة ومنشور'} للكاتب نبيل بركات`,
+                      description: buildShortShareExcerpt(post.content, 150),
+                      url: getCommunityPostShareUrl(post.id),
+                      image: post.imageUrl || authorProfile.portraitImage,
                       type: 'post',
                     })
                   }

@@ -4,6 +4,7 @@
  * with a daily increment of 50 to 200 per day since baseline,
  * plus interactive local liking and live online visitor simulation (>100).
  */
+import { getPostTimestamp } from './communityPostColors';
 
 const BASELINE_TIMESTAMP = new Date('2026-01-01T00:00:00Z').getTime();
 
@@ -95,3 +96,81 @@ export function formatArabicNumber(num: number): string {
 export function formatStandardNumber(num: number): string {
   return new Intl.NumberFormat('en-US').format(num);
 }
+
+/**
+ * Generates immediate initial stats for any newly published community post:
+ * - Minimum 50 views added immediately (ranging between 50 and 200)
+ * - Varied initial likes between 50 and 200 (never exceeding views)
+ */
+export function generateInitialCommunityPostStats(): {
+  viewsCount: number;
+  likesCount: number;
+} {
+  const viewsCount = 50 + Math.floor(Math.random() * 151); // 50..200
+  const maxLikes = Math.max(50, Math.min(200, viewsCount));
+  const likesCount = 50 + Math.floor(Math.random() * (maxLikes - 50 + 1)); // 50..maxLikes
+  return { viewsCount, likesCount };
+}
+
+/**
+ * Computes consistent, progressive views and likes for a community post.
+ * Guarantees at least 50 views immediately on any post and varies daily
+ * increments between 50 and 200.
+ */
+export function getCommunityPostStats(post: {
+  id: string;
+  viewsCount?: number;
+  likesCount?: number;
+  createdAt?: number;
+  date?: string;
+}): { views: number; likes: number; baseViews: number; baseLikes: number } {
+  const idKey = post.id || 'post-default';
+  const hViews = hashString(`${idKey}_views`);
+  const hLikes = hashString(`${idKey}_likes`);
+
+  const hasPersistedLikes = typeof post.likesCount === 'number' && post.likesCount >= 50;
+  const fallbackViews = 50 + (hViews % 151); // 50..200
+
+  let baseViews =
+    typeof post.viewsCount === 'number' && post.viewsCount >= 50
+      ? post.viewsCount
+      : fallbackViews;
+
+  if (hasPersistedLikes && baseViews < (post.likesCount as number)) {
+    baseViews = Math.max(50, (post.likesCount as number) + 12 + (hViews % 38));
+  }
+
+  const maxInitialLikes = Math.max(50, Math.min(200, baseViews));
+  const fallbackLikes =
+    50 + (hLikes % Math.max(1, maxInitialLikes - 50 + 1));
+
+  const baseLikes =
+    typeof post.likesCount === 'number' && post.likesCount > 0
+      ? Math.max(50, post.likesCount)
+      : fallbackLikes;
+
+  // Determine post creation timestamp (supports createdAt, numeric IDs, and Arabic dates)
+  const createdMs = getPostTimestamp(post);
+
+  const daysElapsed =
+    createdMs > 0
+      ? Math.min(365, Math.floor(Math.max(0, Date.now() - createdMs) / (1000 * 60 * 60 * 24)))
+      : 0;
+
+  let addedViews = 0;
+  let addedLikes = 0;
+  for (let d = 1; d <= daysElapsed; d++) {
+    const dv = 50 + (hashString(`${idKey}_dv_${d}`) % 151); // 50..200 per day
+    const dl = 50 + (hashString(`${idKey}_dl_${d}`) % Math.max(1, dv - 50 + 1)); // 50..dv per day
+    addedViews += dv;
+    addedLikes += dl;
+  }
+
+  return {
+    views: baseViews + addedViews,
+    likes: baseLikes + addedLikes,
+    baseViews,
+    baseLikes,
+  };
+}
+

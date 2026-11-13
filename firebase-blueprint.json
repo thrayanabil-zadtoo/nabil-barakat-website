@@ -91,6 +91,7 @@
         "linkText": { "type": "string" },
         "date": { "type": "string" },
         "createdAt": { "type": "number" },
+        "viewsCount": { "type": "number" },
         "likesCount": { "type": "number" },
         "isPinned": { "type": "boolean" },
         "updatedAt": { "type": "string" }

@@ -52,3 +52,39 @@ export const getLicensesPageUrl = (): string => {
 export const getOfficialLicensesUrl = (): string => {
   return `${getSiteBaseUrl()}/licenses`;
 };
+
+export const getCommunityPostShareUrl = (postId: string): string => {
+  return `${getSiteBaseUrl()}/community?post=${encodeURIComponent(postId)}`;
+};
+
+export const getItemShareUrl = (type?: string, itemId?: string): string => {
+  const base = getSiteBaseUrl();
+  switch (type) {
+    case 'post':
+      return itemId ? `${base}/community?post=${encodeURIComponent(itemId)}` : `${base}/community`;
+    case 'book':
+      return itemId ? `${base}/books?item=${encodeURIComponent(itemId)}` : `${base}/books`;
+    case 'video':
+      return itemId ? `${base}/videos?item=${encodeURIComponent(itemId)}` : `${base}/videos`;
+    case 'photo':
+      return itemId ? `${base}/photos?item=${encodeURIComponent(itemId)}` : `${base}/photos`;
+    case 'news':
+      return itemId ? `${base}/news?item=${encodeURIComponent(itemId)}` : `${base}/news`;
+    case 'license':
+      return `${base}/licenses`;
+    case 'quote':
+      return `${base}/community`;
+    default:
+      return base;
+  }
+};
+
+export const buildShortShareExcerpt = (text?: string, maxLength = 140): string => {
+  if (!text) return '';
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  if (cleaned.length <= maxLength) return cleaned;
+  const sliced = cleaned.slice(0, maxLength);
+  const lastSpace = sliced.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? sliced.slice(0, lastSpace) : sliced).trim()}...`;
+};

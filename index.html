@@ -41,7 +41,9 @@
           var p = (window.location.pathname || '').toLowerCase();
           var h = (window.location.hash || '').toLowerCase();
           var s = (window.location.search || '').toLowerCase();
-          if (p.indexOf('license') !== -1 || p.indexOf('تراخيص') !== -1 || h.indexOf('license') !== -1 || h.indexOf('تراخيص') !== -1 || s.indexOf('license') !== -1) {
+          if (p.indexOf('community') !== -1 || p.indexOf('مجتمع') !== -1 || h.indexOf('community') !== -1 || s.indexOf('community') !== -1 || s.indexOf('post=') !== -1) {
+            window.__INITIAL_SECTION__ = 'community';
+          } else if (p.indexOf('license') !== -1 || p.indexOf('تراخيص') !== -1 || h.indexOf('license') !== -1 || h.indexOf('تراخيص') !== -1 || s.indexOf('license') !== -1) {
             window.__INITIAL_SECTION__ = 'licenses';
           } else if (p.indexOf('book') !== -1 || h.indexOf('book') !== -1 || s.indexOf('book') !== -1) {
             window.__INITIAL_SECTION__ = 'books';
@@ -55,6 +57,8 @@
             window.__INITIAL_SECTION__ = 'links';
           } else if (p.indexOf('contact') !== -1 || h.indexOf('contact') !== -1 || s.indexOf('contact') !== -1) {
             window.__INITIAL_SECTION__ = 'contact';
+          } else if (p.indexOf('cv') !== -1 || h.indexOf('cv') !== -1 || s.indexOf('cv') !== -1) {
+            window.__INITIAL_SECTION__ = 'cv';
           }
         } catch(e) {}
       })();

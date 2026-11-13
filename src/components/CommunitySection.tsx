@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { AuthorPost } from '../types';
 import {
@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Share2,
   Trash2,
-  Edit2,
   Image as ImageIcon,
   Link2,
   Send,
@@ -14,16 +13,14 @@ import {
   Sparkles,
   Clock,
   Pin,
-  ShieldCheck,
   Search,
-  Filter,
-  CheckCircle,
-  Users,
   Feather,
   Lock,
-  Plus,
+  Eye,
 } from 'lucide-react';
 import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
+import { getCommunityPostStats, formatArabicNumber } from '../utils/dynamicStats';
+import { getCommunityPostShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
 import { AuthorSeal } from './AuthorSeal';
 
@@ -66,9 +63,33 @@ export const CommunitySection: React.FC = () => {
 
   // Comments accordion state
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
   const [commentAuthorNames, setCommentAuthorNames] = useState<Record<string, string>>({});
   const [commentContents, setCommentContents] = useState<Record<string, string>>({});
   const [submittedCommentNotice, setSubmittedCommentNotice] = useState<Record<string, boolean>>({});
+
+  // Scroll to shared ?post=<id> if opened via direct post link
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('post');
+    if (targetId) {
+      setSearchQuery('');
+      setActiveFilter('all');
+      setHighlightedPostId(targetId);
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`community-post-${targetId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 250);
+      const clearHighlight = setTimeout(() => setHighlightedPostId(null), 6000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(clearHighlight);
+      };
+    }
+  }, [authorPosts.length]);
 
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +106,6 @@ export const CommunitySection: React.FC = () => {
       imageUrl: imageUrl.trim() || undefined,
       linkUrl: linkUrl.trim() || undefined,
       linkText: linkText.trim() || undefined,
-      likesCount: 0,
       isLiked: false,
     });
 
@@ -177,7 +197,7 @@ export const CommunitySection: React.FC = () => {
         return !!post.imageUrl;
       }
       if (activeFilter === 'popular') {
-        return (post.likesCount || 0) >= 50;
+        return getCommunityPostStats(post).likes >= 50;
       }
 
       return true;
@@ -185,7 +205,7 @@ export const CommunitySection: React.FC = () => {
 
     const newestFirst = sortCommunityPostsNewestFirst(matched);
     if (activeFilter === 'popular') {
-      return [...newestFirst].sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
+      return [...newestFirst].sort((a, b) => getCommunityPostStats(b).likes - getCommunityPostStats(a).likes);
     }
     return newestFirst;
   })();
@@ -235,22 +255,22 @@ export const CommunitySection: React.FC = () => {
           {/* Quick Info & Stats Badge */}
           <div className="flex items-center gap-3 shrink-0 bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/15">
             <div className="text-center px-2">
-              <div className="text-lg font-black text-[#f5cd72]">{authorPosts.length}</div>
+              <div className="text-lg font-black text-[#f5cd72]">{formatArabicNumber(authorPosts.length)}</div>
               <div className="text-[10px] text-slate-300">نص وقصيدة</div>
             </div>
             <div className="w-px h-8 bg-white/20" />
             <div className="text-center px-2">
-              <div className="text-lg font-black text-emerald-300">
-                {authorPosts.reduce((acc, p) => acc + (p.likesCount || 0), 0)}
+              <div className="text-lg font-black text-sky-300">
+                {formatArabicNumber(authorPosts.reduce((acc, p) => acc + getCommunityPostStats(p).views, 0))}
               </div>
-              <div className="text-[10px] text-slate-300">إعجاب وتفاعل</div>
+              <div className="text-[10px] text-slate-300">مشاهدة</div>
             </div>
             <div className="w-px h-8 bg-white/20" />
             <div className="text-center px-2">
-              <div className="text-lg font-black text-sky-300">
-                {comments.filter((c) => c.targetType === 'post').length}
+              <div className="text-lg font-black text-emerald-300">
+                {formatArabicNumber(authorPosts.reduce((acc, p) => acc + getCommunityPostStats(p).likes, 0))}
               </div>
-              <div className="text-[10px] text-slate-300">مشاركة وقراءة</div>
+              <div className="text-[10px] text-slate-300">إعجاب وتفاعل</div>
             </div>
           </div>
         </div>
@@ -552,14 +572,20 @@ export const CommunitySection: React.FC = () => {
           filteredPosts.map((post) => {
             const presetObj = getCommunityColorPreset(post.bgColor);
             const isColorCard = post.bgColor && post.bgColor !== 'none';
+            const postStats = getCommunityPostStats(post);
             const postComments = comments.filter((c) => c.targetType === 'post' && c.targetId === post.id);
             const approvedComments = postComments.filter((c) => c.isApproved);
             const isCommentsExpanded = expandedCommentsPostId === post.id;
 
             return (
               <article
+                id={`community-post-${post.id}`}
                 key={post.id}
-                className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md"
+                className={`bg-white rounded-3xl border shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md ${
+                  highlightedPostId === post.id
+                    ? 'border-[#dfa85b] ring-2 ring-[#dfa85b] shadow-lg'
+                    : 'border-slate-200'
+                }`}
               >
                 {/* Post Top Meta */}
                 <div className="p-4 pb-3 flex items-center justify-between border-b border-slate-100">
@@ -675,17 +701,29 @@ export const CommunitySection: React.FC = () => {
                 )}
 
                 {/* Interaction Footer Bar */}
-                <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                  <div className="flex items-center gap-4">
+                <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
+                  <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                    {/* Views Counter */}
+                    <div
+                      className="flex items-center gap-1.5 text-slate-600 font-bold bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs"
+                      title="عدد المشاهدات"
+                    >
+                      <Eye className="w-4 h-4 text-sky-600" />
+                      <span className="font-mono">{formatArabicNumber(postStats.views)}</span>
+                      <span className="text-[11px] text-slate-500 font-medium">مشاهدة</span>
+                    </div>
+
                     {/* Like Button */}
                     <button
                       onClick={() => toggleLikeAuthorPost(post.id)}
-                      className={`flex items-center gap-1.5 transition font-bold cursor-pointer ${
-                        post.isLiked ? 'text-rose-600' : 'text-slate-500 hover:text-rose-600'
+                      className={`flex items-center gap-1.5 transition font-bold cursor-pointer px-2.5 py-1 rounded-lg border ${
+                        post.isLiked
+                          ? 'text-rose-600 bg-rose-50 border-rose-200'
+                          : 'text-slate-600 hover:text-rose-600 bg-white border-slate-200/80 hover:border-rose-200'
                       }`}
                     >
-                      <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-600' : ''}`} />
-                      <span>{post.likesCount || 0}</span>
+                      <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
+                      <span className="font-mono">{formatArabicNumber(postStats.likes)}</span>
                     </button>
 
                     {/* Comments Toggle Button */}
@@ -693,9 +731,9 @@ export const CommunitySection: React.FC = () => {
                       onClick={() =>
                         setExpandedCommentsPostId(isCommentsExpanded ? null : post.id)
                       }
-                      className="flex items-center gap-1.5 text-slate-500 hover:text-blue-600 transition font-bold cursor-pointer"
+                      className="flex items-center gap-1.5 text-slate-600 hover:text-blue-600 transition font-bold cursor-pointer px-2 py-1"
                     >
-                      <MessageSquare className="w-4 h-4" />
+                      <MessageSquare className="w-4 h-4 text-amber-600" />
                       <span>{approvedComments.length} تعليقات</span>
                     </button>
                   </div>
@@ -704,8 +742,12 @@ export const CommunitySection: React.FC = () => {
                   <button
                     onClick={() =>
                       openShareModal({
-                        title: `منشور من مجتمع الكاتب نبيل بركات`,
-                        description: post.content.slice(0, 100),
+                        title: post.title
+                          ? `${post.title} — مجتمع الكاتب نبيل بركات`
+                          : `${post.category || 'منشور'} من مجتمع الكاتب نبيل بركات`,
+                        description: buildShortShareExcerpt(post.content, 150),
+                        url: getCommunityPostShareUrl(post.id),
+                        image: post.imageUrl || authorProfile.portraitImage,
                         type: 'post',
                       })
                     }

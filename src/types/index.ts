@@ -139,6 +139,7 @@ export interface AuthorPost {
   linkText?: string;
   date: string;
   createdAt?: number;
+  viewsCount?: number;
   likesCount?: number;
   isLiked?: boolean;
   isPinned?: boolean;

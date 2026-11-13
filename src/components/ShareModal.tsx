@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { getSiteBaseUrl } from '../config/siteDomain';
+import {
+  buildShortShareExcerpt,
+  getItemShareUrl,
+} from '../config/siteDomain';
 import {
   X,
   Share2,
@@ -9,27 +12,51 @@ import {
   Send,
   ExternalLink,
   MessageCircle,
+  FileText,
 } from 'lucide-react';
 
 export const ShareModal: React.FC = () => {
   const { shareModalItem, closeShareModal, showToast } = useApp();
-  const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedFullText, setCopiedFullText] = useState(false);
 
   if (!shareModalItem) return null;
 
-  const officialDomain = getSiteBaseUrl();
-  const currentUrl = shareModalItem.url || officialDomain;
+  const currentUrl =
+    shareModalItem.url && shareModalItem.url.trim().length > 0
+      ? shareModalItem.url.trim()
+      : getItemShareUrl(shareModalItem.type);
+
   const shareTitle = shareModalItem.title;
-  const shareText = `${shareTitle} - الكاتب الروائي والشاعر أ. نبيل بركات\nالموقع الرسمي المعتمد: ${officialDomain}`;
+  const shortExcerpt = buildShortShareExcerpt(shareModalItem.description, 150);
+
+  const fullShareText = shortExcerpt
+    ? `${shareTitle}\n«${shortExcerpt}»\n\nرابط المشاركة الكامل:\n${currentUrl}`
+    : `${shareTitle} — الكاتب الروائي والشاعر أ. نبيل بركات\n${currentUrl}`;
+
+  const socialSummary = shortExcerpt
+    ? `${shareTitle}\n«${shortExcerpt}»`
+    : `${shareTitle} — الكاتب أ. نبيل بركات`;
 
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(currentUrl);
-      setCopied(true);
-      showToast('تم نسخ الرابط بنجاح إلى الحافظة!');
-      setTimeout(() => setCopied(false), 3000);
+      setCopiedLink(true);
+      showToast('تم نسخ الرابط الكامل للمشاركة بنجاح!');
+      setTimeout(() => setCopiedLink(false), 3000);
     } catch {
       showToast('تعذر النسخ التلقائي، يمكنك نسخ الرابط يدوياً');
+    }
+  };
+
+  const handleCopyFullShareText = async () => {
+    try {
+      await navigator.clipboard.writeText(fullShareText);
+      setCopiedFullText(true);
+      showToast('تم نسخ النص المختصر والرابط الكامل للمشاركة!');
+      setTimeout(() => setCopiedFullText(false), 3000);
+    } catch {
+      showToast('تعذر النسخ التلقائي، يمكنك النسخ يدوياً');
     }
   };
 
@@ -38,7 +65,7 @@ export const ShareModal: React.FC = () => {
       try {
         await navigator.share({
           title: shareTitle,
-          text: `الموقع الرسمي للكاتب أ. نبيل بركات: ${shareTitle}`,
+          text: socialSummary,
           url: currentUrl,
         });
         closeShareModal();
@@ -48,14 +75,16 @@ export const ShareModal: React.FC = () => {
     }
   };
 
-  // Social URLs
-  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(shareTitle)}`;
-  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(currentUrl)}`;
-  const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(currentUrl)}`;
+  // Social URLs including both short excerpt and full share link
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(fullShareText)}`;
+  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(currentUrl)}&text=${encodeURIComponent(socialSummary)}`;
+  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(socialSummary)}&url=${encodeURIComponent(currentUrl)}`;
+  const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(currentUrl)}&quote=${encodeURIComponent(socialSummary)}`;
 
   const getTypeLabel = (type?: string) => {
     switch (type) {
+      case 'post':
+        return 'منشور وقصيدة من قسم المجتمع';
       case 'book':
         return 'مؤلف وكتاب';
       case 'video':
@@ -64,6 +93,8 @@ export const ShareModal: React.FC = () => {
         return 'صورة من المعرض';
       case 'news':
         return 'مقال وخبر أدبي';
+      case 'quote':
+        return 'اقتباس أدبي';
       default:
         return 'محتوى أدبي';
     }
@@ -76,7 +107,7 @@ export const ShareModal: React.FC = () => {
       onClick={closeShareModal}
     >
       <div
-        className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-[#d6e0ea]"
+        className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-[#d6e0ea] max-h-[92vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -92,14 +123,14 @@ export const ShareModal: React.FC = () => {
           </div>
           <button
             onClick={closeShareModal}
-            className="p-1 rounded-lg hover:bg-white/10 transition-colors text-white/80 hover:text-white"
+            className="p-1 rounded-lg hover:bg-white/10 transition-colors text-white/80 hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Preview */}
-        <div className="p-6 space-y-5">
+        <div className="p-5 sm:p-6 space-y-4">
           <div className="bg-[#f4f7fb] border border-[#dbe5f0] rounded-xl p-3.5 flex items-start gap-3">
             {shareModalItem.image ? (
               <img
@@ -114,12 +145,12 @@ export const ShareModal: React.FC = () => {
               </div>
             )}
             <div className="space-y-1 min-w-0 flex-1">
-              <h4 className="font-bold text-[#0b385e] text-sm leading-snug truncate">
+              <h4 className="font-bold text-[#0b385e] text-sm leading-snug line-clamp-2">
                 {shareTitle}
               </h4>
-              {shareModalItem.description && (
-                <p className="text-xs text-[#64748b] line-clamp-2">
-                  {shareModalItem.description}
+              {shortExcerpt && (
+                <p className="text-xs text-[#475569] leading-relaxed line-clamp-3">
+                  «{shortExcerpt}»
                 </p>
               )}
               <span className="inline-block text-[11px] text-[#c4924c] font-medium">
@@ -128,25 +159,64 @@ export const ShareModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Direct Copy Link Box */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-[#334155]">رابط المشاركة المباشر</label>
+          {/* Short Excerpt + Full Link Preview Box */}
+          <div className="space-y-2 bg-amber-50/60 border border-amber-200/80 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-bold text-[#07243c] flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-[#c4924c]" />
+                <span>النص المختصر للمشاركة مع الرابط الكامل</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleCopyFullShareText}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shrink-0 ${
+                  copiedFullText
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[#dfa85b] hover:bg-[#cfa04e] text-[#07243c]'
+                }`}
+              >
+                {copiedFullText ? (
+                  <>
+                    <Check className="w-3 h-3" />
+                    <span>تم النسخ</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>نسخ النص والرابط</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <textarea
+              readOnly
+              rows={4}
+              value={fullShareText}
+              className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-xs text-slate-700 leading-relaxed resize-none select-all focus:outline-none"
+            />
+          </div>
+
+          {/* Direct Full Share Link Box */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-[#334155]">رابط المشاركة الكامل والمباشر</label>
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 readOnly
+                dir="ltr"
                 value={currentUrl}
-                className="flex-1 bg-[#f8fafc] border border-[#cbd5e1] rounded-xl px-3 py-2 text-xs text-[#475569] font-mono select-all focus:outline-none"
+                className="flex-1 bg-[#f8fafc] border border-[#cbd5e1] rounded-xl px-3 py-2 text-xs text-[#475569] font-mono select-all focus:outline-none text-left"
               />
               <button
+                type="button"
                 onClick={handleCopyLink}
-                className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-                  copied
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer shrink-0 ${
+                  copiedLink
                     ? 'bg-emerald-600 text-white'
                     : 'bg-[#0b385e] text-white hover:bg-[#082a47]'
                 }`}
               >
-                {copied ? (
+                {copiedLink ? (
                   <>
                     <Check className="w-3.5 h-3.5" />
                     <span>تم النسخ</span>
@@ -162,7 +232,7 @@ export const ShareModal: React.FC = () => {
           </div>
 
           {/* Social Share Buttons */}
-          <div className="space-y-2 pt-2">
+          <div className="space-y-2 pt-1">
             <span className="text-xs font-bold text-[#334155] block">المشاركة السريعة عبر:</span>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {/* WhatsApp */}
@@ -223,7 +293,7 @@ export const ShareModal: React.FC = () => {
           {typeof navigator !== 'undefined' && 'share' in navigator && (
             <button
               onClick={handleNativeShare}
-              className="w-full py-2.5 rounded-xl border border-[#cbd5e1] text-[#0b385e] text-xs font-bold hover:bg-[#f1f5f9] flex items-center justify-center gap-2 transition-colors"
+              className="w-full py-2.5 rounded-xl border border-[#cbd5e1] text-[#0b385e] text-xs font-bold hover:bg-[#f1f5f9] flex items-center justify-center gap-2 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-4 h-4" />
               <span>مشاركة عبر تطبيقات أخرى على جهازك</span>

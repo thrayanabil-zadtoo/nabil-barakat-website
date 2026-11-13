@@ -8,6 +8,7 @@ import {
   toggleItemLike,
   formatArabicNumber,
 } from '../utils/dynamicStats';
+import { getItemShareUrl } from '../config/siteDomain';
 
 interface ContentInteractionBarProps {
   itemId: string;
@@ -66,7 +67,7 @@ export const ContentInteractionBar: React.FC<ContentInteractionBarProps> = ({
     openShareModal({
       title: itemTitle,
       type: itemType,
-      url: itemUrl,
+      url: itemUrl || getItemShareUrl(itemType, itemId),
       description: itemDescription,
     });
   };

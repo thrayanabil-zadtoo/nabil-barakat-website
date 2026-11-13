@@ -23,6 +23,7 @@ import {
 import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
+import { getItemShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { isVideoMedia } from '../utils/mediaUtils';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
@@ -611,7 +612,8 @@ export const NewsSection: React.FC = () => {
                         onClick={() =>
                           openShareModal({
                             title: `صورة في خبر: ${item.title}`,
-                            description: item.excerpt,
+                            description: buildShortShareExcerpt(item.excerpt || item.content, 150),
+                            url: getItemShareUrl('news', item.id),
                             image: item.coverImage,
                             type: 'news',
                           })

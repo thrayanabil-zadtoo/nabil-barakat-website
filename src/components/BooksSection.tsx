@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Book } from '../types';
 import { BookReaderModal } from './BookReaderModal';
+import { getItemShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
 import {
   BookOpen,
   List,
@@ -592,7 +593,8 @@ export const BooksSection: React.FC = () => {
                   onClick={() =>
                     openShareModal({
                       title: `كتاب: ${book.title}`,
-                      description: book.description,
+                      description: buildShortShareExcerpt(book.description, 150),
+                      url: getItemShareUrl('book', book.id),
                       image: book.coverImage,
                       type: 'book',
                     })

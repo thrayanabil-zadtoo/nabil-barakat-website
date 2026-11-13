@@ -39,6 +39,7 @@ import {
   SyncedSiteData,
 } from '../utils/firebaseSync';
 import { sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
+import { generateInitialCommunityPostStats, getCommunityPostStats } from '../utils/dynamicStats';
 
 interface AppContextType {
   authorProfile: AuthorProfile;
@@ -537,7 +538,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rawPath.includes('مجتمع') ||
         rawHash.includes('community') ||
         rawHash.includes('مجتمع') ||
-        rawSearch.includes('community')
+        rawSearch.includes('community') ||
+        rawSearch.includes('post=')
       ) {
         return 'community';
       }
@@ -2027,12 +2029,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Author Posts (مجتمع الكاتب والقصائد الأدبية)
   const addAuthorPost = (postData: Omit<AuthorPost, 'id' | 'date'>) => {
     const nowMs = Date.now();
+    const initialStats = generateInitialCommunityPostStats();
+    const viewsCount =
+      typeof postData.viewsCount === 'number' && postData.viewsCount >= 50
+        ? postData.viewsCount
+        : initialStats.viewsCount;
+    const likesCount =
+      typeof postData.likesCount === 'number' && postData.likesCount >= 50
+        ? postData.likesCount
+        : initialStats.likesCount;
+
     const newPost: AuthorPost = {
       ...postData,
       id: `post-${nowMs}`,
       createdAt: nowMs,
       date: new Date(nowMs).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
-      likesCount: 0,
+      viewsCount,
+      likesCount,
       isLiked: false,
     };
     setAuthorPosts((prev) => {
@@ -2041,7 +2054,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة أو القصيدة في قسم المجتمع وحفظها سحابياً', 'منشور المجتمع');
       return next;
     });
-    showToast('✓ تم نشر النص في قسم المجتمع بنجاح وحفظه سحابياً!');
+    showToast('✓ تم نشر النص في قسم المجتمع وإضافة المشاهدات الأولية وحفظه سحابياً!');
   };
 
   const updateAuthorPost = (id: string, updated: Partial<AuthorPost>) => {
@@ -2070,11 +2083,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = prev.map((p) => {
         if (p.id === id) {
           const isLikedNow = !p.isLiked;
-          const currentCount = p.likesCount || 0;
+          const computed = getCommunityPostStats(p);
+          const currentCount = typeof p.likesCount === 'number' && p.likesCount >= 50 ? p.likesCount : computed.baseLikes;
+          const currentViews = typeof p.viewsCount === 'number' && p.viewsCount >= 50 ? p.viewsCount : computed.baseViews;
           return {
             ...p,
             isLiked: isLikedNow,
-            likesCount: isLikedNow ? currentCount + 1 : Math.max(0, currentCount - 1),
+            viewsCount: currentViews,
+            likesCount: isLikedNow ? currentCount + 1 : Math.max(50, currentCount - 1),
           };
         }
         return p;

@@ -2,52 +2,19 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   BookOpen,
-  Play,
   Share2,
   MessageSquare,
   Send,
-  Heart,
-  Feather,
-  Plus,
-  Edit2,
-  Sparkles,
   Camera,
-  ExternalLink,
-  ChevronLeft,
-  ChevronRight,
-  User,
-  Clock,
-  CheckCircle,
-  Image as ImageIcon,
-  Newspaper,
-  Link2,
-  Maximize2,
-  Pin,
-  Film,
-  Headphones,
   ShieldCheck,
-  Mail,
-  Star,
-  Bookmark,
-  Download,
-  FileText,
-  CheckCircle2,
-  QrCode,
-  Award,
-  Check,
-  Users,
 } from 'lucide-react';
-import { parseVideoUrl } from '../utils/videoUtils';
 import { BookReaderModal } from './BookReaderModal';
 import { HeaderPhotoModal } from './HeaderPhotoModal';
 import { HeaderAnnouncementBanner } from './HeaderAnnouncementBanner';
 import { SiteStatisticsHub } from './SiteStatisticsHub';
-import { ContentInteractionBar } from './ContentInteractionBar';
-import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { AuthorFeedSection } from './AuthorFeedSection';
 import { AddBookModal } from './AddBookModal';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
-import { AuthorSeal } from './AuthorSeal';
 import { DesktopRightSidebar, DesktopLeftSidebar } from './DesktopCompanionSidebars';
 import { Book, PhotoItem } from '../types';
 
@@ -303,111 +270,7 @@ export const HomeHero: React.FC = () => {
         {/* 📢 Glowing Rotating Announcement Box: أسفل الهيدر وأسفل صورة الكاتب مباشرة */}
         <HeaderAnnouncementBanner />
 
-        {/* 2. QUICK NAVIGATION GRID (Items matching attached design + المجتمع) */}
-        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-        {/* 🌟 المجتمع */}
-        <button
-          onClick={() => setActiveSection('community')}
-          className="p-3.5 rounded-xl bg-gradient-to-br from-red-50 to-white border border-red-200 text-[#07375a] shadow-sm hover:border-red-400 hover:shadow transition-all flex items-center gap-3 text-right group cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0 group-hover:bg-red-200 transition">
-            <Users className="w-5 h-5 text-red-600" />
-          </div>
-          <div>
-            <div className="text-sm font-bold flex items-center gap-1">
-              <span>المجتمع</span>
-              <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.2 rounded-full font-bold">جديد</span>
-            </div>
-            <div className="text-[11px] text-[#6f8291]">قصائد وخواطر الكاتب</div>
-          </div>
-        </button>
-
-        {/* 📚 مؤلفاتي */}
-        <button
-          onClick={() => setActiveSection('books')}
-          className="p-3.5 rounded-xl bg-[#07375a] text-white shadow-md hover:bg-[#062b47] transition-all flex items-center gap-3 text-right cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5 text-[#d8a83e]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">مؤلفاتي</div>
-            <div className="text-[11px] text-[#dce8ef]">كتبي وإصداراتي</div>
-          </div>
-        </button>
-
-        {/* ▶ فيديو يجسد الروايات */}
-        <button
-          onClick={() => setActiveSection('videos')}
-          className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
-        >
-          <div className="w-10 h-10 rounded-lg bg-[#f0f4f8] flex items-center justify-center shrink-0">
-            <Play className="w-5 h-5 text-[#07375a]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">فيديو يجسد الروايات</div>
-            <div className="text-[11px] text-[#6f8291]">فصول الروايات المرئية</div>
-          </div>
-        </button>
-
-        {/* ▣ صوري */}
-        <button
-          onClick={() => setActiveSection('photos')}
-          className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
-        >
-          <div className="w-10 h-10 rounded-lg bg-[#f0f4f8] flex items-center justify-center shrink-0">
-            <ImageIcon className="w-5 h-5 text-[#07375a]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">صوري</div>
-            <div className="text-[11px] text-[#6f8291]">معرض الصور</div>
-          </div>
-        </button>
-
-        {/* ▤ أخباري */}
-        <button
-          onClick={() => setActiveSection('news')}
-          className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
-        >
-          <div className="w-10 h-10 rounded-lg bg-[#f0f4f8] flex items-center justify-center shrink-0">
-            <Newspaper className="w-5 h-5 text-[#07375a]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">أخباري</div>
-            <div className="text-[11px] text-[#6f8291]">آخر الأخبار والكتابات</div>
-          </div>
-        </button>
-
-        {/* 🔗 الروابط والمواقع */}
-        <button
-          onClick={() => setActiveSection('links')}
-          className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
-        >
-          <div className="w-10 h-10 rounded-lg bg-[#f0f4f8] flex items-center justify-center shrink-0">
-            <Link2 className="w-5 h-5 text-[#07375a]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">الروابط والمواقع</div>
-            <div className="text-[11px] text-[#6f8291]">مواقع وحسابات مهمة</div>
-          </div>
-        </button>
-
-        {/* 💬 تواصل معي */}
-        <button
-          onClick={() => setActiveSection('contact')}
-          className="p-3.5 rounded-xl bg-white border border-[#dce8ef] text-[#07375a] shadow-sm hover:border-[#07375a] hover:shadow transition-all flex items-center gap-3 text-right"
-        >
-          <div className="w-10 h-10 rounded-lg bg-[#f0f4f8] flex items-center justify-center shrink-0">
-            <MessageSquare className="w-5 h-5 text-[#07375a]" />
-          </div>
-          <div>
-            <div className="text-sm font-bold">تواصل معي</div>
-            <div className="text-[11px] text-[#6f8291]">رسائل وتعليقات</div>
-          </div>
-        </button>
-      </section>
-
-      {/* 3. THREE-COLUMN CONTENT GRID (Desktop Sidebars flanking Center Feed) */}
+        {/* 2. THREE-COLUMN CONTENT GRID (Desktop Sidebars flanking Center Feed) */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
         {/* COLUMN 1: RIGHT SIDE (lg:col-span-3) - أحدث مؤلفاتي وفيديو والتراخيص (للكمبيوتر فقط وليس للموبايل) */}
