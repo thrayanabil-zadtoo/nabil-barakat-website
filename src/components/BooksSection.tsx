@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Book } from '../types';
 import { BookReaderModal } from './BookReaderModal';
@@ -76,10 +76,29 @@ export const BooksSection: React.FC = () => {
     index: number;
   } | null>(null);
   const [isConfirmingGalleryDelete, setIsConfirmingGalleryDelete] = useState(false);
+  const [highlightedBookId, setHighlightedBookId] = useState<string | null>(null);
 
   const coverInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const galleryVideoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetId = new URLSearchParams(window.location.search).get('item');
+    if (targetId && books.some((b) => b.id === targetId)) {
+      setSelectedGenre('all');
+      setHighlightedBookId(targetId);
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`book-item-${targetId}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 250);
+      const clearTimer = setTimeout(() => setHighlightedBookId(null), 6000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(clearTimer);
+      };
+    }
+  }, [books.length]);
 
   const genres = ['all', ...Array.from(new Set(books.map((b) => b.genre)))];
 
@@ -269,8 +288,11 @@ export const BooksSection: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredBooks.map((book, index) => (
           <div
+            id={`book-item-${book.id}`}
             key={book.id}
-            className="gold-gilded-card rounded-2xl bg-white overflow-hidden p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all space-y-5"
+            className={`gold-gilded-card rounded-2xl bg-white overflow-hidden p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all space-y-5 ${
+              highlightedBookId === book.id ? 'ring-2 ring-[#dfa85b] border-[#dfa85b] shadow-xl' : ''
+            }`}
           >
             <div className="space-y-4">
               
@@ -285,7 +307,7 @@ export const BooksSection: React.FC = () => {
                   <span>{book.publicationYear}</span>
                 </div>
                 <div className="font-mono tabular-nums text-[#0b385e] font-semibold">
-                  {book.pagesCount} صفحة
+                  {book.pagesCount > 0 ? `${book.pagesCount} صفحة` : 'قيد التجهيز'}
                 </div>
               </div>
 
@@ -535,7 +557,11 @@ export const BooksSection: React.FC = () => {
                 <div className="text-xs font-semibold text-[#0b385e] flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <List className="w-3.5 h-3.5" />
-                    <span>فهرس المحتويات ({book.tableOfContents.length} فصول):</span>
+                    <span>
+                      {book.pagesCount > 0
+                        ? `فهرس المحتويات (${book.tableOfContents.length} فصول):`
+                        : 'فهرس المحتويات (قيد التجهيز):'}
+                    </span>
                   </span>
                   <button
                     onClick={() => setSelectedBookForReading(book)}
@@ -558,7 +584,7 @@ export const BooksSection: React.FC = () => {
               <div className="pt-2">
                 <ContentInteractionBar
                   itemId={book.id}
-                  itemTitle={`رواية ${book.title}`}
+                  itemTitle={book.genre?.includes('شعر') ? `كتاب الشعر: ${book.title}` : `رواية ${book.title}`}
                   itemType="book"
                   commentsCount={book.comments?.length || 24}
                   itemDescription={book.description}
@@ -575,17 +601,17 @@ export const BooksSection: React.FC = () => {
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082c4a] rounded-lg transition shadow-xs cursor-pointer"
                 >
                   <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
-                  <span>تصفح وقراءة الكتاب</span>
+                  <span>{book.genre?.includes('شعر') ? 'تصفح كتاب الشعر' : 'تصفح وقراءة الكتاب'}</span>
                 </button>
 
                 {/* Voice Listen Button */}
                 <button
                   onClick={() => setSelectedBookForReading(book)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-slate-950 bg-linear-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-500 rounded-lg transition shadow-xs hover:shadow-md cursor-pointer border border-amber-300 group"
-                  title="استماع صوتي للرواية"
+                  title={book.genre?.includes('شعر') ? 'استماع صوتي للكتاب' : 'استماع صوتي للرواية'}
                 >
                   <Headphones className="w-3.5 h-3.5 text-rose-700 fill-rose-600/30 group-hover:scale-110 transition" />
-                  <span>استماع للرواية</span>
+                  <span>{book.genre?.includes('شعر') ? 'استماع صوتي' : 'استماع للرواية'}</span>
                 </button>
 
                 {/* Share Button */}

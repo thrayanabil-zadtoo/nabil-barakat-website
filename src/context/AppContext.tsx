@@ -39,7 +39,18 @@ import {
   SyncedSiteData,
 } from '../utils/firebaseSync';
 import { sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
-import { generateInitialCommunityPostStats, getCommunityPostStats } from '../utils/dynamicStats';
+import {
+  generateInitialCommunityPostStats,
+  getCommunityPostStats,
+  getLocalPostLikeState,
+  setLocalPostLikeState,
+} from '../utils/dynamicStats';
+import {
+  hasSeededNotificationRegistry,
+  seedBaselineContentIds,
+  notifySingleNewContent,
+  notifyNewContentFromSync,
+} from '../utils/contentNotifications';
 
 interface AppContextType {
   authorProfile: AuthorProfile;
@@ -177,7 +188,9 @@ interface AppContextType {
   addAuthorPost: (post: Omit<AuthorPost, 'id' | 'date'>) => void;
   updateAuthorPost: (id: string, updated: Partial<AuthorPost>) => void;
   deleteAuthorPost: (id: string) => void;
-  toggleLikeAuthorPost: (id: string) => void;
+  toggleLikeAuthorPost: (id: string, forceLike?: boolean) => boolean;
+  recordPostView: (id: string) => void;
+  openCommunityPost: (postId: string) => void;
 
   // Toast notification
   toastMessage: string | null;
@@ -234,6 +247,25 @@ export interface UploadStatusState {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const isBook5DeletedManually = () => {
+  try {
+    return localStorage.getItem('nabil_deleted_book5_poetry_v1') === 'true';
+  } catch {
+    return false;
+  }
+};
+
+const ensurePoetryBook5Present = (list: Book[]): Book[] => {
+  if (!Array.isArray(list)) return initialBooks;
+  if (isBook5DeletedManually()) return list;
+  const hasBook5 = list.some(
+    (b) => b && (b.id === 'book-5' || b.title?.includes('امرأة أعادت برمجة قلبي'))
+  );
+  if (hasBook5) return list;
+  const defaultBook5 = initialBooks.find((ib) => ib.id === 'book-5');
+  return defaultBook5 ? [...list, defaultBook5] : list;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Clean up legacy storage and hydrate from IndexedDB on boot
   useEffect(() => {
@@ -248,24 +280,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const idbBooks = await loadFromIndexedDB<Book[]>('nabil_author_v4_books');
         if (idbBooks && Array.isArray(idbBooks) && idbBooks.length > 0) {
-          const sanitizedIdbBooks = idbBooks.map((b) => {
-            const official =
-              officialBookAccreditations[b.id] ||
-              (b.title.includes('شيماء') ? officialBookAccreditations['book-1'] :
-               b.title.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
-               b.title.includes('اعترافات') ? officialBookAccreditations['book-3'] :
-               b.title.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
-            if (official) {
-              return {
-                ...b,
-                depositNumber: official.depositNumber,
-                isbn: official.isbn,
-                publisher: official.publisher,
-                publicationYear: official.publicationYear,
-              };
-            }
-            return b;
-          });
+          const sanitizedIdbBooks = ensurePoetryBook5Present(
+            idbBooks.map((b) => {
+              const official =
+                officialBookAccreditations[b.id] ||
+                (b.title.includes('شيماء') ? officialBookAccreditations['book-1'] :
+                 b.title.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
+                 b.title.includes('اعترافات') ? officialBookAccreditations['book-3'] :
+                 b.title.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
+              if (official) {
+                return {
+                  ...b,
+                  depositNumber: official.depositNumber,
+                  isbn: official.isbn,
+                  publisher: official.publisher,
+                  publicationYear: official.publicationYear,
+                };
+              }
+              return b;
+            })
+          );
           setBooks(sanitizedIdbBooks);
           safeSetItem('nabil_author_v4_books', sanitizedIdbBooks);
         }
@@ -364,6 +398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!Array.isArray(loaded) || loaded.length === 0) {
       return initialBooks;
     }
+    loaded = ensurePoetryBook5Present(loaded);
     // Clean up any old placeholder images, fix broken page image paths, and purge deleted 'زهرة' page
     return loaded.map((b) => {
       const cleanedGallery = (b.galleryImages || []).filter(
@@ -449,10 +484,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
          b.title.includes('اعترافات') ? officialBookAccreditations['book-3'] :
          b.title.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
 
-      const depositNumber = official?.depositNumber || defaultBook?.depositNumber || b.depositNumber || '';
-      const isbn = official?.isbn || defaultBook?.isbn || b.isbn || '';
-      const publisher = official?.publisher || defaultBook?.publisher || 'مؤسسة دار الهلال للنشر';
-      const publicationYear = official?.publicationYear || defaultBook?.publicationYear || '2025';
+      const depositNumber = official ? official.depositNumber : (b.depositNumber ?? defaultBook?.depositNumber ?? '');
+      const isbn = official ? official.isbn : (b.isbn ?? defaultBook?.isbn ?? '');
+      const publisher = official?.publisher || b.publisher || defaultBook?.publisher || 'مؤسسة دار الهلال للنشر';
+      const publicationYear = official?.publicationYear || b.publicationYear || defaultBook?.publicationYear || '2025';
 
       return {
         ...b,
@@ -520,7 +555,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState<boolean>(false);
   const [authorPosts, setAuthorPosts] = useState<AuthorPost[]>(() =>
-    sortCommunityPostsNewestFirst(loadState('author_posts', initialAuthorPosts))
+    sortCommunityPostsNewestFirst(
+      loadState('author_posts', initialAuthorPosts).map((p: AuthorPost) => {
+        const localLiked = getLocalPostLikeState(p.id);
+        return localLiked !== null ? { ...p, isLiked: localLiked } : p;
+      })
+    )
   );
 
   const getInitialSection = (): string => {
@@ -600,6 +640,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           window.location.hash = section;
         }
       }
+    }
+  };
+
+  const openCommunityPost = (postId: string) => {
+    setActiveSectionInternal('community');
+    if (typeof window !== 'undefined') {
+      const targetUrl = `/community?post=${encodeURIComponent(postId)}`;
+      try {
+        history.pushState({ section: 'community', postId }, '', targetUrl);
+      } catch {
+        window.location.hash = `community?post=${encodeURIComponent(postId)}`;
+      }
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('nb:focus-post', { detail: { postId } }));
+      }, 60);
     }
   };
 
@@ -688,34 +743,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const sanitizeBooksList = (inputBooks: Book[]): Book[] => {
-    return inputBooks.map((b) => {
-      const official =
-        officialBookAccreditations[b.id] ||
-        (b.title?.includes('شيماء') ? officialBookAccreditations['book-1'] :
-         b.title?.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
-         b.title?.includes('اعترافات') ? officialBookAccreditations['book-3'] :
-         b.title?.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
-      if (official) {
-        return {
-          ...b,
-          depositNumber: official.depositNumber,
-          isbn: official.isbn,
-          publisher: official.publisher,
-          publicationYear: official.publicationYear,
-        };
-      }
-      return b;
-    });
+    return ensurePoetryBook5Present(
+      inputBooks.map((b) => {
+        const official =
+          officialBookAccreditations[b.id] ||
+          (b.title?.includes('شيماء') ? officialBookAccreditations['book-1'] :
+           b.title?.includes('رجل بلا لون') ? officialBookAccreditations['book-2'] :
+           b.title?.includes('اعترافات') ? officialBookAccreditations['book-3'] :
+           b.title?.includes('عاشق') ? officialBookAccreditations['book-4'] : null);
+        if (official) {
+          return {
+            ...b,
+            depositNumber: official.depositNumber,
+            isbn: official.isbn,
+            publisher: official.publisher,
+            publicationYear: official.publicationYear,
+          };
+        }
+        return b;
+      })
+    );
   };
 
   // Subscribe to real-time changes from Firebase Firestore and load initial state
   useEffect(() => {
+    const wasRegistryInitializedOnBoot = hasSeededNotificationRegistry();
+    seedBaselineContentIds({
+      books: booksRef.current,
+      videos,
+      photos,
+      news,
+      announcements,
+      links,
+      authorPosts,
+    });
+
     // 1. Initial direct fetch from Cloud Firestore (ensures instant hydration on any device or incognito)
     fetchCloudSiteData()
       .then((cloudData) => {
         if (cloudData && Object.keys(cloudData).length > 0) {
+          if (!wasRegistryInitializedOnBoot) {
+            seedBaselineContentIds(cloudData);
+          }
+
           if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
             const sanitized = sanitizeBooksList(cloudData.books);
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('book', sanitized);
             setBooks(sanitized);
             booksRef.current = sanitized;
             safeSetItem('nabil_author_v4_books', sanitized);
@@ -725,41 +798,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             safeSetItem('nabil_author_v4_profile', cloudData.authorProfile);
           }
           if (cloudData.photos && Array.isArray(cloudData.photos)) {
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('photo', cloudData.photos);
             setPhotos(cloudData.photos);
             safeSetItem('nabil_author_v4_photos', cloudData.photos);
           }
           const initVideos = cloudData.videos;
           if (initVideos && Array.isArray(initVideos)) {
+            const cleanInit = initVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('video', cleanInit);
             setVideos((prev) => {
-              const cleanCloud = initVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-              const cloudIds = new Set(cleanCloud.map((v: any) => v.id));
+              const cloudIds = new Set(cleanInit.map((v: any) => v.id));
               const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
-              const merged = [...localPending, ...cleanCloud];
+              const merged = [...localPending, ...cleanInit];
               safeSetItem('nabil_author_v5_videos', merged);
               safeSetItem('nabil_author_v4_videos', merged);
               return merged;
             });
           }
           if (cloudData.news && Array.isArray(cloudData.news)) {
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('news', cloudData.news);
             setNews(cloudData.news);
             safeSetItem('nabil_author_v4_news', cloudData.news);
           }
           if (cloudData.links && Array.isArray(cloudData.links)) {
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('link', cloudData.links);
             setLinks(cloudData.links);
             safeSetItem('nabil_author_v4_links', cloudData.links);
           }
           if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('announcement', cloudData.announcements);
             setAnnouncements(cloudData.announcements);
             safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
           }
           if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
+            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('post', cloudData.authorPosts);
             setAuthorPosts((prev) => {
               const cloudList = cloudData.authorPosts || [];
               const map = new Map<string, AuthorPost>();
               // Keep local posts first so recently drafted posts are never wiped
               prev.forEach((p) => { if (p && p.id) map.set(p.id, p); });
               cloudList.forEach((p: AuthorPost) => {
-                if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
+                if (p && p.id) {
+                  const localLiked = getLocalPostLikeState(p.id);
+                  const prevLocal = map.get(p.id);
+                  map.set(p.id, {
+                    ...(prevLocal || {}),
+                    ...p,
+                    isLiked: localLiked !== null ? localLiked : Boolean(prevLocal?.isLiked ?? p.isLiked),
+                  });
+                }
               });
               const merged = sortCommunityPostsNewestFirst(Array.from(map.values()));
               safeSetItem('nabil_author_v4_author_posts', merged);
@@ -772,9 +859,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch((err) => console.warn('Initial cloud state fetch notice:', err));
 
+    // Track first live snapshot per collection when starting cleanly on a brand-new install
+    const bootedSnapshots = new Set<string>();
+
     // 2. Real-time updates subscription
-    const unsubscribe = subscribeToCloudSiteData((cloudData) => {
+    const unsubscribe = subscribeToCloudSiteData((cloudData, source) => {
       if (cloudData && Object.keys(cloudData).length > 0) {
+        const isFirstSnapshotForSource = source ? !bootedSnapshots.has(source) : false;
+        if (source) bootedSnapshots.add(source);
+        const canNotifyLive = wasRegistryInitializedOnBoot || isCloudHydrated.current || !isFirstSnapshotForSource;
+
+        if (!canNotifyLive) {
+          seedBaselineContentIds(cloudData);
+        }
+
         if (cloudData.authorProfile) {
           setAuthorProfile((prev) => {
             const next = { ...prev, ...cloudData.authorProfile };
@@ -784,6 +882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
           const sanitized = sanitizeBooksList(cloudData.books);
+          if (canNotifyLive) notifyNewContentFromSync('book', sanitized);
           setBooks(sanitized);
           booksRef.current = sanitized;
           safeSetItem('nabil_author_v4_books', sanitized);
@@ -791,39 +890,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const liveVideos = cloudData.videos;
         if (liveVideos && Array.isArray(liveVideos)) {
           const cleanCloud = liveVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
+          if (canNotifyLive) notifyNewContentFromSync('video', cleanCloud);
           setVideos(cleanCloud);
           safeSetItem('nabil_author_v5_videos', cleanCloud);
         }
         if (cloudData.photos && Array.isArray(cloudData.photos)) {
+          if (canNotifyLive) notifyNewContentFromSync('photo', cloudData.photos);
           setPhotos(cloudData.photos);
           safeSetItem('nabil_author_v4_photos', cloudData.photos);
         }
         if (cloudData.news && Array.isArray(cloudData.news)) {
+          if (canNotifyLive) notifyNewContentFromSync('news', cloudData.news);
           setNews(cloudData.news);
           safeSetItem('nabil_author_v4_news', cloudData.news);
         }
         if (cloudData.links && Array.isArray(cloudData.links)) {
+          if (canNotifyLive) notifyNewContentFromSync('link', cloudData.links);
           setLinks(cloudData.links);
           safeSetItem('nabil_author_v4_links', cloudData.links);
         }
         if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
+          if (canNotifyLive) notifyNewContentFromSync('announcement', cloudData.announcements);
           setAnnouncements(cloudData.announcements);
           safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
         }
         if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
+          if (canNotifyLive) notifyNewContentFromSync('post', cloudData.authorPosts);
           setAuthorPosts((prev) => {
             const cloudList = cloudData.authorPosts || [];
             const map = new Map<string, AuthorPost>();
             // Keep local posts first so newly drafted posts are never wiped
             prev.forEach((p) => { if (p && p.id) map.set(p.id, p); });
             cloudList.forEach((p: AuthorPost) => {
-              if (p && p.id) map.set(p.id, { ...(map.get(p.id) || {}), ...p });
+              if (p && p.id) {
+                const localLiked = getLocalPostLikeState(p.id);
+                const prevLocal = map.get(p.id);
+                map.set(p.id, {
+                  ...(prevLocal || {}),
+                  ...p,
+                  isLiked: localLiked !== null ? localLiked : Boolean(prevLocal?.isLiked ?? p.isLiked),
+                });
+              }
             });
             const merged = sortCommunityPostsNewestFirst(Array.from(map.values()));
             safeSetItem('nabil_author_v4_author_posts', merged);
             return merged;
           });
         }
+        // Explicitly do NOT trigger push notifications for comments, replies, or visitor messages
         if (cloudData.comments && Array.isArray(cloudData.comments)) {
           setComments(cloudData.comments);
           safeSetItem('nabil_author_v4_comments', cloudData.comments);
@@ -1398,6 +1512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (newBook.coverImage) {
       ensureBookImageInGallery(newBook.title, newBook.coverImage);
     }
+    notifySingleNewContent('book', newBook);
     await executeCloudSave({ books: nextBooksList }, 'تمت إضافة الكتاب الجديد وحفظه سحابياً بنجاح', 'الكتاب الجديد');
   };
 
@@ -1422,6 +1537,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteBook = async (id: string) => {
+    if (id === 'book-5') {
+      try {
+        localStorage.setItem('nabil_deleted_book5_poetry_v1', 'true');
+      } catch {}
+    }
     const nextBooksList = booksRef.current.filter((b) => b.id !== id);
     booksRef.current = nextBooksList;
     setBooks(nextBooksList);
@@ -1621,6 +1741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ videos: next }, 'تم حفظ وتثبيت الفيديو سحابياً', 'الفيديو');
       return next;
     });
+    notifySingleNewContent('video', newVideo);
   };
 
   const updateVideo = (id: string, updated: Partial<VideoItem>) => {
@@ -1720,6 +1841,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ photos: next }, 'تمت إضافة الصورة إلى الألبوم وحفظها سحابياً', 'الصورة');
       return next;
     });
+    notifySingleNewContent('photo', newPhoto);
   };
 
   const updatePhoto = (id: string, updated: Partial<PhotoItem>) => {
@@ -1799,6 +1921,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ news: next }, 'تم نشر وحفظ المقال أو الخبر سحابياً بنجاح', 'الخبر الأدبي');
       return next;
     });
+    notifySingleNewContent('news', newItem);
   };
 
   const updateNews = (id: string, updated: Partial<NewsItem>) => {
@@ -1877,6 +2000,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ links: next }, 'تمت إضافة الرابط وحفظه سحابياً بنجاح', 'الرابط الجديد');
       return next;
     });
+    notifySingleNewContent('link', newLink);
   };
 
   const updateLink = (id: string, updated: Partial<LinkItem>) => {
@@ -1909,6 +2033,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ announcements: next }, 'تم نشر الإعلان الجديد وحفظه سحابياً', 'الإعلان');
       return next;
     });
+    notifySingleNewContent('announcement', newItem);
   };
 
   const updateAnnouncement = (id: string, updated: Partial<AnnouncementItem>) => {
@@ -2054,6 +2179,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       executeCloudSave({ authorPosts: next }, 'تم نشر الخاطرة أو القصيدة في قسم المجتمع وحفظها سحابياً', 'منشور المجتمع');
       return next;
     });
+    notifySingleNewContent('post', newPost);
     showToast('✓ تم نشر النص في قسم المجتمع وإضافة المشاهدات الأولية وحفظه سحابياً!');
   };
 
@@ -2078,11 +2204,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('تم حذف المنشور بنجاح');
   };
 
-  const toggleLikeAuthorPost = (id: string) => {
+  const viewSyncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const toggleLikeAuthorPost = (id: string, forceLike?: boolean): boolean => {
+    let resultingLiked = true;
     setAuthorPosts((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (!target) return prev;
+
+      const currentLiked = Boolean(target.isLiked);
+      const isLikedNow = forceLike ? true : !currentLiked;
+      resultingLiked = isLikedNow;
+
+      // If double-tapping an already-liked post, keep the heart filled without altering count
+      if (forceLike && currentLiked) {
+        setLocalPostLikeState(id, true);
+        return prev;
+      }
+
+      setLocalPostLikeState(id, isLikedNow);
+
       const next = prev.map((p) => {
         if (p.id === id) {
-          const isLikedNow = !p.isLiked;
           const computed = getCommunityPostStats(p);
           const currentCount = typeof p.likesCount === 'number' && p.likesCount >= 50 ? p.likesCount : computed.baseLikes;
           const currentViews = typeof p.viewsCount === 'number' && p.viewsCount >= 50 ? p.viewsCount : computed.baseViews;
@@ -2097,6 +2240,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       safeSetItem('nabil_author_v4_author_posts', next);
       saveSiteDataToCloud({ authorPosts: next }, true);
+      return next;
+    });
+    return resultingLiked;
+  };
+
+  const recordPostView = (id: string) => {
+    if (!id || typeof window === 'undefined') return;
+    try {
+      const seenKey = `nabil_viewed_post_${id}`;
+      if (sessionStorage.getItem(seenKey) === '1') return;
+      sessionStorage.setItem(seenKey, '1');
+    } catch {
+      // Proceed even if sessionStorage is restricted
+    }
+
+    setAuthorPosts((prev) => {
+      let changed = false;
+      const next = prev.map((p) => {
+        if (p.id === id) {
+          changed = true;
+          const computed = getCommunityPostStats(p);
+          const currentViews = typeof p.viewsCount === 'number' && p.viewsCount >= 50 ? p.viewsCount : computed.baseViews;
+          return {
+            ...p,
+            viewsCount: currentViews + 1,
+          };
+        }
+        return p;
+      });
+      if (!changed) return prev;
+      safeSetItem('nabil_author_v4_author_posts', next);
+      if (viewSyncTimerRef.current) clearTimeout(viewSyncTimerRef.current);
+      viewSyncTimerRef.current = setTimeout(() => {
+        saveSiteDataToCloud({ authorPosts: next }, true);
+      }, 2800);
       return next;
     });
   };
@@ -2281,6 +2459,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAuthorPost,
         deleteAuthorPost,
         toggleLikeAuthorPost,
+        recordPostView,
+        openCommunityPost,
         toastMessage,
         showToast,
         exportAllSiteData,

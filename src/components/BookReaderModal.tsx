@@ -926,12 +926,12 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     </div>
                   </div>
 
-                  {/* تراخيص الرواية الحالية والتوثيق القانوني */}
+                  {/* تراخيص العمل والتوثيق القانوني */}
                   <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-3">
                     <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-600" />
                       <h4 className="font-bold text-xs text-[#07243c]">
-                        توثيق وتراخيص الرواية
+                        {activeBook.genre?.includes('شعر') ? 'بيانات كتاب الشعر والتراخيص' : 'توثيق وتراخيص الرواية'}
                       </h4>
                     </div>
 
@@ -950,9 +950,15 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                         </div>
                       )}
 
+                      {!activeBook.depositNumber && !activeBook.isbn && (
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[#475569] font-medium">
+                          دون رقم ترخيص حالياً · {activeBook.genre?.includes('شعر') ? 'كتاب شعر قيد التجهيز' : 'قيد التجهيز'}
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-slate-500 pt-1 text-[10px]">
-                        <span>دار النشر: {activeBook.publisher || 'مؤسسة دار الهلال للنشر'}</span>
-                        <span>سنة: {activeBook.publicationYear || '2025'}</span>
+                        <span>الناشر: {activeBook.publisher || 'الشاعر أ. نبيل بركات'}</span>
+                        <span>سنة: {activeBook.publicationYear || '2026'}</span>
                       </div>
                     </div>
                   </div>
@@ -1007,7 +1013,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
 
                 <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#dfa85b]/20 border border-[#dfa85b]/40 text-[#f5cd72] text-xs font-bold shadow-xs">
                   <BookOpen className="w-3.5 h-3.5 text-[#dfa85b]" />
-                  <span>تصفح وقراءة الرواية</span>
+                  <span>{activeBook.genre?.includes('شعر') ? 'تصفح كتاب الشعر' : 'تصفح وقراءة الرواية'}</span>
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#f5cd72] font-literary tracking-wide drop-shadow-md">
@@ -1739,19 +1745,23 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                       <span className="font-semibold text-[#0b385e] dark:text-amber-200">
                         جميع الحقوق محفوظة للمؤلف والروائي أ. نبيل بركات © {activeBook.publicationYear || '2025'}
                       </span>
-                      <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
                       {activeBook.depositNumber && (
-                        <span className="inline-flex items-center gap-1 font-mono">
-                          <span className="text-[#c4924c] font-bold">رقم الإيداع:</span>
-                          <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.depositNumber}</span>
-                        </span>
+                        <>
+                          <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
+                          <span className="inline-flex items-center gap-1 font-mono">
+                            <span className="text-[#c4924c] font-bold">رقم الإيداع:</span>
+                            <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.depositNumber}</span>
+                          </span>
+                        </>
                       )}
-                      <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
                       {activeBook.isbn && (
-                        <span className="inline-flex items-center gap-1 font-mono">
-                          <span className="text-[#c4924c] font-bold">الترقيم الدولي (ISBN):</span>
-                          <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.isbn}</span>
-                        </span>
+                        <>
+                          <span className="hidden sm:inline text-gray-300 dark:text-slate-600">·</span>
+                          <span className="inline-flex items-center gap-1 font-mono">
+                            <span className="text-[#c4924c] font-bold">الترقيم الدولي (ISBN):</span>
+                            <span className="dir-ltr text-[#0b385e] dark:text-amber-100 font-semibold">{activeBook.isbn}</span>
+                          </span>
+                        </>
                       )}
                       <span className="hidden md:inline text-gray-300 dark:text-slate-600">·</span>
                       <span className="text-[10px] sm:text-[11px] text-[#8292a4]">عضو الجمعية المصرية لكتاب القصة والرواية</span>

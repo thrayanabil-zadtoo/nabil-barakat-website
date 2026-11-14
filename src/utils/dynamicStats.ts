@@ -174,3 +174,28 @@ export function getCommunityPostStats(post: {
   };
 }
 
+/**
+ * Persists a visitor's liked heart state per community post locally so it survives page refreshes and cloud updates.
+ */
+export function getLocalPostLikeState(postId: string): boolean | null {
+  if (typeof window === 'undefined' || !postId) return null;
+  try {
+    const val = localStorage.getItem(`nabil_post_liked_${postId}`);
+    if (val === 'true') return true;
+    if (val === 'false') return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLocalPostLikeState(postId: string, liked: boolean): void {
+  if (typeof window === 'undefined' || !postId) return;
+  try {
+    localStorage.setItem(`nabil_post_liked_${postId}`, liked ? 'true' : 'false');
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+

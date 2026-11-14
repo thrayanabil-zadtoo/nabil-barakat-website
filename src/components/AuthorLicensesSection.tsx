@@ -120,7 +120,7 @@ export const AuthorLicensesSection: React.FC = () => {
             </div>
 
             <p className="text-xs sm:text-sm text-[#cbd5e1] leading-relaxed pt-1">
-              جميع المؤلفات والروايات المنشورة أدناه مسجلة رسمياً ومحمية قانونياً بأرقام الإيداع المعتمدة والترقيم الدولي الموحد (ISBN). يُمكنك الضغط على أي كتاب لتصفح فصوله وقراءة نصوصه كاملة.
+              جميع المؤلفات والروايات والدواوين الشعرية المدرجة أدناه تابعة للكاتب والشاعر أ. نبيل بركات، مع توثيق أرقام الإيداع والترقيم الدولي (ISBN) للأعمال الصادرة رسمياً، وتخصيص قسم خاص لكتاب الشعر قيد التجهيز.
             </p>
 
             {/* Direct Link to Licenses Section Banner Card */}
@@ -193,7 +193,7 @@ export const AuthorLicensesSection: React.FC = () => {
           </div>
           <div>
             <div className="text-xs text-[#64748b] font-medium">عدد المؤلفات</div>
-            <div className="text-lg font-black text-[#07243c] font-mono">{books.length} كتب وروايات</div>
+            <div className="text-lg font-black text-[#07243c] font-mono">{books.length} كتب ودواوين</div>
           </div>
         </div>
 
@@ -228,10 +228,21 @@ export const AuthorLicensesSection: React.FC = () => {
         </div>
       </div>
 
-      {/* THE 4 BOOKS LICENSES GRID */}
+      {/* BOOKS & POETRY LICENSES GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {books.map((book, index) => {
-          const isDepositReady = book.depositNumber && !book.depositNumber.includes('قيد');
+          const isPoetryBook =
+            book.id === 'book-5' ||
+            Boolean(book.genre?.includes('شعر')) ||
+            Boolean(book.subtitle?.includes('شعر'));
+          const hasDepositNumber = Boolean(
+            book.depositNumber && book.depositNumber.trim() && !book.depositNumber.includes('قيد')
+          );
+          const hasIsbn = Boolean(
+            book.isbn && book.isbn.trim() && !book.isbn.includes('قيد')
+          );
+          const hasAnyLicenseNumber = hasDepositNumber || hasIsbn;
+
           return (
             <div
               key={book.id}
@@ -247,15 +258,20 @@ export const AuthorLicensesSection: React.FC = () => {
                       {index + 1}
                     </span>
                     <span className="text-xs font-bold text-[#07243c]">
-                      توثيق كتاب رسمي
+                      {isPoetryBook ? 'قسم كتاب الشعر في التراخيص' : 'توثيق كتاب رسمي'}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {isDepositReady ? (
+                    {hasDepositNumber ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                         <span>معتمد ومسجل</span>
+                      </span>
+                    ) : !hasAnyLicenseNumber ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-300 text-[#0b385e] text-[11px] font-bold">
+                        <Info className="w-3.5 h-3.5 text-[#c4924c]" />
+                        <span>دون رقم ترخيص حالياً</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-bold">
@@ -294,7 +310,9 @@ export const AuthorLicensesSection: React.FC = () => {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-end p-3 text-white text-center">
                       <BookOpen className="w-6 h-6 text-[#dfa85b] mb-1 animate-bounce" />
-                      <span className="text-xs font-bold text-[#f5cd72]">تصفح الرواية</span>
+                      <span className="text-xs font-bold text-[#f5cd72]">
+                        {isPoetryBook ? 'تصفح كتاب الشعر' : 'تصفح الرواية'}
+                      </span>
                     </div>
                   </div>
 
@@ -316,15 +334,15 @@ export const AuthorLicensesSection: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#475569]">
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Building className="w-3 h-3 text-[#c4924c]" />
-                        <span>{book.publisher || 'مؤسسة دار الهلال للنشر'}</span>
+                        <span>{book.publisher || 'الشاعر أ. نبيل بركات'}</span>
                       </span>
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Calendar className="w-3 h-3 text-[#c4924c]" />
-                        <span>{book.publicationYear || '2025'}</span>
+                        <span>{book.publicationYear || '2026'}</span>
                       </span>
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Layers className="w-3 h-3 text-[#c4924c]" />
-                        <span>{book.pagesCount} صفحة</span>
+                        <span>{book.pagesCount > 0 ? `${book.pagesCount} صفحة` : 'المحتوى قيد التجهيز'}</span>
                       </span>
                     </div>
 
@@ -334,45 +352,66 @@ export const AuthorLicensesSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* OFFICIAL NUMBERS BOX: DEPOSIT & ISBN */}
-                <div className="space-y-2 pt-2">
-                  
-                  {/* 1. Legal Deposit Number */}
-                  <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 border border-amber-200/80 shadow-2xs">
-                    <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-amber-800" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-amber-900">
-                        رقم الإيداع القانوني
+                {/* OFFICIAL NUMBERS BOX OR UNLICENSED POETRY STATUS */}
+                {hasAnyLicenseNumber ? (
+                  <div className="space-y-2 pt-2">
+                    {hasDepositNumber && (
+                      <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-amber-50/80 via-white to-amber-50/40 border border-amber-200/80 shadow-2xs">
+                        <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4 text-amber-800" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-amber-900">
+                            رقم الإيداع القانوني
+                          </div>
+                          <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
+                            {book.depositNumber}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
-                        {book.depositNumber || 'قيد الاستكمال والتزويد'}
-                      </div>
-                    </div>
-                  </div>
+                    )}
 
-                  {/* 2. International Standard Book Number (ISBN) */}
-                  <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-50/80 via-white to-sky-50/40 border border-sky-200/80 shadow-2xs">
-                    <div className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 flex items-center justify-center shrink-0">
-                      <Barcode className="w-4 h-4 text-sky-800" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-sky-900">
-                        الترقيم الدولي الموحد (ISBN)
+                    {hasIsbn && (
+                      <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-sky-50/80 via-white to-sky-50/40 border border-sky-200/80 shadow-2xs">
+                        <div className="w-8 h-8 rounded-xl bg-sky-100 border border-sky-300 flex items-center justify-center shrink-0">
+                          <Barcode className="w-4 h-4 text-sky-800" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-sky-900">
+                            الترقيم الدولي الموحد (ISBN)
+                          </div>
+                          <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
+                            {book.isbn}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs sm:text-sm font-black text-[#07243c] font-mono dir-ltr truncate">
-                        {book.isbn || 'قيد الاستكمال'}
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-gradient-to-r from-slate-50 via-white to-amber-50/40 border border-slate-200 shadow-2xs">
+                      <div className="w-8 h-8 rounded-xl bg-[#07243c]/10 border border-[#07243c]/15 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4 text-[#c4924c]" />
+                      </div>
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="text-[11px] font-bold text-[#07243c]">
+                          حالة الترخيص والمحتوى
+                        </div>
+                        <div className="text-xs font-semibold text-[#475569]">
+                          دون رقم ترخيص حالياً · {isPoetryBook ? 'كتاب شعر قيد التجهيز وسيُضاف المحتوى قريباً' : 'قيد التجهيز'}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Card Footer: Action Button to browse and read novel */}
+              {/* Card Footer: Action Button to browse and read book */}
               <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-[11px] text-[#64748b]">
-                  متاح للقراءة الكاملة والاستماع الصوتي
+                  {isPoetryBook && book.pagesCount === 0
+                    ? 'قريباً سيتم تزويد الديوان بالقصائد الكاملة'
+                    : 'متاح للقراءة الكاملة والاستماع الصوتي'}
                 </span>
 
                 <button
@@ -381,7 +420,7 @@ export const AuthorLicensesSection: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-[#07243c] hover:bg-[#0b385e] text-[#f5cd72] hover:text-white text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md flex items-center gap-2 cursor-pointer transform hover:-translate-y-0.5 border border-[#dfa85b]/40"
                 >
                   <BookOpen className="w-4 h-4 text-[#dfa85b]" />
-                  <span>تصفح وقراءة الرواية الآن</span>
+                  <span>{isPoetryBook ? 'تصفح كتاب الشعر' : 'تصفح وقراءة الرواية الآن'}</span>
                 </button>
               </div>
             </div>

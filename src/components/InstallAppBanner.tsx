@@ -9,6 +9,8 @@ import {
   Copy,
   Check,
   Laptop,
+  Bell,
+  BellRing,
 } from 'lucide-react';
 import {
   OPEN_PWA_INSTALL_EVENT,
@@ -17,7 +19,14 @@ import {
 import { getSiteDomain, getSiteBaseUrl } from '../config/siteDomain';
 
 export const InstallAppBanner: React.FC = () => {
-  const { isInstallable, isInstalled, isIOS, installNative } = usePWAInstall();
+  const {
+    isInstallable,
+    isInstalled,
+    isIOS,
+    notificationPermission,
+    installNative,
+    requestNotifications,
+  } = usePWAInstall();
   const [isOpen, setIsOpen] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
@@ -114,21 +123,49 @@ export const InstallAppBanner: React.FC = () => {
 
         {/* Content based on installation state & platform */}
         {isInstalled ? (
-          <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-4 text-center space-y-2">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-            <p className="font-bold text-sm text-emerald-200">
-              التطبيق مُثبّت بالفعل على جهازك
-            </p>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              يمكنك فتح الموقع مباشرة من أيقونة «نبيل بركات» على شاشتك الرئيسية في أي وقت.
-            </p>
+          <div className="space-y-3">
+            <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-xl p-4 text-center space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+              <p className="font-bold text-sm text-emerald-200">
+                التطبيق مُثبّت بالفعل على جهازك
+              </p>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                يمكنك فتح الموقع مباشرة من أيقونة «نبيل بركات» على شاشتك الرئيسية في أي وقت.
+              </p>
+            </div>
+
+            {notificationPermission === 'granted' ? (
+              <div className="bg-emerald-900/40 border border-emerald-500/30 rounded-xl p-3 flex items-center gap-2.5 text-xs text-emerald-200">
+                <BellRing className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>إذن الإشعارات مفعّل تلقائياً لتلقي جديد القصائد والكتب.</span>
+              </div>
+            ) : notificationPermission === 'default' ? (
+              <button
+                type="button"
+                onClick={() => void requestNotifications()}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#dfa85b] to-[#c5943b] hover:from-[#ecc07d] hover:to-[#d3a043] text-[#07243c] font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+                <span>تفعيل إذن الإشعارات الآن</span>
+              </button>
+            ) : notificationPermission === 'denied' ? (
+              <div className="bg-amber-950/60 border border-amber-500/40 rounded-xl p-3 text-xs text-amber-100 leading-relaxed space-y-1">
+                <p className="font-bold text-[#f5cd72] flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>إذن الإشعارات مقفل من إعدادات الجهاز</span>
+                </p>
+                <p className="text-[11px] text-slate-200">
+                  لتفعيله في الأندرويد: افتح <strong>إعدادات التطبيق ← الأذونات ← الإشعارات ← سماح</strong>.
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : isInstallable ? (
           <div className="space-y-3">
             <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-xs text-slate-200 leading-relaxed flex items-start gap-2.5">
               <Smartphone className="w-4 h-4 text-[#dfa85b] shrink-0 mt-0.5" />
               <span>
-                جهازك يدعم التثبيت الفوري. اضغط على زر التثبيت لإضافة أيقونة الموقع الرسمي للكاتب نبيل بركات مباشرة كـتطبيق خفيف.
+                جهازك يدعم التثبيت الفوري. اضغط على زر التثبيت لإضافة أيقونة الموقع وطلب تفعيل الإشعارات تلقائياً فور التثبيت.
               </span>
             </div>
 
@@ -138,7 +175,7 @@ export const InstallAppBanner: React.FC = () => {
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#dfa85b] to-[#c5943b] hover:from-[#ecc07d] hover:to-[#d3a043] text-[#07243c] font-black text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
             >
               <Download className="w-4 h-4" />
-              <span>تثبيت التطبيق الآن مجاناً</span>
+              <span>تثبيت التطبيق وتفعيل الإشعارات</span>
             </button>
           </div>
         ) : isIOS ? (

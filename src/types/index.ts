@@ -135,6 +135,8 @@ export interface AuthorPost {
   content: string;
   bgColor?: string; // Pre-selected gradient background for Facebook-style card (e.g. 'red', 'crimson', 'ruby', 'navy', 'amber', 'purple', 'emerald', 'midnight', 'none')
   imageUrl?: string;
+  audioUrl?: string;
+  audioDuration?: string;
   linkUrl?: string;
   linkText?: string;
   date: string;

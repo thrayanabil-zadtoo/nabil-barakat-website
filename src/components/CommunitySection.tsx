@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AuthorPost } from '../types';
 import {
@@ -6,139 +6,113 @@ import {
   MessageSquare,
   Share2,
   Trash2,
-  Image as ImageIcon,
   Link2,
   Send,
-  X,
   Sparkles,
   Clock,
   Pin,
   Search,
-  Feather,
-  Lock,
   Eye,
+  Copy,
+  Check,
+  ImageDown,
 } from 'lucide-react';
-import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
+import { getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
 import { getCommunityPostStats, formatArabicNumber } from '../utils/dynamicStats';
-import { getCommunityPostShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
+import {
+  getCommunityPostShareUrl,
+  buildShortShareExcerpt,
+} from '../config/siteDomain';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
-import { AuthorSeal } from './AuthorSeal';
+import { CommunityAudioPlayer } from './CommunityAudioPlayer';
+import { CommunityQuoteCardModal } from './CommunityQuoteCardModal';
+import { DoubleTapHeartOverlay } from './DoubleTapHeartOverlay';
+import { useCommunityPostInteractions } from '../hooks/useCommunityPostInteractions';
 
 export const CommunitySection: React.FC = () => {
   const {
     authorPosts,
-    addAuthorPost,
-    updateAuthorPost,
     deleteAuthorPost,
     toggleLikeAuthorPost,
+    recordPostView,
     isAuthorMode,
-    setIsLoginModalOpen,
     authorProfile,
     comments,
     addVisitorComment,
-    approveComment,
-    deleteVisitorComment,
     openShareModal,
-    processAndUploadImage,
     showToast,
   } = useApp();
-
-  // Composer State
-  const [content, setContent] = useState('');
-  const [title, setTitle] = useState('');
-  const [selectedBg, setSelectedBg] = useState('red'); // Default to red as requested by author
-  const [category, setCategory] = useState<'قصيدة' | 'خاطرة' | 'مقال' | 'حكمة' | 'عام'>('قصيدة');
-  const [imageUrl, setImageUrl] = useState('');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkText, setLinkText] = useState('');
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'poems' | 'colored' | 'thoughts' | 'images' | 'popular'>('all');
 
-  // Edit Modal State
-  const [editingPost, setEditingPost] = useState<AuthorPost | null>(null);
+  // Quote Card Modal State
+  const [quoteCardPost, setQuoteCardPost] = useState<AuthorPost | null>(null);
 
   // Comments accordion state
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
   const [highlightedPostId, setHighlightedPostId] = useState<string | null>(null);
+  const feedContainerRef = useRef<HTMLElement | null>(null);
   const [commentAuthorNames, setCommentAuthorNames] = useState<Record<string, string>>({});
   const [commentContents, setCommentContents] = useState<Record<string, string>>({});
   const [submittedCommentNotice, setSubmittedCommentNotice] = useState<Record<string, boolean>>({});
 
-  // Scroll to shared ?post=<id> if opened via direct post link
+  const {
+    copiedPostId,
+    pressingPostId,
+    burstsByPost,
+    recentlyPoppedLikeId,
+    handlePostPointerDown,
+    handlePostPointerMove,
+    handlePostPointerUp,
+    handlePostPointerCancel,
+    handlePostDoubleClick,
+    handlePostContextMenu,
+    handleLikeButtonClick,
+    registerPostViewObserver,
+  } = useCommunityPostInteractions({
+    authorName: authorProfile.name || 'أ. نبيل بركات',
+    toggleLikeAuthorPost,
+    recordPostView,
+    showToast,
+  });
+
+  const focusSpecificPost = (targetId: string) => {
+    if (!targetId) return;
+    setSearchQuery('');
+    setActiveFilter('all');
+    setHighlightedPostId(targetId);
+    setTimeout(() => {
+      const el = document.getElementById(`community-post-${targetId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 220);
+    setTimeout(() => {
+      setHighlightedPostId((prev) => (prev === targetId ? null : prev));
+    }, 6000);
+  };
+
+  // Scroll to shared ?post=<id> if opened via direct post link or sidebar selection
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const targetId = params.get('post');
     if (targetId) {
-      setSearchQuery('');
-      setActiveFilter('all');
-      setHighlightedPostId(targetId);
-      const timer = setTimeout(() => {
-        const el = document.getElementById(`community-post-${targetId}`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 250);
-      const clearHighlight = setTimeout(() => setHighlightedPostId(null), 6000);
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(clearHighlight);
-      };
+      focusSpecificPost(targetId);
     }
+
+    const handleFocusEvent = (ev: Event) => {
+      const customEv = ev as CustomEvent<{ postId?: string }>;
+      if (customEv.detail?.postId) {
+        focusSpecificPost(customEv.detail.postId);
+      }
+    };
+    window.addEventListener('nb:focus-post', handleFocusEvent);
+    return () => window.removeEventListener('nb:focus-post', handleFocusEvent);
   }, [authorPosts.length]);
 
-  const handlePublish = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim() && !imageUrl.trim()) {
-      showToast('يرجى كتابة نص القصيدة أو الخاطرة أولاً');
-      return;
-    }
-
-    addAuthorPost({
-      content: content.trim(),
-      title: title.trim() || undefined,
-      bgColor: selectedBg,
-      category: category,
-      imageUrl: imageUrl.trim() || undefined,
-      linkUrl: linkUrl.trim() || undefined,
-      linkText: linkText.trim() || undefined,
-      isLiked: false,
-    });
-
-    // Reset Form
-    setContent('');
-    setTitle('');
-    setImageUrl('');
-    setLinkUrl('');
-    setLinkText('');
-    setShowLinkInput(false);
-    showToast('✓ تم نشر القصيدة في قسم المجتمع بنجاح وحفظها سحابياً');
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsUploadingImage(true);
-    try {
-      const uploaded = await processAndUploadImage(file, {
-        maxWidth: 1200,
-        maxHeight: 1200,
-        quality: 0.82,
-        category: 'قسم المجتمع',
-        contextTitle: 'صورة مرفقة بمنشور المجتمع الأدبي',
-      });
-      setImageUrl(uploaded);
-      showToast('✓ تم رفع الصورة وإرفاقها بالمنشور بنجاح');
-    } catch (err: any) {
-      showToast(err?.message || 'تعذر رفع الصورة');
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
 
   const handleVisitorCommentSubmit = (postId: string, postTitle: string, e: React.FormEvent) => {
     e.preventDefault();
@@ -167,6 +141,8 @@ export const CommunitySection: React.FC = () => {
       setSubmittedCommentNotice((prev) => ({ ...prev, [postId]: false }));
     }, 7000);
   };
+
+
 
   // Filter & Sort Posts: Newest First (الأحدث في البداية)
   const filteredPosts = (() => {
@@ -210,7 +186,10 @@ export const CommunitySection: React.FC = () => {
     return newestFirst;
   })();
 
-  const selectedPresetObj = getCommunityColorPreset(selectedBg);
+  const visiblePostIdsKey = filteredPosts.map((p) => p.id).join(',');
+  useEffect(() => {
+    return registerPostViewObserver(feedContainerRef.current);
+  }, [registerPostViewObserver, visiblePostIdsKey]);
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -276,237 +255,7 @@ export const CommunitySection: React.FC = () => {
         </div>
       </section>
 
-      {/* 2. Publisher Box: «ما يخطر في بالي» */}
-      <section className="bg-white rounded-3xl border-2 border-[#d6e0ea] shadow-sm p-5 sm:p-6 space-y-4">
-        {/* Supervisor Status Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-red-50 text-red-700 flex items-center justify-center font-bold text-lg border border-red-200">
-              ✍️
-            </div>
-            <div>
-              <h3 className="font-extrabold text-[#07243c] text-base font-literary flex items-center gap-2">
-                <span>صندوق الكتابة الأدبية: «ما يخطر في بالي»</span>
-                {isAuthorMode && (
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                    لوحة الكاتب نشطة
-                  </span>
-                )}
-              </h3>
-              <p className="text-xs text-slate-500">
-                اكتب قصيدتك أو خاطرتك، اختر البطاقة الحمراء أو الملونة، لتُنشر فوراً في قسم المجتمع لكافة القراء
-              </p>
-            </div>
-          </div>
-
-          {!isAuthorMode && (
-            <button
-              onClick={() => setIsLoginModalOpen(true)}
-              className="text-xs bg-[#07243c] hover:bg-[#0b385e] text-amber-300 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-            >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span>دخول الكاتب للنشر</span>
-            </button>
-          )}
-        </div>
-
-        {/* If author mode is active, render interactive composer */}
-        {isAuthorMode ? (
-          <form onSubmit={handlePublish} className="space-y-4">
-            {/* Title & Category selector */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="عنوان القصيدة أو الخاطرة (اختياري)..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-red-600 bg-slate-50/50"
-                />
-              </div>
-              <div>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none focus:border-red-600 bg-slate-50/50 cursor-pointer"
-                >
-                  <option value="قصيدة">📜 قصيدة شعريّة</option>
-                  <option value="خاطرة">✒️ خاطرة أدبية</option>
-                  <option value="حكمة">💡 حكمة وتأمل</option>
-                  <option value="مقال">📰 مقال ونقد</option>
-                  <option value="عام">💬 مشاركة عامة</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Dynamic Textarea with Live Card Preview */}
-            {selectedBg === 'none' ? (
-              <textarea
-                rows={4}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="اكتب أبيات القصيدة أو الخاطرة هنا بسطور واضحة ومتتالية..."
-                className="w-full p-4 rounded-2xl border border-slate-300 text-sm sm:text-base leading-relaxed text-slate-800 placeholder-slate-400 focus:outline-none focus:border-red-600 resize-none font-literary"
-              />
-            ) : (
-              <div className={`rounded-2xl p-6 sm:p-8 ${selectedPresetObj.class} shadow-inner min-h-[190px] flex flex-col items-center justify-center text-center transition-all duration-300 relative`}>
-                <span className="absolute top-3 right-3 text-[11px] font-bold bg-black/30 text-white/90 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
-                  معاينة البطاقة الملونة ({selectedPresetObj.label})
-                </span>
-
-                <textarea
-                  rows={5}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="اكتب أبيات القصيدة أو الخاطرة الأدبية هنا... ستظهر بخط بارز وخلفية ملونة جذابة لجميع القراء"
-                  className="w-full bg-transparent text-center text-white placeholder-white/70 font-literary text-lg sm:text-2xl font-bold focus:outline-none resize-none leading-relaxed border-0 select-text"
-                />
-              </div>
-            )}
-
-            {/* Attached Image Preview */}
-            {imageUrl && (
-              <div className="relative rounded-2xl overflow-hidden border border-slate-200 max-h-64 bg-slate-950 flex items-center justify-center">
-                <img src={imageUrl} alt="مرفق بالمنشور" className="max-h-64 w-auto object-contain" />
-                <button
-                  type="button"
-                  onClick={() => setImageUrl('')}
-                  className="absolute top-3 left-3 p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-full transition shadow-md cursor-pointer"
-                  title="إزالة الصورة"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {/* Attached Link Box */}
-            {showLinkInput && (
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                <div className="flex items-center justify-between font-bold text-slate-700">
-                  <span className="flex items-center gap-1.5">
-                    <Link2 className="w-4 h-4 text-blue-600" />
-                    <span>إرفاق رابط خارجي أو مقال:</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowLinkInput(false);
-                      setLinkUrl('');
-                      setLinkText('');
-                    }}
-                    className="text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <input
-                  type="url"
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono"
-                />
-                <input
-                  type="text"
-                  value={linkText}
-                  onChange={(e) => setLinkText(e.target.value)}
-                  placeholder="عنوان الرابط (مثال: قصيدة منشورة بجريدة الأهرام، لقاء تلفزيوني...)"
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
-                />
-              </div>
-            )}
-
-            {/* Color Swatches (Including RED prominently) */}
-            <div className="space-y-2 pt-1 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-[#07243c] flex items-center gap-1.5">
-                  <span>اختر لون البطاقة (خاصة اللون الأحمر للقصائد):</span>
-                  <span className="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
-                    الأحمر متاح الآن
-                  </span>
-                </span>
-                <span className="text-[11px] text-slate-500 font-bold">
-                  {selectedPresetObj.label}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2.5 flex-wrap">
-                {COMMUNITY_COLOR_PRESETS.map((preset) => {
-                  const isSelected = selectedBg === preset.id;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setSelectedBg(preset.id)}
-                      className={`h-8 px-3 rounded-xl flex items-center gap-1.5 text-xs font-bold transition transform cursor-pointer ${
-                        isSelected
-                          ? 'ring-2 ring-offset-2 ring-red-600 scale-105 shadow-md'
-                          : 'opacity-85 hover:opacity-100 hover:scale-102'
-                      } ${preset.id === 'none' ? 'bg-slate-100 border border-slate-300 text-slate-700' : preset.badgeBg}`}
-                      title={preset.label}
-                    >
-                      <span className={`w-3.5 h-3.5 rounded-full ${preset.preview}`} />
-                      <span>{preset.id === 'red' ? 'أحمر ياقوتي ⭐' : preset.label.split(' ')[0]}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Actions Bar & Publish Button */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100 gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                {/* Image Upload Button */}
-                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
-                  <ImageIcon className="w-4 h-4 text-emerald-600" />
-                  <span>{isUploadingImage ? 'جارٍ رفع الصورة...' : 'إرفاق صورة'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={isUploadingImage}
-                    className="hidden"
-                    onChange={handleImageUpload}
-                  />
-                </label>
-
-                {/* Attach Link Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowLinkInput(!showLinkInput)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    showLinkInput ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  <Link2 className="w-4 h-4 text-blue-600" />
-                  <span>رابط خارجي</span>
-                </button>
-              </div>
-
-              {/* Publish Button */}
-              <button
-                type="submit"
-                disabled={!content.trim() && !imageUrl.trim()}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-800 disabled:opacity-50 text-white font-extrabold text-xs sm:text-sm rounded-xl transition shadow-md cursor-pointer"
-              >
-                <Send className="w-4 h-4 -rotate-45 text-amber-200" />
-                <span>نشر فوري في قسم المجتمع ✨</span>
-              </button>
-            </div>
-          </form>
-        ) : (
-          /* Reader Welcome Message */
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs sm:text-sm flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Feather className="w-5 h-5 text-amber-600 shrink-0" />
-              <span>
-                مرحباً بكم في مجتمع الكاتب أ. نبيل بركات. تصفحوا أحدث القصائد والخواطر وشاركونا تعليقاتكم وإعجابكم أسفل كل منشور.
-              </span>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* 3. Search & Filter Bar */}
+      {/* 2. Search & Filter Bar */}
       <section className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           {/* Search Box */}
@@ -557,7 +306,7 @@ export const CommunitySection: React.FC = () => {
       </section>
 
       {/* 4. Posts Feed */}
-      <section className="space-y-5">
+      <section ref={feedContainerRef} className="space-y-5">
         {filteredPosts.length === 0 ? (
           <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
             <div className="w-16 h-16 mx-auto rounded-full bg-red-50 text-red-600 flex items-center justify-center text-2xl font-bold">
@@ -580,13 +329,28 @@ export const CommunitySection: React.FC = () => {
             return (
               <article
                 id={`community-post-${post.id}`}
+                data-post-id={post.id}
                 key={post.id}
-                className={`bg-white rounded-3xl border shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md ${
-                  highlightedPostId === post.id
+                onPointerDown={(e) => handlePostPointerDown(e, post)}
+                onPointerMove={handlePostPointerMove}
+                onPointerUp={(e) => handlePostPointerUp(e, post)}
+                onPointerCancel={handlePostPointerCancel}
+                onPointerLeave={handlePostPointerCancel}
+                onDoubleClick={(e) => handlePostDoubleClick(e, post)}
+                onContextMenu={handlePostContextMenu}
+                title="اضغط مرتين للإعجاب ♥ أو اضغط مطولاً لنسخ المنشور بالكامل"
+                className={`relative touch-manipulation bg-white rounded-3xl border shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md select-none no-word-select ${
+                  copiedPostId === post.id
+                    ? 'border-emerald-500 ring-2 ring-emerald-400/70 shadow-lg'
+                    : pressingPostId === post.id
+                    ? 'scale-[0.99] border-[#dfa85b] ring-2 ring-[#dfa85b]/50'
+                    : highlightedPostId === post.id
                     ? 'border-[#dfa85b] ring-2 ring-[#dfa85b] shadow-lg'
                     : 'border-slate-200'
                 }`}
               >
+                {/* Double-Tap Heart & Floating Hearts Overlay */}
+                <DoubleTapHeartOverlay bursts={burstsByPost[post.id] || []} />
                 {/* Post Top Meta */}
                 <div className="p-4 pb-3 flex items-center justify-between border-b border-slate-100">
                   <div className="flex items-center gap-3">
@@ -620,9 +384,21 @@ export const CommunitySection: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Supervisor Controls */}
-                  {isAuthorMode && (
-                    <div className="flex items-center gap-1">
+                  {/* Quick Copy Hint & Supervisor Controls */}
+                  <div className="flex items-center gap-2">
+                    {copiedPostId === post.id ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold shadow-xs animate-fade-in">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>تم النسخ</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
+                        <Copy className="w-3 h-3" />
+                        <span>مرتين للإعجاب · مطولاً للنسخ</span>
+                      </span>
+                    )}
+
+                    {isAuthorMode && (
                       <button
                         onClick={() => deleteAuthorPost(post.id)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
@@ -630,8 +406,8 @@ export const CommunitySection: React.FC = () => {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 {/* Post Title if present */}
@@ -647,7 +423,7 @@ export const CommunitySection: React.FC = () => {
                 {isColorCard ? (
                   /* Brilliant Color Card with Poetic Styling */
                   <div>
-                    <div className={`p-8 sm:p-12 ${presetObj.class} text-center flex items-center justify-center min-h-[180px] shadow-inner select-text`}>
+                    <div className={`p-8 sm:p-12 ${presetObj.class} text-center flex items-center justify-center min-h-[180px] shadow-inner select-none no-word-select`}>
                       <p className="font-literary text-lg sm:text-2xl font-black leading-relaxed whitespace-pre-line tracking-wide drop-shadow-sm">
                         {post.content}
                       </p>
@@ -675,7 +451,7 @@ export const CommunitySection: React.FC = () => {
                   </div>
                 ) : (
                   /* Standard Card */
-                  <div className="p-5 space-y-3 select-text">
+                  <div className="p-5 space-y-3 select-none no-word-select">
                     <p className="font-literary text-sm sm:text-base leading-relaxed text-slate-800 whitespace-pre-line">
                       {post.content}
                     </p>
@@ -700,30 +476,49 @@ export const CommunitySection: React.FC = () => {
                   </div>
                 )}
 
+                {/* Audio Recitation Player */}
+                {post.audioUrl && (
+                  <CommunityAudioPlayer
+                    rawAudioUrl={post.audioUrl}
+                    durationHint={post.audioDuration}
+                    title={post.title ? `إلقاء صوتي: ${post.title}` : 'إلقاء صوتي بصوت الكاتب أ. نبيل بركات'}
+                  />
+                )}
+
                 {/* Interaction Footer Bar */}
-                <div className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
+                <div
+                  data-no-post-copy="true"
+                  className="px-4 py-2.5 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2 cursor-default"
+                >
                   <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
                     {/* Views Counter */}
                     <div
-                      className="flex items-center gap-1.5 text-slate-600 font-bold bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs"
+                      className="flex items-center gap-1.5 text-slate-600 font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs"
                       title="عدد المشاهدات"
                     >
                       <Eye className="w-4 h-4 text-sky-600" />
-                      <span className="font-mono">{formatArabicNumber(postStats.views)}</span>
+                      <span className="font-mono tabular-nums">{formatArabicNumber(postStats.views)}</span>
                       <span className="text-[11px] text-slate-500 font-medium">مشاهدة</span>
                     </div>
 
-                    {/* Like Button */}
+                    {/* Interactive Like Button */}
                     <button
-                      onClick={() => toggleLikeAuthorPost(post.id)}
-                      className={`flex items-center gap-1.5 transition font-bold cursor-pointer px-2.5 py-1 rounded-lg border ${
+                      type="button"
+                      aria-pressed={Boolean(post.isLiked)}
+                      onClick={(e) => handleLikeButtonClick(post, e)}
+                      className={`flex items-center gap-1.5 transition-all duration-200 font-bold cursor-pointer px-3.5 py-1.5 rounded-xl border whitespace-nowrap ${
                         post.isLiked
-                          ? 'text-rose-600 bg-rose-50 border-rose-200'
-                          : 'text-slate-600 hover:text-rose-600 bg-white border-slate-200/80 hover:border-rose-200'
+                          ? 'bg-gradient-to-r from-rose-600 to-red-600 text-white border-rose-600 shadow-sm shadow-rose-500/25'
+                          : 'text-slate-700 hover:text-rose-600 bg-white border-slate-200/80 hover:border-rose-300 hover:bg-rose-50/70'
                       }`}
                     >
-                      <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-600 text-rose-600' : 'text-rose-500'}`} />
-                      <span className="font-mono">{formatArabicNumber(postStats.likes)}</span>
+                      <Heart
+                        className={`w-4 h-4 transition-transform duration-200 ${
+                          recentlyPoppedLikeId === post.id ? 'animate-like-btn-pop' : ''
+                        } ${post.isLiked ? 'fill-white text-white' : 'text-rose-500'}`}
+                      />
+                      <span className="font-mono tabular-nums">{formatArabicNumber(postStats.likes)}</span>
+                      <span className="text-[11px]">{post.isLiked ? 'أعجبك' : 'إعجاب'}</span>
                     </button>
 
                     {/* Comments Toggle Button */}
@@ -738,29 +533,44 @@ export const CommunitySection: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Share Button */}
-                  <button
-                    onClick={() =>
-                      openShareModal({
-                        title: post.title
-                          ? `${post.title} — مجتمع الكاتب نبيل بركات`
-                          : `${post.category || 'منشور'} من مجتمع الكاتب نبيل بركات`,
-                        description: buildShortShareExcerpt(post.content, 150),
-                        url: getCommunityPostShareUrl(post.id),
-                        image: post.imageUrl || authorProfile.portraitImage,
-                        type: 'post',
-                      })
-                    }
-                    className="flex items-center gap-1 text-slate-500 hover:text-[#07243c] transition font-bold cursor-pointer"
-                  >
-                    <Share2 className="w-4 h-4 text-[#dfa85b]" />
-                    <span>مشاركة</span>
-                  </button>
+                  {/* Share & Quote Card Buttons */}
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setQuoteCardPost(post)}
+                      className="flex items-center gap-1 text-[#07243c] bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition font-bold cursor-pointer"
+                      title="حفظ القصيدة كصورة أنيقة للمشاركة"
+                    >
+                      <ImageDown className="w-3.5 h-3.5 text-[#c5943b]" />
+                      <span>صورة للمشاركة</span>
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        openShareModal({
+                          title: post.title
+                            ? `${post.title} — مجتمع الكاتب نبيل بركات`
+                            : `${post.category || 'منشور'} من مجتمع الكاتب نبيل بركات`,
+                          description: buildShortShareExcerpt(post.content, 150),
+                          url: getCommunityPostShareUrl(post.id),
+                          image: post.imageUrl || authorProfile.portraitImage,
+                          type: 'post',
+                        })
+                      }
+                      className="flex items-center gap-1 text-slate-500 hover:text-[#07243c] transition font-bold cursor-pointer"
+                    >
+                      <Share2 className="w-4 h-4 text-[#dfa85b]" />
+                      <span>مشاركة</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Accordion Comments Section */}
                 {isCommentsExpanded && (
-                  <div className="p-4 bg-[#fbfdfe] border-t border-slate-200 space-y-4">
+                  <div
+                    data-no-post-copy="true"
+                    className="p-4 bg-[#fbfdfe] border-t border-slate-200 space-y-4 cursor-default select-text"
+                  >
                     {/* Comments List */}
                     <div className="space-y-2.5">
                       {approvedComments.length === 0 ? (
@@ -830,6 +640,15 @@ export const CommunitySection: React.FC = () => {
           })
         )}
       </section>
+
+      {/* Quote Card Image Generator Modal */}
+      <CommunityQuoteCardModal
+        post={quoteCardPost}
+        authorName={authorProfile.name || 'أ. نبيل بركات'}
+        authorPortrait={authorProfile.portraitImage || '/author.jpg'}
+        onClose={() => setQuoteCardPost(null)}
+        onToast={showToast}
+      />
     </div>
   );
 };

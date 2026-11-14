@@ -29,6 +29,8 @@ import {
   Users,
   Smartphone,
   Download,
+  Eye,
+  Flame,
 } from 'lucide-react';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { ContentInteractionBar } from './ContentInteractionBar';
@@ -36,7 +38,7 @@ import { AldiwanVerifiedIcon, AldiwanCertifiedBadge } from './AldiwanVerifiedBad
 import { AuthorSeal } from './AuthorSeal';
 import { BookReaderModal } from './BookReaderModal';
 import { Book, PhotoItem } from '../types';
-import { formatArabicNumber } from '../utils/dynamicStats';
+import { formatArabicNumber, getCommunityPostStats } from '../utils/dynamicStats';
 import { openPWAInstallDialog } from '../hooks/usePWAInstall';
 
 /**
@@ -627,6 +629,8 @@ export const DesktopLeftSidebar: React.FC = () => {
     likeComment,
     setActiveSection,
     books,
+    authorPosts,
+    openCommunityPost,
   } = useApp();
 
   // Contact Form State
@@ -641,6 +645,14 @@ export const DesktopLeftSidebar: React.FC = () => {
 
   const approvedComments = comments.filter((c) => c.isApproved || c.status === 'approved');
   const featuredNews = news.slice(0, 3);
+
+  const topCommunityPosts = [...authorPosts]
+    .map((post) => ({
+      post,
+      stats: getCommunityPostStats(post),
+    }))
+    .sort((a, b) => (b.stats.views + b.stats.likes * 2) - (a.stats.views + a.stats.likes * 2))
+    .slice(0, 3);
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -672,6 +684,83 @@ export const DesktopLeftSidebar: React.FC = () => {
 
   return (
     <div className="space-y-4 select-none" dir="rtl">
+
+      {/* 0. أكثر 3 قصائد ومنشورات قراءة وإعجاباً */}
+      {topCommunityPosts.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2">
+            <div className="flex items-center gap-1.5">
+              <Flame className="w-4 h-4 text-rose-600" />
+              <h3 className="text-sm font-bold text-[#07375a]">الأكثر قراءة وإعجاباً</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('community');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="text-[11px] text-[#50738b] hover:text-[#07375a] font-medium cursor-pointer"
+            >
+              <span>المجتمع ←</span>
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {topCommunityPosts.map(({ post, stats }, idx) => (
+              <button
+                key={post.id}
+                type="button"
+                onClick={() => openCommunityPost(post.id)}
+                className="w-full text-right p-2.5 rounded-xl bg-slate-50/90 hover:bg-amber-50/70 border border-slate-200/80 hover:border-[#dfa85b]/60 transition space-y-1.5 cursor-pointer group"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className={`w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center shrink-0 ${
+                        idx === 0
+                          ? 'bg-[#dfa85b] text-[#07243c]'
+                          : idx === 1
+                          ? 'bg-[#07375a] text-white'
+                          : 'bg-rose-600 text-white'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className="text-xs font-bold text-[#07375a] group-hover:underline truncate font-literary">
+                      {post.title || post.content.split('\n')[0]}
+                    </span>
+                  </div>
+                  {post.audioUrl && (
+                    <span title="يحتوي على إلقاء صوتي" className="shrink-0">
+                      <Headphones className="w-3.5 h-3.5 text-rose-600" />
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-[#60798b] line-clamp-2 leading-relaxed">
+                  {post.content}
+                </p>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 font-bold text-sky-700">
+                      <Eye className="w-3 h-3" />
+                      <span className="font-mono">{formatArabicNumber(stats.views)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 font-bold text-rose-600">
+                      <Heart className="w-3 h-3 fill-rose-500" />
+                      <span className="font-mono">{formatArabicNumber(stats.likes)}</span>
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-[#c5943b]">
+                    {post.category || 'قصيدة'}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 1. نموذج تواصل مباشر مع الكاتب */}
       <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">

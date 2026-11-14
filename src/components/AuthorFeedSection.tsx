@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AuthorPost } from '../types';
 import {
@@ -21,10 +21,21 @@ import {
   ShieldCheck,
   Users,
   Eye,
+  Copy,
+  Headphones,
+  ImageDown,
 } from 'lucide-react';
 import { COMMUNITY_COLOR_PRESETS, getCommunityColorPreset, sortCommunityPostsNewestFirst } from '../utils/communityPostColors';
 import { getCommunityPostStats, formatArabicNumber } from '../utils/dynamicStats';
-import { getCommunityPostShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
+import {
+  getCommunityPostShareUrl,
+  buildShortShareExcerpt,
+} from '../config/siteDomain';
+import { CommunityAudioComposer } from './CommunityAudioComposer';
+import { CommunityAudioPlayer } from './CommunityAudioPlayer';
+import { CommunityQuoteCardModal } from './CommunityQuoteCardModal';
+import { DoubleTapHeartOverlay } from './DoubleTapHeartOverlay';
+import { useCommunityPostInteractions } from '../hooks/useCommunityPostInteractions';
 
 export const AuthorFeedSection: React.FC = () => {
   const {
@@ -33,6 +44,7 @@ export const AuthorFeedSection: React.FC = () => {
     updateAuthorPost,
     deleteAuthorPost,
     toggleLikeAuthorPost,
+    recordPostView,
     isAuthorMode,
     authorProfile,
     comments,
@@ -53,15 +65,40 @@ export const AuthorFeedSection: React.FC = () => {
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkText, setLinkText] = useState('');
+  const [showAudioInput, setShowAudioInput] = useState(false);
+  const [audioUrl, setAudioUrl] = useState('');
+  const [audioDuration, setAudioDuration] = useState<string | undefined>(undefined);
 
-  // Edit existing post modal state
+  // Edit & Quote card modal states
   const [editingPost, setEditingPost] = useState<AuthorPost | null>(null);
+  const [quoteCardPost, setQuoteCardPost] = useState<AuthorPost | null>(null);
 
   // Active comment box toggle per post
   const [expandedCommentsPostId, setExpandedCommentsPostId] = useState<string | null>(null);
+  const feedContainerRef = useRef<HTMLDivElement | null>(null);
   const [commentAuthorNames, setCommentAuthorNames] = useState<Record<string, string>>({});
   const [commentContents, setCommentContents] = useState<Record<string, string>>({});
   const [submittedCommentNotice, setSubmittedCommentNotice] = useState<Record<string, boolean>>({});
+
+  const {
+    copiedPostId,
+    pressingPostId,
+    burstsByPost,
+    recentlyPoppedLikeId,
+    handlePostPointerDown,
+    handlePostPointerMove,
+    handlePostPointerUp,
+    handlePostPointerCancel,
+    handlePostDoubleClick,
+    handlePostContextMenu,
+    handleLikeButtonClick,
+    registerPostViewObserver,
+  } = useCommunityPostInteractions({
+    authorName: authorProfile.name || 'أ. نبيل بركات',
+    toggleLikeAuthorPost,
+    recordPostView,
+    showToast,
+  });
 
   const handlePublish = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +111,8 @@ export const AuthorFeedSection: React.FC = () => {
       content: content.trim(),
       bgColor: selectedBg,
       imageUrl: imageUrl.trim() || undefined,
+      audioUrl: audioUrl.trim() || undefined,
+      audioDuration: audioDuration,
       linkUrl: linkUrl.trim() || undefined,
       linkText: linkText.trim() || undefined,
       isLiked: false,
@@ -83,6 +122,9 @@ export const AuthorFeedSection: React.FC = () => {
     setContent('');
     setSelectedBg('none');
     setImageUrl('');
+    setAudioUrl('');
+    setAudioDuration(undefined);
+    setShowAudioInput(false);
     setLinkUrl('');
     setLinkText('');
     setShowLinkInput(false);
@@ -138,6 +180,12 @@ export const AuthorFeedSection: React.FC = () => {
   };
 
   const selectedPresetObj = getCommunityColorPreset(selectedBg);
+  const orderedPosts = sortCommunityPostsNewestFirst(authorPosts);
+  const visiblePostIdsKey = orderedPosts.map((p) => p.id).join(',');
+
+  useEffect(() => {
+    return registerPostViewObserver(feedContainerRef.current);
+  }, [registerPostViewObserver, visiblePostIdsKey]);
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -267,6 +315,19 @@ export const AuthorFeedSection: React.FC = () => {
               </div>
             )}
 
+            {/* Attached Audio Recitation Composer */}
+            {showAudioInput && (
+              <CommunityAudioComposer
+                audioUrl={audioUrl}
+                audioDuration={audioDuration}
+                onChange={(url, duration) => {
+                  setAudioUrl(url);
+                  setAudioDuration(duration);
+                }}
+                onToast={showToast}
+              />
+            )}
+
             {/* Facebook-like Color Swatches (Including RED) */}
             <div className="space-y-1.5 pt-1">
               <span className="text-[11px] font-bold text-slate-600">اختر لون أو بطاقة مسبقة لخاطرتك أو قصيدتك (خاصة الأحمر):</span>
@@ -287,7 +348,7 @@ export const AuthorFeedSection: React.FC = () => {
 
             {/* Actions Bar */}
             <div className="flex items-center justify-between pt-2 border-t border-slate-100 gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {/* Upload Image Button */}
                 <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
                   <ImageIcon className="w-4 h-4 text-emerald-600" />
@@ -300,6 +361,18 @@ export const AuthorFeedSection: React.FC = () => {
                     onChange={handleImageUpload}
                   />
                 </label>
+
+                {/* Audio Recitation Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAudioInput(!showAudioInput)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    showAudioInput || audioUrl ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <Headphones className="w-4 h-4 text-rose-600" />
+                  <span>{audioUrl ? 'صوت مرفق ✓' : 'إلقاء صوتي'}</span>
+                </button>
 
                 {/* Attach Link Button */}
                 <button
@@ -349,8 +422,8 @@ export const AuthorFeedSection: React.FC = () => {
       )}
 
       {/* 2. FEED OF AUTHOR POSTS */}
-      <div className="space-y-4">
-        {sortCommunityPostsNewestFirst(authorPosts).map((post) => {
+      <div ref={feedContainerRef} className="space-y-4">
+        {orderedPosts.map((post) => {
           const presetObj = getCommunityColorPreset(post.bgColor);
           const isColorCard = post.bgColor && post.bgColor !== 'none';
           const postStats = getCommunityPostStats(post);
@@ -362,8 +435,25 @@ export const AuthorFeedSection: React.FC = () => {
           return (
             <article
               key={post.id}
-              className="bg-white rounded-2xl border border-[#d6e0ea] shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md"
+              data-post-id={post.id}
+              onPointerDown={(e) => handlePostPointerDown(e, post)}
+              onPointerMove={handlePostPointerMove}
+              onPointerUp={(e) => handlePostPointerUp(e, post)}
+              onPointerCancel={handlePostPointerCancel}
+              onPointerLeave={handlePostPointerCancel}
+              onDoubleClick={(e) => handlePostDoubleClick(e, post)}
+              onContextMenu={handlePostContextMenu}
+              title="اضغط مرتين للإعجاب ♥ أو اضغط مطولاً لنسخ المنشور بالكامل"
+              className={`relative touch-manipulation bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md select-none no-word-select ${
+                copiedPostId === post.id
+                  ? 'border-emerald-500 ring-2 ring-emerald-400/70 shadow-lg'
+                  : pressingPostId === post.id
+                  ? 'scale-[0.99] border-[#dfa85b] ring-2 ring-[#dfa85b]/50'
+                  : 'border-[#d6e0ea]'
+              }`}
             >
+              {/* Double-Tap Heart & Floating Hearts Overlay */}
+              <DoubleTapHeartOverlay bursts={burstsByPost[post.id] || []} />
               {/* Post Header */}
               <div className="p-4 pb-3 flex items-center justify-between border-b border-slate-100">
                 <div className="flex items-center gap-3">
@@ -390,38 +480,52 @@ export const AuthorFeedSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Supervisor Controls on Post */}
-                {isAuthorMode && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setEditingPost(post)}
-                      className="p-1.5 text-slate-500 hover:text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                      title="تعديل المنشور"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => deleteAuthorPost(post.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                      title="حذف المنشور"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
+                {/* Quick Copy Hint & Supervisor Controls on Post */}
+                <div className="flex items-center gap-2">
+                  {copiedPostId === post.id ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[11px] font-bold shadow-xs animate-fade-in">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>تم النسخ</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
+                      <Copy className="w-3 h-3" />
+                      <span>مرتين للإعجاب · مطولاً للنسخ</span>
+                    </span>
+                  )}
+
+                  {isAuthorMode && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingPost(post)}
+                        className="p-1.5 text-slate-500 hover:text-[#0b385e] hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                        title="تعديل المنشور"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteAuthorPost(post.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title="حذف المنشور"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Post Content */}
               {isColorCard ? (
                 /* Facebook-style Color Card */
-                <div className={`p-8 sm:p-10 ${presetObj.class} text-center flex items-center justify-center min-h-[170px] shadow-inner select-text`}>
+                <div className={`p-8 sm:p-10 ${presetObj.class} text-center flex items-center justify-center min-h-[170px] shadow-inner select-none no-word-select`}>
                   <p className="font-literary text-lg sm:text-2xl font-bold leading-relaxed whitespace-pre-line tracking-wide">
                     {post.content}
                   </p>
                 </div>
               ) : (
                 /* Regular Text Post */
-                <div className="p-4 space-y-3">
+                <div className="p-4 space-y-3 select-none no-word-select">
                   <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-line font-medium">
                     {post.content}
                   </p>
@@ -464,29 +568,48 @@ export const AuthorFeedSection: React.FC = () => {
                 </div>
               )}
 
+              {/* Audio Recitation Player */}
+              {post.audioUrl && (
+                <CommunityAudioPlayer
+                  rawAudioUrl={post.audioUrl}
+                  durationHint={post.audioDuration}
+                  title={post.title ? `إلقاء صوتي: ${post.title}` : 'إلقاء صوتي بصوت الكاتب أ. نبيل بركات'}
+                />
+              )}
+
               {/* Interaction Bar */}
-              <div className="p-3 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2">
+              <div
+                data-no-post-copy="true"
+                className="p-3 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs flex-wrap gap-2 cursor-default"
+              >
                 {/* Views Counter */}
                 <div
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200/80 text-slate-600 font-bold"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/80 text-slate-600 font-bold shadow-2xs"
                   title="عدد المشاهدات"
                 >
                   <Eye className="w-4 h-4 text-sky-600" />
-                  <span className="font-mono">{formatArabicNumber(postStats.views)}</span>
+                  <span className="font-mono tabular-nums">{formatArabicNumber(postStats.views)}</span>
                   <span className="text-[11px] text-slate-500 font-medium">مشاهدة</span>
                 </div>
 
-                {/* Like Button */}
+                {/* Interactive Like Button */}
                 <button
-                  onClick={() => toggleLikeAuthorPost(post.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                  type="button"
+                  aria-pressed={Boolean(post.isLiked)}
+                  onClick={(e) => handleLikeButtonClick(post, e)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border font-bold transition-all duration-200 cursor-pointer whitespace-nowrap ${
                     post.isLiked
-                      ? 'bg-rose-50 text-rose-600'
-                      : 'hover:bg-slate-100 text-slate-600'
+                      ? 'bg-gradient-to-r from-rose-600 to-red-600 text-white border-rose-600 shadow-sm shadow-rose-500/25'
+                      : 'bg-white hover:bg-rose-50/70 text-slate-700 hover:text-rose-600 border-slate-200/80 hover:border-rose-300'
                   }`}
                 >
-                  <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-rose-500 text-rose-500' : 'text-rose-500'}`} />
-                  <span className="font-mono">{formatArabicNumber(postStats.likes)}</span>
+                  <Heart
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      recentlyPoppedLikeId === post.id ? 'animate-like-btn-pop' : ''
+                    } ${post.isLiked ? 'fill-white text-white' : 'text-rose-500'}`}
+                  />
+                  <span className="font-mono tabular-nums">{formatArabicNumber(postStats.likes)}</span>
+                  <span className="text-[11px]">{post.isLiked ? 'أعجبك' : 'إعجاب'}</span>
                 </button>
 
                 {/* Comment Toggle Button */}
@@ -500,28 +623,43 @@ export const AuthorFeedSection: React.FC = () => {
                   <span>{approvedComments.length} تعليقات</span>
                 </button>
 
-                {/* Share Button */}
-                <button
-                  onClick={() =>
-                    openShareModal({
-                      title: post.title
-                        ? `${post.title} — مجتمع الكاتب نبيل بركات`
-                        : `${post.category || 'خاطرة ومنشور'} للكاتب نبيل بركات`,
-                      description: buildShortShareExcerpt(post.content, 150),
-                      url: getCommunityPostShareUrl(post.id),
-                      image: post.imageUrl || authorProfile.portraitImage,
-                      type: 'post',
-                    })
-                  }
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold transition cursor-pointer"
-                >
-                  <Share2 className="w-4 h-4 text-[#dfa85b]" />
-                  <span>مشاركة</span>
-                </button>
+                {/* Quote Card & Share Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuoteCardPost(post)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-[#07243c] font-bold transition cursor-pointer"
+                    title="حفظ القصيدة كصورة أنيقة للمشاركة"
+                  >
+                    <ImageDown className="w-3.5 h-3.5 text-[#c5943b]" />
+                    <span>صورة للمشاركة</span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      openShareModal({
+                        title: post.title
+                          ? `${post.title} — مجتمع الكاتب نبيل بركات`
+                          : `${post.category || 'خاطرة ومنشور'} للكاتب نبيل بركات`,
+                        description: buildShortShareExcerpt(post.content, 150),
+                        url: getCommunityPostShareUrl(post.id),
+                        image: post.imageUrl || authorProfile.portraitImage,
+                        type: 'post',
+                      })
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold transition cursor-pointer"
+                  >
+                    <Share2 className="w-4 h-4 text-[#dfa85b]" />
+                    <span>مشاركة</span>
+                  </button>
+                </div>
               </div>
 
               {/* COMMENTS ACCORDION SECTION (FOR EVERYONE) */}
-              <div className="border-t border-slate-100 p-4 bg-[#fbfcfd] space-y-4">
+              <div
+                data-no-post-copy="true"
+                className="border-t border-slate-100 p-4 bg-[#fbfcfd] space-y-4 cursor-default select-text"
+              >
                 {/* Notice that comments require review */}
                 <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-amber-900 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
@@ -693,6 +831,19 @@ export const AuthorFeedSection: React.FC = () => {
               </div>
             </div>
 
+            <CommunityAudioComposer
+              audioUrl={editingPost.audioUrl || ''}
+              audioDuration={editingPost.audioDuration}
+              onChange={(url, duration) =>
+                setEditingPost({
+                  ...editingPost,
+                  audioUrl: url || undefined,
+                  audioDuration: duration,
+                })
+              }
+              onToast={showToast}
+            />
+
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button
                 onClick={() => setEditingPost(null)}
@@ -705,6 +856,8 @@ export const AuthorFeedSection: React.FC = () => {
                   updateAuthorPost(editingPost.id, {
                     content: editingPost.content,
                     bgColor: editingPost.bgColor,
+                    audioUrl: editingPost.audioUrl,
+                    audioDuration: editingPost.audioDuration,
                   });
                   setEditingPost(null);
                 }}
@@ -716,6 +869,15 @@ export const AuthorFeedSection: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Quote Card Image Generator Modal */}
+      <CommunityQuoteCardModal
+        post={quoteCardPost}
+        authorName={authorProfile.name || 'أ. نبيل بركات'}
+        authorPortrait={authorProfile.portraitImage || '/author.jpg'}
+        onClose={() => setQuoteCardPost(null)}
+        onToast={showToast}
+      />
     </div>
   );
 };

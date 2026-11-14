@@ -28,7 +28,7 @@ export const initialAuthorProfile: AuthorProfile = {
   quoteBannerText: 'الكتابة ليست مجرد حروف... بل حياة أخرى نعيشها',
   quoteBannerAuthor: 'نبيل بركات',
   stats: {
-    booksCount: 4,
+    booksCount: 5,
     articlesCount: 48,
     eventsCount: 35,
     readersCount: '+45 ألف',
@@ -112,6 +112,36 @@ export const initialBooks: Book[] = [
     tableOfContents: hekayatAshaqTableOfContents,
     samplePages: hekayatAshaqPages,
     comments: richCommentsForBooks,
+  },
+  {
+    id: 'book-5',
+    title: 'امرأة أعادت برمجة قلبي',
+    subtitle: 'كتاب الشعر — قيد التجهيز',
+    coverImage: '/assets/aistudio/file_000000001c40820a9a43eec175472c23_6445f76f.png',
+    galleryImages: [],
+    publicationYear: '2026',
+    publisher: 'الشاعر أ. نبيل بركات',
+    isbn: '',
+    depositNumber: '',
+    pagesCount: 0,
+    genre: 'كتاب شعر وقصائد',
+    description: 'كتاب الشعر «امرأة أعادت برمجة قلبي» بقلم الشاعر أ. نبيل بركات. القسم مهيأ وجاهز وسيتم تزويده بالقصائد والمحتوى الشعري الكامل قريباً.',
+    tableOfContents: [
+      {
+        chapter: 'محتوى كتاب الشعر قيد التجهيز — سيتم إضافته قريباً',
+        pageNumber: 1,
+      },
+    ],
+    samplePages: [
+      {
+        pageNumber: 1,
+        title: 'تمهيد الديوان: امرأة أعادت برمجة قلبي',
+        image: '/assets/aistudio/file_000000001c40820a9a43eec175472c23_6445f76f.png',
+        content:
+          'هذا القسم مخصص لكتاب الشعر «امرأة أعادت برمجة قلبي» للشاعر أ. نبيل بركات.\n\nالديوان قيد الإعداد والتجهيز حالياً، وقريباً سيتم تزويده بالقصائد والنصوص الشعرية الكاملة للقراءة والاستماع والمشاركة.',
+      },
+    ],
+    comments: [],
   },
 ];
 

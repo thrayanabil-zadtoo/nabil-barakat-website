@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { NewsItem } from '../types';
 import {
@@ -49,6 +49,30 @@ export const NewsSection: React.FC = () => {
   const [readingArticle, setReadingArticle] = useState<NewsItem | null>(null);
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
   const [confirmDeleteNewsId, setConfirmDeleteNewsId] = useState<string | null>(null);
+  const [highlightedNewsId, setHighlightedNewsId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetId = new URLSearchParams(window.location.search).get('item');
+    if (targetId) {
+      const targetNews = news.find((n) => n.id === targetId);
+      if (targetNews) {
+        setSelectedCategory('all');
+        setMediaFilter('all');
+        setHighlightedNewsId(targetNews.id);
+        setReadingArticle(targetNews);
+        const timer = setTimeout(() => {
+          const el = document.getElementById(`news-item-${targetNews.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        const clearTimer = setTimeout(() => setHighlightedNewsId(null), 6000);
+        return () => {
+          clearTimeout(timer);
+          clearTimeout(clearTimer);
+        };
+      }
+    }
+  }, [news.length]);
 
   // New post form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -472,8 +496,11 @@ export const NewsSection: React.FC = () => {
 
           return (
             <article
+              id={`news-item-${item.id}`}
               key={item.id}
-              className="gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-all duration-300"
+              className={`gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-all duration-300 ${
+                highlightedNewsId === item.id ? 'ring-2 ring-[#dfa85b] border-[#dfa85b] shadow-xl' : ''
+              }`}
             >
               {/* Media Container */}
               <div className="relative aspect-[16/10] w-full bg-[#0a233a] overflow-hidden border-b border-[#e2e8f0]">

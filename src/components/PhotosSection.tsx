@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { PhotoItem } from '../types';
 import { Image as ImageIcon, Plus, X, MapPin, Trash2, Maximize2, Edit2, Share2, MessageSquare, Video, Play, Upload, Pin, Copy, Check, Film } from 'lucide-react';
@@ -29,6 +29,29 @@ export const PhotosSection: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [activeLightboxPhoto, setActiveLightboxPhoto] = useState<PhotoItem | null>(null);
+  const [highlightedPhotoId, setHighlightedPhotoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetId = new URLSearchParams(window.location.search).get('item');
+    if (targetId) {
+      const targetPhoto = photos.find((p) => p.id === targetId);
+      if (targetPhoto) {
+        setSelectedCategory('all');
+        setHighlightedPhotoId(targetPhoto.id);
+        setActiveLightboxPhoto(targetPhoto);
+        const timer = setTimeout(() => {
+          const el = document.getElementById(`photo-item-${targetPhoto.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        const clearTimer = setTimeout(() => setHighlightedPhotoId(null), 6000);
+        return () => {
+          clearTimeout(timer);
+          clearTimeout(clearTimer);
+        };
+      }
+    }
+  }, [photos.length]);
 
   // New item form state (supporting photo OR video)
   const [showAddForm, setShowAddForm] = useState(false);
@@ -293,8 +316,11 @@ export const PhotosSection: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredPhotos.map((photo) => (
           <div
+            id={`photo-item-${photo.id}`}
             key={photo.id}
-            className="gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-all"
+            className={`gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-md transition-all ${
+              highlightedPhotoId === photo.id ? 'ring-2 ring-[#dfa85b] border-[#dfa85b] shadow-xl' : ''
+            }`}
           >
             {/* Image or Video Container with Lightbox Trigger */}
             <div

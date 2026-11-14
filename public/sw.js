@@ -1,5 +1,5 @@
 // Service Worker for Official Website of Author Nabil Barakat (nb.zadtoo.com)
-const CACHE_NAME = 'nabil-barakat-cache-v2';
+const CACHE_NAME = 'nabil-barakat-cache-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -70,4 +70,63 @@ self.addEventListener('fetch', (event) => {
       })
     );
   }
+});
+
+// Handle incoming Web Push Notifications
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'جديد الكاتب أ. نبيل بركات',
+    body: 'تم نشر قصيدة أو خاطرة جديدة في مجتمع الكاتب.',
+    url: '/',
+  };
+
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      payload = { ...payload, ...parsed };
+    }
+  } catch {
+    const text = event.data ? event.data.text() : '';
+    if (text) payload.body = text;
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/pwa-192x192.png',
+      badge: '/pwa-192x192.png',
+      dir: 'rtl',
+      lang: 'ar',
+      tag: 'nabil-barakat-update',
+      data: { url: payload.url || '/' },
+    })
+  );
+});
+
+// Focus or open app window at the target item URL when user taps any notification
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            if ('navigate' in client && targetUrl && targetUrl !== '/') {
+              return client
+                .navigate(targetUrl)
+                .then((navigated) => (navigated ? navigated.focus() : client.focus()))
+                .catch(() => client.focus());
+            }
+            return client.focus();
+          }
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+        return undefined;
+      })
+  );
 });

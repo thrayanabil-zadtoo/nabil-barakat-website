@@ -87,6 +87,8 @@
         "bgColor": { "type": "string" },
         "category": { "type": "string" },
         "imageUrl": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "audioDuration": { "type": "string" },
         "linkUrl": { "type": "string" },
         "linkText": { "type": "string" },
         "date": { "type": "string" },

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { VideoItem, Book } from '../types';
 import {
@@ -26,6 +26,7 @@ import { ItemOrderPinControls } from './ItemOrderPinControls';
 import { ContentInteractionBar } from './ContentInteractionBar';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { parseVideoUrl } from '../utils/videoUtils';
+import { getItemShareUrl } from '../config/siteDomain';
 
 export const SPECIAL_CATEGORIES = [
   { id: 'cat-success', title: 'نجاحاتي', icon: '🏆', badge: 'إنجازات وتكريم' },
@@ -58,6 +59,29 @@ export const VideosSection: React.FC = () => {
   // Video modals state
   const [activeTheaterVideo, setActiveTheaterVideo] = useState<VideoItem | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [highlightedVideoId, setHighlightedVideoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetId = new URLSearchParams(window.location.search).get('item');
+    if (targetId) {
+      const targetVideo = videos.find((v) => v.id === targetId);
+      if (targetVideo) {
+        setSelectedNovelId('all');
+        setHighlightedVideoId(targetVideo.id);
+        setActiveTheaterVideo(targetVideo);
+        const timer = setTimeout(() => {
+          const el = document.getElementById(`video-item-${targetVideo.id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        const clearTimer = setTimeout(() => setHighlightedVideoId(null), 6000);
+        return () => {
+          clearTimeout(timer);
+          clearTimeout(clearTimer);
+        };
+      }
+    }
+  }, [videos.length]);
 
   // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -549,8 +573,11 @@ export const VideosSection: React.FC = () => {
 
             return (
               <article
+                id={`video-item-${video.id}`}
                 key={video.id}
-                className="gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-lg transition-all duration-300 border border-slate-200"
+                className={`gold-gilded-card group rounded-2xl bg-white overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-lg transition-all duration-300 border ${
+                  highlightedVideoId === video.id ? 'border-[#dfa85b] ring-2 ring-[#dfa85b] shadow-xl' : 'border-slate-200'
+                }`}
               >
                 {/* Video Player Box */}
                 <div
@@ -654,7 +681,7 @@ export const VideosSection: React.FC = () => {
                       itemId={video.id}
                       itemTitle={video.title}
                       itemType="video"
-                      itemUrl={rawSource}
+                      itemUrl={getItemShareUrl('video', video.id)}
                       itemDescription={video.description}
                     />
 
