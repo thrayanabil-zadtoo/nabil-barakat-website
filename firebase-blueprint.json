@@ -41,8 +41,18 @@
         "title": { "type": "string" },
         "url": { "type": "string" },
         "imageUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
         "category": { "type": "string" },
-        "order": { "type": "number" }
+        "position": { "type": "string" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "likesCount": { "type": "number" },
+        "viewsCount": { "type": "number" },
+        "isPinned": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
       },
       "required": ["id", "title"]
     },
@@ -105,6 +115,10 @@
     "/site_content/{contentId}": {
       "schema": "SiteContent",
       "description": "Full synchronized website content and updates"
+    },
+    "/photos_gallery/{photoId}": {
+      "schema": "MediaItem",
+      "description": "Individual gallery photos and media snapshots"
     },
     "/community_posts/{postId}": {
       "schema": "CommunityPost",

@@ -8,6 +8,7 @@ import { ContentInteractionBar } from './ContentInteractionBar';
 import { compressImage } from '../utils/imageCompressor';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { getItemShareUrl, buildShortShareExcerpt } from '../config/siteDomain';
+import { PHOTO_CATEGORIES, DEFAULT_PHOTO_CATEGORY, normalizePhotoCategory } from '../utils/photoCategories';
 
 export const PhotosSection: React.FC = () => {
   const {
@@ -60,18 +61,28 @@ export const PhotosSection: React.FC = () => {
   const [newCaption, setNewCaption] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
-  const [newCategory, setNewCategory] = useState('مستودع الوسائط الحرة (لحين الحاجة)');
-  const [newLocation, setNewLocation] = useState('مستودع الوسائط العام');
+  const [newCategory, setNewCategory] = useState<string>(DEFAULT_PHOTO_CATEGORY);
+  const [newLocation, setNewLocation] = useState('صومعة الكاتب');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const defaultCategories = ['مستودع الوسائط الحرة (لحين الحاجة)', 'حفلات توقيع', 'ندوات ومؤتمرات', 'صومعة الكاتب'];
-  const categories = ['all', ...Array.from(new Set([...defaultCategories, ...photos.map((p) => p.category)]))];
+  const categories = [
+    'all',
+    ...Array.from(
+      new Set([
+        ...PHOTO_CATEGORIES,
+        ...photos.map((p) => normalizePhotoCategory(p.category)),
+      ])
+    ),
+  ];
 
   const filteredPhotos = selectedCategory === 'all'
     ? photos
-    : photos.filter((p) => p.category === selectedCategory);
+    : photos.filter((p) => normalizePhotoCategory(p.category) === selectedCategory);
 
-  const handleAddPhotoSubmit = (e: React.FormEvent) => {
+  const handleAddPhotoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingImage || isSubmitting) return;
     if (!newTitle.trim()) return;
 
     if (mediaType === 'image' && !newImageUrl.trim()) {
@@ -83,24 +94,30 @@ export const PhotosSection: React.FC = () => {
       return;
     }
 
-    addPhoto({
-      title: newTitle.trim(),
-      caption: newCaption.trim(),
-      imageUrl: newImageUrl.trim() || '/src/assets/images/cultural_salon_event_1790501249700.jpg',
-      category: newCategory,
-      location: newLocation.trim() || 'صومعة الكاتب',
-      date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }),
-      mediaType,
-      videoUrl: mediaType === 'video' ? newVideoUrl.trim() : undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      const saved = await addPhoto({
+        title: newTitle.trim(),
+        caption: newCaption.trim(),
+        imageUrl: newImageUrl.trim() || '/src/assets/images/cultural_salon_event_1790501249700.jpg',
+        category: normalizePhotoCategory(newCategory),
+        location: newLocation.trim() || 'صومعة الكاتب',
+        date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }),
+        mediaType,
+        videoUrl: mediaType === 'video' ? newVideoUrl.trim() : undefined,
+      });
 
-    showToast(mediaType === 'video' ? 'تمت إضافة مقطع الفيديو إلى المعرض بنجاح' : 'تمت إضافة الصورة إلى الألبوم بنجاح');
-    setNewTitle('');
-    setNewCaption('');
-    setNewImageUrl('');
-    setNewVideoUrl('');
-    setMediaType('image');
-    setShowAddForm(false);
+      if (saved) {
+        setNewTitle('');
+        setNewCaption('');
+        setNewImageUrl('');
+        setNewVideoUrl('');
+        setMediaType('image');
+        setShowAddForm(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -212,25 +229,31 @@ export const PhotosSection: React.FC = () => {
                   />
                     <label className="cursor-pointer px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 whitespace-nowrap flex items-center gap-1">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>رفع سحابي</span>
+                    <span>{isUploadingImage ? 'جارٍ الرفع...' : 'رفع سحابي'}</span>
                     <input
                       type="file"
                       accept="image/*"
+                      disabled={isUploadingImage}
                       className="hidden"
                       onChange={async (e) => {
-                        const file = e.target.files?.[0];
+                        const input = e.target;
+                        const file = input.files?.[0];
                         if (!file) return;
+                        setIsUploadingImage(true);
                         try {
                           const uploaded = await processAndUploadImage(file, {
-                            maxWidth: 1280,
-                            maxHeight: 1280,
-                            quality: 0.82,
+                            maxWidth: 960,
+                            maxHeight: 1100,
+                            quality: 0.78,
                             category: newCategory,
                             contextTitle: newTitle || 'صورة توثيقية في المعرض',
                           });
                           setNewImageUrl(uploaded);
                         } catch {
                           // Handled by processAndUploadImage
+                        } finally {
+                          setIsUploadingImage(false);
+                          input.value = '';
                         }
                       }}
                     />
@@ -245,7 +268,7 @@ export const PhotosSection: React.FC = () => {
                 type="text"
                 value={newLocation}
                 onChange={(e) => setNewLocation(e.target.value)}
-                placeholder="قاعة المحاضرات الكبرى"
+                placeholder="صومعة الكاتب"
                 className="w-full px-3 py-2 text-xs rounded-lg bg-[#f8fafc] border border-[#cbd5e1] text-gray-900 focus:outline-none focus:border-[#0b385e]"
               />
             </div>
@@ -257,11 +280,11 @@ export const PhotosSection: React.FC = () => {
                 onChange={(e) => setNewCategory(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-lg bg-[#f8fafc] border border-[#cbd5e1] text-gray-900 focus:outline-none focus:border-[#0b385e]"
               >
-                <option value="حفلات توقيع">حفلات توقيع</option>
-                <option value="ندوات وملتقيات">ندوات وملتقيات</option>
-                <option value="في صومعة الكاتب">في صومعة الكاتب</option>
-                <option value="المؤلفات والكتب">المؤلفات والكتب</option>
-                <option value="مقاطع مرئية">مقاطع مرئية</option>
+                {PHOTO_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -287,9 +310,16 @@ export const PhotosSection: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082a47] rounded-lg transition cursor-pointer"
+              disabled={isUploadingImage || isSubmitting}
+              className="px-5 py-2 text-xs font-semibold text-white bg-[#0b385e] hover:bg-[#082a47] disabled:opacity-50 rounded-lg transition cursor-pointer"
             >
-              {mediaType === 'video' ? 'حفظ مقطع الفيديو في المعرض' : 'حفظ الصورة في الألبوم'}
+              {isUploadingImage
+                ? 'جارٍ رفع الصورة...'
+                : isSubmitting
+                ? 'جارٍ الحفظ السحابي...'
+                : mediaType === 'video'
+                ? 'حفظ مقطع الفيديو في المعرض'
+                : 'حفظ الصورة في الألبوم'}
             </button>
           </div>
         </form>
@@ -383,7 +413,7 @@ export const PhotosSection: React.FC = () => {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-[#64748b]">
                   <div className="flex items-center gap-2">
-                    <span className="text-[#0b385e] font-bold">{photo.category}</span>
+                    <span className="text-[#0b385e] font-bold">{normalizePhotoCategory(photo.category)}</span>
                     {photo.isPinned && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-[#07243c] text-[10px] font-black shadow-2xs">
                         <Pin className="w-3 h-3 fill-current rotate-45" />
@@ -539,7 +569,7 @@ export const PhotosSection: React.FC = () => {
                   </h3>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-[#cbe0f0]">
-                  <span>{activeLightboxPhoto.category}</span>
+                  <span>{normalizePhotoCategory(activeLightboxPhoto.category)}</span>
                   <span aria-hidden="true">·</span>
                   <span>{activeLightboxPhoto.location}</span>
                 </div>

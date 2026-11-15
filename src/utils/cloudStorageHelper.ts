@@ -6,6 +6,13 @@ export interface UploadProgressCallback {
   (progress: number, stageText: string): void;
 }
 
+export interface UploadImageOptions {
+  maxWidth?: number;
+  maxHeight?: number;
+  quality?: number;
+  maxDataUrlLength?: number;
+}
+
 let imageCounter = 0;
 
 /**
@@ -36,35 +43,39 @@ export function generateDateBasedImageName(): { fileName: string; imageId: strin
   }
 
   const seqNumber = String(currentSeq).padStart(3, '0');
-  // Formatted date name requested by user: e.g. 2026-10-15-001
   const displayName = `${dateKey}-${seqNumber}`;
   const fileName = `${displayName}.jpg`;
-  const imageId = `img_${displayName}_${Date.now()}`;
+  const imageId = `img_${displayName}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
 
   return { fileName, imageId, displayName };
 }
 
 /**
- * Uploads and optimizes an image to Firebase Cloud (backed by Firestore permanent storage)
- * Ensures 100% reliability, no 45% or 75% hangs, and formats names by date (e.g. 2026-10-15-001)
+ * Optimizes an image strictly within Firestore document limits (~220 KB data URL max)
+ * and persists a cloud record in `uploaded_images` before returning the URL for direct embedding.
  */
 export async function uploadImageToCloud(
   file: File,
-  folder: 'books' | 'covers' | 'photos' | 'profile' = 'books',
-  onProgress?: UploadProgressCallback
-): Promise<{ url: string; fileName: string; displayName: string }> {
+  folder: 'books' | 'covers' | 'photos' | 'profile' | 'community' = 'books',
+  onProgress?: UploadProgressCallback,
+  options?: UploadImageOptions
+): Promise<{ url: string; fileName: string; displayName: string; imageId: string }> {
   const { fileName, imageId, displayName } = generateDateBasedImageName();
 
-  // Stage 1: Preparation (20%)
   if (onProgress) onProgress(20, `جاري تجهيز الصورة وتسميتها سحابياً (${displayName})...`);
-  await new Promise((r) => setTimeout(r, 80));
+  await new Promise((r) => setTimeout(r, 40));
 
-  // Stage 2: Compression & Optimization (45%)
-  if (onProgress) onProgress(45, 'جاري تحسين أبعاد وضغط الصورة بأعلى جودة ونقاء...');
-  const compressed = await compressImage(file, 640, 900, 0.72);
-  await new Promise((r) => setTimeout(r, 80));
+  if (onProgress) onProgress(45, 'جاري ضغط وتحسين الصورة لتناسب الحفظ السحابي السريع...');
+  const maxWidth = options?.maxWidth ?? 900;
+  const maxHeight = options?.maxHeight ?? 1100;
+  const quality = options?.quality ?? 0.78;
+  const maxDataUrlLength = options?.maxDataUrlLength ?? 220_000;
 
-  // Stage 3: Cloud Database Storage (75%)
+  const compressed = await compressImage(file, maxWidth, maxHeight, quality, maxDataUrlLength);
+  if (!compressed) {
+    throw new Error('تعذر قراءة ملف الصورة المحدد.');
+  }
+
   if (onProgress) onProgress(75, `جاري الحفظ الدائم في السحابة باسم «${displayName}»...`);
 
   try {
@@ -79,21 +90,19 @@ export async function uploadImageToCloud(
       createdAt: new Date().toISOString(),
     });
 
-    // Safety timeout: wait up to 3000ms for network write, but never block UI indefinitely
     await Promise.race([
       savePromise,
-      new Promise((resolve) => setTimeout(resolve, 3000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('upload_timeout')), 12000)),
     ]);
   } catch (fsErr) {
-    console.warn('[Firestore] Notice while saving to uploaded_images collection:', fsErr);
+    // Non-fatal notice here because caller embeds the compressed URL inside its own atomic Firestore document
+    console.warn('[Firestore] Notice while saving uploaded_images record:', fsErr);
   }
 
-  // Stage 4: Sync & Link Generation (90%)
-  if (onProgress) onProgress(90, 'جاري ربط الصورة مع المعرض وقوائم المؤلفات...');
-  await new Promise((r) => setTimeout(r, 80));
+  if (onProgress) onProgress(92, 'جاري ربط الصورة بالسجل السحابي للموقع...');
+  await new Promise((r) => setTimeout(r, 40));
 
-  // Stage 5: Completed (100%)
-  if (onProgress) onProgress(100, `اكتمل الرفع والحفظ بنجاح! الاسم السحابي: ${displayName} ✓`);
+  if (onProgress) onProgress(100, `اكتمل التجهيز والحفظ السحابي! (${displayName}) ✓`);
 
-  return { url: compressed, fileName, displayName };
+  return { url: compressed, fileName, displayName, imageId };
 }

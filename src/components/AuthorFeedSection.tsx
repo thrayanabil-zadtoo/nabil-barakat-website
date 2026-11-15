@@ -62,6 +62,7 @@ export const AuthorFeedSection: React.FC = () => {
   const [selectedBg, setSelectedBg] = useState('none');
   const [imageUrl, setImageUrl] = useState('');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkText, setLinkText] = useState('');
@@ -100,54 +101,63 @@ export const AuthorFeedSection: React.FC = () => {
     showToast,
   });
 
-  const handlePublish = (e: React.FormEvent) => {
+  const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingImage || isSubmitting) return;
     if (!content.trim() && !imageUrl.trim()) {
       showToast('يرجى كتابة خاطرة أو منشور أو إضافة صورة');
       return;
     }
 
-    addAuthorPost({
-      content: content.trim(),
-      bgColor: selectedBg,
-      imageUrl: imageUrl.trim() || undefined,
-      audioUrl: audioUrl.trim() || undefined,
-      audioDuration: audioDuration,
-      linkUrl: linkUrl.trim() || undefined,
-      linkText: linkText.trim() || undefined,
-      isLiked: false,
-    });
+    setIsSubmitting(true);
+    try {
+      const saved = await addAuthorPost({
+        content: content.trim(),
+        bgColor: selectedBg,
+        imageUrl: imageUrl.trim() || undefined,
+        audioUrl: audioUrl.trim() || undefined,
+        audioDuration: audioDuration,
+        linkUrl: linkUrl.trim() || undefined,
+        linkText: linkText.trim() || undefined,
+        isLiked: false,
+      });
 
-    // Reset composer
-    setContent('');
-    setSelectedBg('none');
-    setImageUrl('');
-    setAudioUrl('');
-    setAudioDuration(undefined);
-    setShowAudioInput(false);
-    setLinkUrl('');
-    setLinkText('');
-    setShowLinkInput(false);
+      if (saved) {
+        setContent('');
+        setSelectedBg('none');
+        setImageUrl('');
+        setAudioUrl('');
+        setAudioDuration(undefined);
+        setShowAudioInput(false);
+        setLinkUrl('');
+        setLinkText('');
+        setShowLinkInput(false);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
     setIsUploadingImage(true);
     try {
       const uploaded = await processAndUploadImage(file, {
-        maxWidth: 1200,
-        maxHeight: 1200,
-        quality: 0.82,
+        maxWidth: 960,
+        maxHeight: 1100,
+        quality: 0.78,
         category: 'منشورات الكاتب',
         contextTitle: 'صورة مرفقة بمنشور الكاتب',
       });
       setImageUrl(uploaded);
-      showToast('✓ تم رفع الصورة وإرفاقها بالمنشور بنجاح');
+      showToast('✓ تم رفع الصورة وتجهيزها للنشر في المجتمع بنجاح');
     } catch (err: any) {
       showToast(err?.message || 'تعذر رفع الصورة');
     } finally {
       setIsUploadingImage(false);
+      input.value = '';
     }
   };
 
@@ -390,11 +400,13 @@ export const AuthorFeedSection: React.FC = () => {
               {/* Publish Button */}
               <button
                 type="submit"
-                disabled={!content.trim() && !imageUrl.trim()}
+                disabled={isUploadingImage || isSubmitting || (!content.trim() && !imageUrl.trim())}
                 className="flex items-center gap-2 px-5 py-2 bg-[#0b385e] hover:bg-[#072a47] disabled:opacity-50 text-white font-bold text-xs rounded-xl transition shadow-sm cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5 -rotate-45 text-[#dfa85b]" />
-                <span>نشر الخاطرة</span>
+                <span>
+                  {isUploadingImage ? 'جارٍ رفع الصورة...' : isSubmitting ? 'جارٍ النشر السحابي...' : 'نشر الخاطرة'}
+                </span>
               </button>
             </div>
           </form>

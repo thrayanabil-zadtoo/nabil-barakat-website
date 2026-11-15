@@ -31,6 +31,7 @@ import {
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getSiteDomain, setCustomSiteDomain, DEFAULT_OFFICIAL_DOMAIN } from '../config/siteDomain';
 import { downloadFileSafely } from '../utils/downloadHelper';
+import { PHOTO_CATEGORIES, DEFAULT_PHOTO_CATEGORY, normalizePhotoCategory } from '../utils/photoCategories';
 
 export const AuthorAdminModal: React.FC = () => {
   const {
@@ -173,8 +174,8 @@ export const AuthorAdminModal: React.FC = () => {
   // Photo State
   const [pTitle, setPTitle] = useState('');
   const [pUrl, setPUrl] = useState('');
-  const [pCategory, setPCategory] = useState('حفلات توقيع');
-  const [pLocation, setPLocation] = useState('المعرض الدولي');
+  const [pCategory, setPCategory] = useState<string>(DEFAULT_PHOTO_CATEGORY);
+  const [pLocation, setPLocation] = useState('صومعة الكاتب');
   const [pCaption, setPCaption] = useState('');
 
   // Messages & Comments replies
@@ -224,20 +225,22 @@ export const AuthorAdminModal: React.FC = () => {
     showToast('تمت إضافة الفصل والمشهد المرئي بنجاح وحفظه سحابياً');
   };
 
-  const handleAddPhoto = (e: React.FormEvent) => {
+  const handleAddPhoto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pTitle.trim() || !pUrl.trim()) return;
-    addPhoto({
+    const saved = await addPhoto({
       title: pTitle.trim(),
       imageUrl: pUrl.trim(),
-      category: pCategory,
-      location: pLocation.trim() || 'المعرض الدولي',
+      category: normalizePhotoCategory(pCategory),
+      location: pLocation.trim() || 'صومعة الكاتب',
       caption: pCaption.trim() || 'صورة توثيقية للأستاذ نبيل بركات',
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long' }),
     });
-    setPTitle('');
-    setPUrl('');
-    setPCaption('');
+    if (saved) {
+      setPTitle('');
+      setPUrl('');
+      setPCaption('');
+    }
   };
 
   const handleCreateBook = (e: React.FormEvent) => {
@@ -780,7 +783,7 @@ export const AuthorAdminModal: React.FC = () => {
                   <span>إضافة صورة جديدة للألبوم</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-gray-700 font-semibold mb-1">عنوان الصورة</label>
                     <input
@@ -801,6 +804,21 @@ export const AuthorAdminModal: React.FC = () => {
                       onChange={(e) => setPUrl(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-1">التصنيف</label>
+                    <select
+                      value={pCategory}
+                      onChange={(e) => setPCategory(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white"
+                    >
+                      {PHOTO_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>

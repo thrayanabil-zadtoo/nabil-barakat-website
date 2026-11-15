@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { sortCommunityPostsNewestFirst } from './communityPostColors';
+import { normalizePhotoCategory, normalizePhotosList } from './photoCategories';
 import {
   AuthorProfile,
   Book,
@@ -79,6 +80,142 @@ export interface SyncedSiteData {
 
 const COLLECTION_NAME = 'site_content';
 const MAIN_DOC_ID = 'main';
+const CLOUD_MEDIA_SENTINEL = '__CLOUD_MEDIA__';
+const AGGREGATE_BYTES_BUDGET = 520_000;
+const DELETED_PHOTOS_STORAGE_KEY = 'nabil_deleted_photo_ids_v1';
+const DELETED_POSTS_STORAGE_KEY = 'nabil_deleted_post_ids_v1';
+
+const writtenPhotoSignatures = new Map<string, string>();
+const writtenPostSignatures = new Map<string, string>();
+
+// Shared module caches so modular index docs & individual item collections merge deterministically
+let latestAggregatePhotos: PhotoItem[] | null = null;
+const latestIndividualPhotosMap = new Map<string, PhotoItem>();
+const latestPhotosDeletedIds = new Set<string>(loadDeletedIdsFromStorage(DELETED_PHOTOS_STORAGE_KEY));
+
+let latestAggregatePosts: AuthorPost[] | null = null;
+const latestIndividualPostsMap = new Map<string, AuthorPost>();
+const latestPostsDeletedIds = new Set<string>(loadDeletedIdsFromStorage(DELETED_POSTS_STORAGE_KEY));
+
+function loadDeletedIdsFromStorage(key: string): string[] {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedIdsToStorage(key: string, set: Set<string>): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const arr = Array.from(set).slice(-250);
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch {
+    // ignore storage limits
+  }
+}
+
+function getItemSignature(item: Record<string, any>): string {
+  try {
+    const str = JSON.stringify(item);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash * 31 + str.charCodeAt(i)) | 0;
+    }
+    return `${str.length}:${hash}`;
+  } catch {
+    return `${Date.now()}`;
+  }
+}
+
+function sanitizeMediaSentinel(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value === CLOUD_MEDIA_SENTINEL ? '' : value;
+}
+
+function mergePhotosFromCaches(): PhotoItem[] {
+  const merged: PhotoItem[] = [];
+  const seen = new Set<string>();
+
+  if (latestAggregatePhotos && latestAggregatePhotos.length > 0) {
+    for (const agg of latestAggregatePhotos) {
+      if (!agg || !agg.id || latestPhotosDeletedIds.has(agg.id) || seen.has(agg.id)) continue;
+      seen.add(agg.id);
+      const indiv = latestIndividualPhotosMap.get(agg.id);
+      if (indiv) {
+        const indivImg = sanitizeMediaSentinel(indiv.imageUrl);
+        const aggImg = sanitizeMediaSentinel(agg.imageUrl);
+        merged.push({
+          ...agg,
+          ...indiv,
+          imageUrl: indivImg || aggImg,
+          category: normalizePhotoCategory(indiv.category || agg.category),
+        });
+      } else {
+        merged.push({
+          ...agg,
+          imageUrl: sanitizeMediaSentinel(agg.imageUrl),
+          category: normalizePhotoCategory(agg.category),
+        });
+      }
+    }
+  }
+
+  // Prepend any items present in individual collection that aren't in the aggregate index yet
+  const extraIndividual: PhotoItem[] = [];
+  latestIndividualPhotosMap.forEach((indiv, id) => {
+    if (!id || latestPhotosDeletedIds.has(id) || seen.has(id)) return;
+    seen.add(id);
+    extraIndividual.push({
+      ...indiv,
+      imageUrl: sanitizeMediaSentinel(indiv.imageUrl),
+      category: normalizePhotoCategory(indiv.category),
+    });
+  });
+
+  if (extraIndividual.length > 0) {
+    extraIndividual.sort((a, b) => {
+      const aTs = Number((a as any).createdAt || 0);
+      const bTs = Number((b as any).createdAt || 0);
+      return bTs - aTs;
+    });
+    return normalizePhotosList([...extraIndividual, ...merged]);
+  }
+
+  return normalizePhotosList(merged);
+}
+
+function mergePostsFromCaches(): AuthorPost[] {
+  const mergedMap = new Map<string, AuthorPost>();
+
+  if (latestAggregatePosts && Array.isArray(latestAggregatePosts)) {
+    for (const agg of latestAggregatePosts) {
+      if (!agg || !agg.id || latestPostsDeletedIds.has(agg.id)) continue;
+      mergedMap.set(agg.id, {
+        ...agg,
+        imageUrl: sanitizeMediaSentinel(agg.imageUrl) || undefined,
+      });
+    }
+  }
+
+  latestIndividualPostsMap.forEach((indiv, id) => {
+    if (!id || latestPostsDeletedIds.has(id)) return;
+    const prevAgg = mergedMap.get(id);
+    const indivImg = sanitizeMediaSentinel(indiv.imageUrl);
+    const aggImg = sanitizeMediaSentinel(prevAgg?.imageUrl);
+    mergedMap.set(id, {
+      ...(prevAgg || {}),
+      ...indiv,
+      imageUrl: indivImg || aggImg || undefined,
+    });
+  });
+
+  return sortCommunityPostsNewestFirst(Array.from(mergedMap.values()));
+}
 
 /**
  * Deeply removes all `undefined` values from objects and arrays,
@@ -115,7 +252,8 @@ export function cleanUndefined<T>(obj: T): T {
 
 /**
  * Subscribes to real-time cloud updates from Firestore.
- * Listens to each modular collection/document directly to prevent race conditions and 1MB size limits.
+ * Listens to both modular aggregate docs and individual collections to ensure
+ * every item (regardless of image payload count) syncs in real time.
  */
 export function subscribeToCloudSiteData(
   onUpdate: (data: Partial<SyncedSiteData>, source?: string) => void
@@ -198,14 +336,44 @@ export function subscribeToCloudSiteData(
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        if (Array.isArray(data?.deletedIds)) {
+          data.deletedIds.forEach((id: string) => id && latestPhotosDeletedIds.add(id));
+          saveDeletedIdsToStorage(DELETED_PHOTOS_STORAGE_KEY, latestPhotosDeletedIds);
+        }
         if (data?.photos && Array.isArray(data.photos)) {
-          onUpdate({ photos: data.photos, _isSeeded: true }, 'photos');
+          latestAggregatePhotos = data.photos;
+          const merged = mergePhotosFromCaches();
+          if (merged.length > 0 || data.photos.length === 0) {
+            onUpdate({ photos: merged, _isSeeded: true }, 'photos');
+          }
         }
       }
     },
     (err) => console.warn('[Firestore] Photos modular sync notification:', err.message)
   );
   unsubs.push(photosUnsub);
+
+  // 4b. Listen to individual photos_gallery collection for atomic updates
+  const photosGalleryCol = collection(db, 'photos_gallery');
+  const photosGalleryUnsub = onSnapshot(
+    photosGalleryCol,
+    (snapshot) => {
+      latestIndividualPhotosMap.clear();
+      snapshot.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          const pData = d.data() as PhotoItem;
+          latestIndividualPhotosMap.set(d.id, pData);
+          writtenPhotoSignatures.set(d.id, getItemSignature(pData));
+        }
+      });
+      if (!snapshot.empty || (latestAggregatePhotos && latestAggregatePhotos.length > 0)) {
+        const merged = mergePhotosFromCaches();
+        onUpdate({ photos: merged, _isSeeded: true }, 'photos_gallery');
+      }
+    },
+    (err) => console.warn('[Firestore] Photos gallery collection sync notice:', err.message)
+  );
+  unsubs.push(photosGalleryUnsub);
 
   // 5. Listen to modular 'news' document
   const newsDocRef = doc(db, COLLECTION_NAME, 'news');
@@ -294,8 +462,16 @@ export function subscribeToCloudSiteData(
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        if (Array.isArray(data?.deletedIds)) {
+          data.deletedIds.forEach((id: string) => id && latestPostsDeletedIds.add(id));
+          saveDeletedIdsToStorage(DELETED_POSTS_STORAGE_KEY, latestPostsDeletedIds);
+        }
         if (data?.authorPosts && Array.isArray(data.authorPosts)) {
-          onUpdate({ authorPosts: sortCommunityPostsNewestFirst(data.authorPosts), _isSeeded: true }, 'author_posts');
+          latestAggregatePosts = data.authorPosts;
+          const merged = mergePostsFromCaches();
+          if (merged.length > 0 || data.authorPosts.length === 0) {
+            onUpdate({ authorPosts: merged, _isSeeded: true }, 'author_posts');
+          }
         }
       }
     },
@@ -308,16 +484,17 @@ export function subscribeToCloudSiteData(
   const communityPostsUnsub = onSnapshot(
     communityPostsCol,
     (snapshot) => {
-      if (!snapshot.empty) {
-        const loaded: any[] = [];
-        snapshot.forEach((d) => {
-          if (d.id && !d.id.includes('test')) {
-            loaded.push(d.data());
-          }
-        });
-        if (loaded.length > 0) {
-          onUpdate({ authorPosts: sortCommunityPostsNewestFirst(loaded), _isSeeded: true }, 'community_posts');
+      latestIndividualPostsMap.clear();
+      snapshot.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          const postData = d.data() as AuthorPost;
+          latestIndividualPostsMap.set(d.id, postData);
+          writtenPostSignatures.set(d.id, getItemSignature(postData));
         }
+      });
+      if (!snapshot.empty || (latestAggregatePosts && latestAggregatePosts.length > 0)) {
+        const merged = mergePostsFromCaches();
+        onUpdate({ authorPosts: merged, _isSeeded: true }, 'community_posts');
       }
     },
     (err) => console.warn('[Firestore] Community posts collection sync notice:', err.message)
@@ -330,19 +507,31 @@ export function subscribeToCloudSiteData(
 }
 
 /**
- * Fetch initial cloud state with modular fallbacks
+ * Fetch initial cloud state with modular and individual collection fallbacks
  */
 export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   const result: Partial<SyncedSiteData> = {};
   let foundAny = false;
 
   try {
-    // 1. First read modular documents and individual books and community_posts collections
-    const [booksSnap, booksColSnap, profileSnap, photosSnap, videosSnap, newsSnap, linksSnap, annSnap, postsSnap, communityColSnap] = await Promise.all([
+    const [
+      booksSnap,
+      booksColSnap,
+      profileSnap,
+      photosSnap,
+      photosColSnap,
+      videosSnap,
+      newsSnap,
+      linksSnap,
+      annSnap,
+      postsSnap,
+      communityColSnap,
+    ] = await Promise.all([
       getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
       getDocs(collection(db, 'books')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'photos')).catch(() => null),
+      getDocs(collection(db, 'photos_gallery')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'videos')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'news')).catch(() => null),
       getDoc(doc(db, COLLECTION_NAME, 'links')).catch(() => null),
@@ -351,7 +540,7 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       getDocs(collection(db, 'community_posts')).catch(() => null),
     ]);
 
-    // Build books map from individual documents (authoritative single-doc source)
+    // Books merge
     const individualBooksMap = new Map<string, any>();
     if (booksColSnap && !booksColSnap.empty) {
       booksColSnap.forEach((d) => {
@@ -364,7 +553,6 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
     if (booksSnap && booksSnap.exists()) {
       const data = booksSnap.data();
       if (data?.books && Array.isArray(data.books)) {
-        // Merge individual book docs so updated covers/details are 100% hydrated
         const mergedBooks = data.books.map((b: any) => {
           if (b.id && individualBooksMap.has(b.id)) {
             return { ...b, ...individualBooksMap.get(b.id) };
@@ -392,12 +580,29 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       }
     }
 
+    // Photos merge (site_content/photos + photos_gallery collection)
+    if (photosColSnap && !photosColSnap.empty) {
+      photosColSnap.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          const pData = d.data() as PhotoItem;
+          latestIndividualPhotosMap.set(d.id, pData);
+          writtenPhotoSignatures.set(d.id, getItemSignature(pData));
+        }
+      });
+    }
     if (photosSnap && photosSnap.exists()) {
       const data = photosSnap.data();
-      if (data?.photos && Array.isArray(data.photos)) {
-        result.photos = data.photos;
-        foundAny = true;
+      if (Array.isArray(data?.deletedIds)) {
+        data.deletedIds.forEach((id: string) => id && latestPhotosDeletedIds.add(id));
+        saveDeletedIdsToStorage(DELETED_PHOTOS_STORAGE_KEY, latestPhotosDeletedIds);
       }
+      if (data?.photos && Array.isArray(data.photos)) {
+        latestAggregatePhotos = data.photos;
+      }
+    }
+    if ((photosSnap && photosSnap.exists()) || (photosColSnap && !photosColSnap.empty)) {
+      result.photos = mergePhotosFromCaches();
+      foundAny = true;
     }
 
     if (videosSnap && videosSnap.exists()) {
@@ -432,40 +637,42 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       }
     }
 
-    const loadedCommunityPostsMap = new Map<string, any>();
+    // Community posts merge (site_content/author_posts + community_posts collection)
     if (communityColSnap && !communityColSnap.empty) {
       communityColSnap.forEach((d) => {
         if (d.id && !d.id.includes('test')) {
-          loadedCommunityPostsMap.set(d.id, d.data());
+          const postData = d.data() as AuthorPost;
+          latestIndividualPostsMap.set(d.id, postData);
+          writtenPostSignatures.set(d.id, getItemSignature(postData));
         }
       });
     }
-
     if (postsSnap && postsSnap.exists()) {
       const data = postsSnap.data();
-      if (data?.authorPosts && Array.isArray(data.authorPosts)) {
-        const mergedPosts = [...data.authorPosts];
-        loadedCommunityPostsMap.forEach((colPost, colId) => {
-          const existingIdx = mergedPosts.findIndex((p: any) => p.id === colId);
-          if (existingIdx >= 0) {
-            mergedPosts[existingIdx] = { ...mergedPosts[existingIdx], ...colPost };
-          } else {
-            mergedPosts.unshift(colPost);
-          }
-        });
-        result.authorPosts = sortCommunityPostsNewestFirst(mergedPosts);
-        foundAny = true;
+      if (Array.isArray(data?.deletedIds)) {
+        data.deletedIds.forEach((id: string) => id && latestPostsDeletedIds.add(id));
+        saveDeletedIdsToStorage(DELETED_POSTS_STORAGE_KEY, latestPostsDeletedIds);
       }
-    } else if (loadedCommunityPostsMap.size > 0) {
-      result.authorPosts = sortCommunityPostsNewestFirst(Array.from(loadedCommunityPostsMap.values()));
+      if (data?.authorPosts && Array.isArray(data.authorPosts)) {
+        latestAggregatePosts = data.authorPosts;
+      }
+    }
+    if ((postsSnap && postsSnap.exists()) || (communityColSnap && !communityColSnap.empty)) {
+      result.authorPosts = mergePostsFromCaches();
       foundAny = true;
     }
 
-    // 2. Fallback to main aggregate doc if modular docs didn't populate all fields
+    // 2. Fallback to main aggregate doc if modular docs didn't populate fields
     if (!foundAny) {
       const mainSnap = await getDoc(doc(db, COLLECTION_NAME, MAIN_DOC_ID)).catch(() => null);
       if (mainSnap && mainSnap.exists()) {
-        return mainSnap.data() as SyncedSiteData;
+        const mainData = mainSnap.data() as SyncedSiteData;
+        if (Array.isArray(mainData.photos)) {
+          mainData.photos = normalizePhotosList(
+            mainData.photos.map((p) => ({ ...p, imageUrl: sanitizeMediaSentinel(p.imageUrl) }))
+          );
+        }
+        return mainData;
       }
     }
 
@@ -480,18 +687,11 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   }
 }
 
-let syncDebounceTimer: any = null;
-let pendingSyncPayload: Partial<SyncedSiteData> = {};
-
 /**
- * Creates a safe, lightweight aggregate index of books for the `site_content/books` document.
- * This guarantees the document stays comfortably within Firestore's 1MB limit (under ~750KB).
- * Full book content (including all high-res chapter pages and media) is authoritatively stored
- * in individual `/books/{id}` documents.
+ * Creates a safe, lightweight aggregate index of books for `site_content/books` (<750 KB).
  */
 export function createAggregateBooksIndex(books: any[]): any[] {
   return books.map((b) => {
-    // 1. Clean up duplicate cover from galleryImages and exclude huge base64 video payloads
     const cleanedGallery = (b.galleryImages || []).filter(
       (img: string) =>
         img !== b.coverImage &&
@@ -500,9 +700,6 @@ export function createAggregateBooksIndex(books: any[]): any[] {
         !img.startsWith('data:video/')
     );
 
-    // 2. Keep samplePages lightweight in the aggregate index:
-    // Retain page numbers, titles, and text, while omitting heavy duplicate base64 page images (>5KB).
-    // The authoritative full pages are saved in `/books/{b.id}`.
     const lightweightPages = (b.samplePages || []).map((p: any) => {
       if (p.image && typeof p.image === 'string' && p.image.startsWith('data:image/') && p.image.length > 5000) {
         const { image, ...rest } = p;
@@ -520,211 +717,334 @@ export function createAggregateBooksIndex(books: any[]): any[] {
 }
 
 /**
- * Atomically saves site data to Firestore across both modular documents and the main document.
- * Guaranteed to never fail silently: throws or logs clearly, properly awaits writes.
+ * Creates a guaranteed <600KB aggregate index for `site_content/photos`.
+ * Full base64 images are always authoritatively stored inside `/photos_gallery/{id}`.
  */
-export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immediate = false): Promise<boolean> {
-  // Accumulate all incoming data into pendingSyncPayload so no field is ever lost across concurrent/rapid calls
+export function createAggregatePhotosIndex(photos: PhotoItem[]): PhotoItem[] {
+  let cumulativeBytes = 0;
+  return photos.map((p) => {
+    const normalized: PhotoItem = {
+      ...p,
+      category: normalizePhotoCategory(p.category),
+    };
+    const rawImg = normalized.imageUrl || '';
+    const isHeavyBase64 = rawImg.startsWith('data:image/') && rawImg.length > 8000;
+    const itemSize = JSON.stringify(normalized).length;
+
+    if (isHeavyBase64 && cumulativeBytes + itemSize > AGGREGATE_BYTES_BUDGET) {
+      return {
+        ...normalized,
+        imageUrl: CLOUD_MEDIA_SENTINEL,
+      };
+    }
+
+    cumulativeBytes += itemSize;
+    return normalized;
+  });
+}
+
+/**
+ * Creates a guaranteed <600KB aggregate index for `site_content/author_posts`.
+ * Full post images/media are always authoritatively stored inside `/community_posts/{id}`.
+ */
+export function createAggregateAuthorPostsIndex(posts: AuthorPost[]): AuthorPost[] {
+  let cumulativeBytes = 0;
+  return posts.map((post) => {
+    const rawImg = post.imageUrl || '';
+    const isHeavyBase64 = rawImg.startsWith('data:image/') && rawImg.length > 8000;
+    const itemSize = JSON.stringify(post).length;
+
+    if (isHeavyBase64 && cumulativeBytes + itemSize > AGGREGATE_BYTES_BUDGET) {
+      return {
+        ...post,
+        imageUrl: CLOUD_MEDIA_SENTINEL,
+      };
+    }
+
+    cumulativeBytes += itemSize;
+    return post;
+  });
+}
+
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingSyncPayload: Partial<SyncedSiteData> = {};
+let saveChain: Promise<boolean> = Promise.resolve(true);
+
+async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<boolean> {
+  if (!dataToSave || Object.keys(dataToSave).length === 0) return true;
+
+  try {
+    const sanitized = cleanUndefined(dataToSave);
+    const nowIso = new Date().toISOString();
+    let hadCriticalFailure = false;
+    const savePromises: Promise<void>[] = [];
+
+    const trackedWrite = (path: string, promise: Promise<unknown>) => {
+      savePromises.push(
+        promise
+          .then(() => undefined)
+          .catch((err) => {
+            hadCriticalFailure = true;
+            handleFirestoreError(err, OperationType.WRITE, path);
+          })
+      );
+    };
+
+    if (sanitized.books && Array.isArray(sanitized.books)) {
+      sanitized.books.forEach((b: any) => {
+        if (b?.id) {
+          trackedWrite(
+            `books/${b.id}`,
+            setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true })
+          );
+        }
+      });
+
+      const aggregateBooks = createAggregateBooksIndex(sanitized.books);
+      trackedWrite(
+        `${COLLECTION_NAME}/books`,
+        setDoc(doc(db, COLLECTION_NAME, 'books'), { books: aggregateBooks, updatedAt: nowIso }, { merge: true })
+      );
+    }
+
+    if (sanitized.authorProfile) {
+      trackedWrite(
+        `${COLLECTION_NAME}/profile`,
+        setDoc(doc(db, COLLECTION_NAME, 'profile'), { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true })
+      );
+      savePromises.push(
+        setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
+          (err) => console.warn('[Firestore] Site settings profile notice:', err?.message)
+        )
+      );
+    }
+
+    if (sanitized.videos && Array.isArray(sanitized.videos)) {
+      const safeVideos = sanitized.videos.map((v: any) => {
+        const isBase64Url = typeof v.url === 'string' && v.url.startsWith('data:video/');
+        const isBase64File = typeof v.videoFileUrl === 'string' && v.videoFileUrl.startsWith('data:video/');
+        if (isBase64Url || isBase64File) {
+          return {
+            ...v,
+            url: isBase64Url ? (v.videoFileUrl && !v.videoFileUrl.startsWith('data:') ? v.videoFileUrl : '') : v.url,
+            videoFileUrl: isBase64File ? undefined : v.videoFileUrl,
+          };
+        }
+        return v;
+      });
+
+      trackedWrite(
+        `${COLLECTION_NAME}/videos`,
+        setDoc(doc(db, COLLECTION_NAME, 'videos'), { videos: cleanUndefined(safeVideos), updatedAt: nowIso }, { merge: true })
+      );
+    }
+
+    if (sanitized.photos && Array.isArray(sanitized.photos)) {
+      const normalizedPhotos = normalizePhotosList(sanitized.photos as PhotoItem[]);
+      latestAggregatePhotos = normalizedPhotos;
+
+      normalizedPhotos.forEach((photo) => {
+        if (!photo.id) return;
+        latestPhotosDeletedIds.delete(photo.id);
+        latestIndividualPhotosMap.set(photo.id, photo);
+
+        const docPayload = cleanUndefined({
+          ...photo,
+          createdAt: (photo as any).createdAt || Date.now(),
+          updatedAt: nowIso,
+        });
+        const sig = getItemSignature(docPayload);
+        if (writtenPhotoSignatures.get(photo.id) !== sig) {
+          savePromises.push(
+            setDoc(doc(db, 'photos_gallery', photo.id), docPayload, { merge: true })
+              .then(() => {
+                writtenPhotoSignatures.set(photo.id, sig);
+              })
+              .catch((err) => {
+                hadCriticalFailure = true;
+                handleFirestoreError(err, OperationType.WRITE, `photos_gallery/${photo.id}`);
+              })
+          );
+        }
+      });
+
+      const aggregatePhotos = createAggregatePhotosIndex(normalizedPhotos);
+      trackedWrite(
+        `${COLLECTION_NAME}/photos`,
+        setDoc(
+          doc(db, COLLECTION_NAME, 'photos'),
+          {
+            photos: aggregatePhotos,
+            deletedIds: Array.from(latestPhotosDeletedIds).slice(-250),
+            updatedAt: nowIso,
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    if (sanitized.news && Array.isArray(sanitized.news)) {
+      const safeNews = sanitized.news.map((n: any) => {
+        if (typeof n.videoUrl === 'string' && n.videoUrl.startsWith('data:video/')) {
+          return { ...n, videoUrl: '' };
+        }
+        return n;
+      });
+      trackedWrite(
+        `${COLLECTION_NAME}/news`,
+        setDoc(doc(db, COLLECTION_NAME, 'news'), { news: safeNews, updatedAt: nowIso }, { merge: true })
+      );
+    }
+
+    if (sanitized.links && Array.isArray(sanitized.links)) {
+      trackedWrite(
+        `${COLLECTION_NAME}/links`,
+        setDoc(doc(db, COLLECTION_NAME, 'links'), { links: sanitized.links, updatedAt: nowIso }, { merge: true })
+      );
+    }
+
+    if (sanitized.announcements && Array.isArray(sanitized.announcements)) {
+      trackedWrite(
+        `${COLLECTION_NAME}/announcements`,
+        setDoc(doc(db, COLLECTION_NAME, 'announcements'), { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true })
+      );
+    }
+
+    if (sanitized.comments && Array.isArray(sanitized.comments)) {
+      savePromises.push(
+        setDoc(doc(db, COLLECTION_NAME, 'comments'), { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }).catch(
+          (err) => console.warn('[Firestore] Comments save notice:', err?.message)
+        )
+      );
+    }
+
+    if (sanitized.messages && Array.isArray(sanitized.messages)) {
+      savePromises.push(
+        setDoc(doc(db, COLLECTION_NAME, 'messages'), { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }).catch(
+          (err) => console.warn('[Firestore] Messages save notice:', err?.message)
+        )
+      );
+    }
+
+    if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
+      const sortedPosts = sortCommunityPostsNewestFirst(sanitized.authorPosts as AuthorPost[]);
+      sanitized.authorPosts = sortedPosts;
+      latestAggregatePosts = sortedPosts;
+
+      sortedPosts.forEach((post) => {
+        if (!post.id) return;
+        latestPostsDeletedIds.delete(post.id);
+        latestIndividualPostsMap.set(post.id, post);
+
+        const docPayload = cleanUndefined({
+          ...post,
+          updatedAt: nowIso,
+        });
+        const sig = getItemSignature(docPayload);
+        if (writtenPostSignatures.get(post.id) !== sig) {
+          savePromises.push(
+            setDoc(doc(db, 'community_posts', post.id), docPayload, { merge: true })
+              .then(() => {
+                writtenPostSignatures.set(post.id, sig);
+              })
+              .catch((err) => {
+                hadCriticalFailure = true;
+                handleFirestoreError(err, OperationType.WRITE, `community_posts/${post.id}`);
+              })
+          );
+        }
+      });
+
+      const aggregatePosts = createAggregateAuthorPostsIndex(sortedPosts);
+      trackedWrite(
+        `${COLLECTION_NAME}/author_posts`,
+        setDoc(
+          doc(db, COLLECTION_NAME, 'author_posts'),
+          {
+            authorPosts: aggregatePosts,
+            deletedIds: Array.from(latestPostsDeletedIds).slice(-250),
+            updatedAt: nowIso,
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    // Await all critical writes with a generous 15s timeout, tracking genuine completion
+    let timedOut = false;
+    await Promise.race([
+      Promise.all(savePromises),
+      new Promise<void>((resolve) =>
+        setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, 15000)
+      ),
+    ]);
+
+    if (timedOut) {
+      console.warn('[Firestore] Save exceeded 15s timeout; individual writes may still be completing in background.');
+      return false;
+    }
+
+    // Best-effort combined cache doc (strictly stripped of heavy base64 images)
+    try {
+      const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
+      const mainPayload: any = { ...sanitized, updatedAt: nowIso };
+      if (mainPayload.books) {
+        mainPayload.books = createAggregateBooksIndex(mainPayload.books);
+      }
+      if (mainPayload.photos && Array.isArray(mainPayload.photos)) {
+        mainPayload.photos = mainPayload.photos.map((p: any) =>
+          p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000
+            ? { ...p, imageUrl: '' }
+            : p
+        );
+      }
+      if (mainPayload.authorPosts && Array.isArray(mainPayload.authorPosts)) {
+        mainPayload.authorPosts = mainPayload.authorPosts.map((p: any) =>
+          p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000
+            ? { ...p, imageUrl: '' }
+            : p
+        );
+      }
+      await setDoc(mainDocRef, mainPayload, { merge: true }).catch((err) => {
+        console.warn('[Firestore] Main aggregate doc update skipped:', err?.message);
+      });
+    } catch {
+      // Non-critical combined cache
+    }
+
+    if (hadCriticalFailure) {
+      return false;
+    }
+
+    console.log('[Firestore] Site data verified & saved to cloud!');
+    return true;
+  } catch (error) {
+    console.error('[Firestore] Failed to save site data to cloud:', error);
+    return false;
+  }
+}
+
+/**
+ * Serializes and saves site data to Firestore across individual item docs and modular index docs.
+ * Returns true ONLY if all critical writes succeeded cleanly.
+ */
+export function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immediate = false): Promise<boolean> {
   pendingSyncPayload = {
     ...pendingSyncPayload,
     ...data,
   };
 
-  const performSave = async (): Promise<boolean> => {
-    // Clone and clear the pending payload
-    const dataToSave = { ...pendingSyncPayload };
-    pendingSyncPayload = {};
-
-    try {
-      const sanitized = cleanUndefined(dataToSave);
-      const nowIso = new Date().toISOString();
-
-      // 1. Save specific modular docs first (each is well under 1MB)
-      const savePromises: Promise<any>[] = [];
-
-      if (sanitized.books && Array.isArray(sanitized.books)) {
-        // 1. Write each book individually into the 'books' collection (where each book has its own 1MB limit)
-        sanitized.books.forEach((b: any) => {
-          if (b.id) {
-            savePromises.push(
-              setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true }).catch((err) => {
-                console.warn(`[Firestore] Notice on single book doc ${b.id}:`, err?.message);
-              })
-            );
-          }
-        });
-
-        // 2. Prepare aggregate books index safely under 1MB limit
-        const aggregateBooks = createAggregateBooksIndex(sanitized.books);
-
-        // 3. Save the aggregate books document safely with fallback
-        const booksDocRef = doc(db, COLLECTION_NAME, 'books');
-        savePromises.push(
-          setDoc(booksDocRef, { books: aggregateBooks, updatedAt: nowIso }, { merge: true }).catch((err) => {
-            console.warn('[Firestore] Note on aggregate books doc:', err?.message);
-          })
-        );
-      }
-
-      if (sanitized.authorProfile) {
-        const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
-        savePromises.push(
-          setDoc(profileDocRef, { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
-            (err) => console.warn('[Firestore] Profile save notice:', err?.message)
-          )
-        );
-        savePromises.push(
-          setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
-            (err) => console.warn('[Firestore] Site settings profile notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.videos && Array.isArray(sanitized.videos)) {
-        // Ensure no giant base64 video data URL exceeds Firestore's 1MB document limit
-        const safeVideos = sanitized.videos.map((v: any) => {
-          const isBase64Url = typeof v.url === 'string' && v.url.startsWith('data:video/');
-          const isBase64File = typeof v.videoFileUrl === 'string' && v.videoFileUrl.startsWith('data:video/');
-          if (isBase64Url || isBase64File) {
-            return {
-              ...v,
-              url: isBase64Url ? (v.videoFileUrl && !v.videoFileUrl.startsWith('data:') ? v.videoFileUrl : '') : v.url,
-              videoFileUrl: isBase64File ? undefined : v.videoFileUrl,
-            };
-          }
-          return v;
-        });
-
-        const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
-        savePromises.push(
-          setDoc(videosDocRef, { videos: safeVideos, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Videos save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.photos && Array.isArray(sanitized.photos)) {
-        const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
-        savePromises.push(
-          setDoc(photosDocRef, { photos: sanitized.photos, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Photos save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.news && Array.isArray(sanitized.news)) {
-        const safeNews = sanitized.news.map((n: any) => {
-          if (typeof n.videoUrl === 'string' && n.videoUrl.startsWith('data:video/')) {
-            return {
-              ...n,
-              videoUrl: '',
-            };
-          }
-          return n;
-        });
-        const newsDocRef = doc(db, COLLECTION_NAME, 'news');
-        savePromises.push(
-          setDoc(newsDocRef, { news: safeNews, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] News save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.links && Array.isArray(sanitized.links)) {
-        const linksDocRef = doc(db, COLLECTION_NAME, 'links');
-        savePromises.push(
-          setDoc(linksDocRef, { links: sanitized.links, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Links save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.announcements && Array.isArray(sanitized.announcements)) {
-        const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
-        savePromises.push(
-          setDoc(annDocRef, { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true }).catch(
-            (err) => console.warn('[Firestore] Announcements save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.comments && Array.isArray(sanitized.comments)) {
-        const commentsDocRef = doc(db, COLLECTION_NAME, 'comments');
-        savePromises.push(
-          setDoc(commentsDocRef, { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Comments save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.messages && Array.isArray(sanitized.messages)) {
-        const messagesDocRef = doc(db, COLLECTION_NAME, 'messages');
-        savePromises.push(
-          setDoc(messagesDocRef, { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Messages save notice:', err?.message)
-          )
-        );
-      }
-
-      if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
-        const sortedPosts = sortCommunityPostsNewestFirst(sanitized.authorPosts);
-        sanitized.authorPosts = sortedPosts;
-
-        // 1. Save each post individually to community_posts collection for atomic persistence
-        sortedPosts.forEach((post: any) => {
-          if (post.id) {
-            savePromises.push(
-              setDoc(doc(db, 'community_posts', post.id), { ...post, updatedAt: nowIso }, { merge: true }).catch((err) =>
-                console.warn(`[Firestore] Community post doc ${post.id} notice:`, err?.message)
-              )
-            );
-          }
-        });
-
-        // 2. Save to aggregate modular author_posts document
-        const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
-        savePromises.push(
-          setDoc(postsDocRef, { authorPosts: sortedPosts, updatedAt: nowIso }, { merge: true }).catch((err) =>
-            console.warn('[Firestore] Author posts save notice:', err?.message)
-          )
-        );
-      }
-
-      // Save modular docs with a generous timeout (8s) so long-polling latency or mobile connections never fail prematurely
-      await Promise.race([
-        Promise.all(savePromises),
-        new Promise((r) => setTimeout(r, 8000)),
-      ]);
-
-      // 2. Also save to main aggregate document as a combined cache (safeguarding against 1MB limit)
-      try {
-        const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
-        const mainPayload: any = { ...sanitized, updatedAt: nowIso };
-        if (mainPayload.books) {
-          mainPayload.books = createAggregateBooksIndex(mainPayload.books);
-        }
-        if (mainPayload.photos && Array.isArray(mainPayload.photos)) {
-          mainPayload.photos = mainPayload.photos.map((p: any) => {
-            if (p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000) {
-              return { ...p, imageUrl: '' };
-            }
-            return p;
-          });
-        }
-        await setDoc(mainDocRef, mainPayload, { merge: true }).catch((err) => {
-          console.warn('[Firestore] Main aggregate doc update skipped (modular docs already saved):', err?.message);
-        });
-      } catch (mainErr) {
-        // If main doc ever approaches 1MB, modular docs already saved successfully!
-        console.warn('[Firestore] Note: Main aggregate doc update skipped or large, modular docs saved.', mainErr);
-      }
-
-      console.log('[Firestore] Site data successfully saved to cloud in real-time!');
-      return true;
-    } catch (error) {
-      console.error('[Firestore] Failed to save site data to cloud:', error);
-      return false;
-    }
+  const enqueueFlush = (): Promise<boolean> => {
+    saveChain = saveChain.then(async () => {
+      const batch = { ...pendingSyncPayload };
+      pendingSyncPayload = {};
+      if (Object.keys(batch).length === 0) return true;
+      return runQueuedCloudSave(batch);
+    });
+    return saveChain;
   };
 
   if (immediate) {
@@ -732,29 +1052,56 @@ export async function saveSiteDataToCloud(data: Partial<SyncedSiteData>, immedia
       clearTimeout(syncDebounceTimer);
       syncDebounceTimer = null;
     }
-    return performSave();
+    return enqueueFlush();
   }
 
   return new Promise((resolve) => {
     if (syncDebounceTimer) {
       clearTimeout(syncDebounceTimer);
     }
-    syncDebounceTimer = setTimeout(async () => {
+    syncDebounceTimer = setTimeout(() => {
       syncDebounceTimer = null;
-      const ok = await performSave();
-      resolve(ok);
+      enqueueFlush().then(resolve);
     }, 150);
   });
 }
 
 /**
- * Deletes an individual post document from the community_posts collection in Firestore.
+ * Deletes an individual photo from `photos_gallery` and records a tombstone so it does not resurrect.
+ */
+export async function deletePhotoFromCloud(photoId: string): Promise<void> {
+  if (!photoId) return;
+  latestPhotosDeletedIds.add(photoId);
+  latestIndividualPhotosMap.delete(photoId);
+  writtenPhotoSignatures.delete(photoId);
+  saveDeletedIdsToStorage(DELETED_PHOTOS_STORAGE_KEY, latestPhotosDeletedIds);
+  try {
+    await deleteDoc(doc(db, 'photos_gallery', photoId));
+  } catch (err: any) {
+    console.warn(`[Firestore] Notice deleting photos_gallery/${photoId}:`, err?.message);
+  }
+}
+
+/**
+ * Deletes an individual post from `community_posts` and records a tombstone so it does not resurrect.
  */
 export async function deleteCommunityPostFromCloud(postId: string): Promise<void> {
   if (!postId) return;
+  latestPostsDeletedIds.add(postId);
+  latestIndividualPostsMap.delete(postId);
+  writtenPostSignatures.delete(postId);
+  saveDeletedIdsToStorage(DELETED_POSTS_STORAGE_KEY, latestPostsDeletedIds);
   try {
     await deleteDoc(doc(db, 'community_posts', postId));
   } catch (err: any) {
-    console.warn(`[Firestore] Failed to delete community_posts/${postId}:`, err?.message);
+    console.warn(`[Firestore] Notice deleting community_posts/${postId}:`, err?.message);
   }
+}
+
+export function getLocalDeletedPhotoIds(): Set<string> {
+  return new Set(latestPhotosDeletedIds);
+}
+
+export function getLocalDeletedPostIds(): Set<string> {
+  return new Set(latestPostsDeletedIds);
 }

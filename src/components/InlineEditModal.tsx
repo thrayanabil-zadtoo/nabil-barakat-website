@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy, Film } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 import { parseVideoUrl } from '../utils/videoUtils';
+import { PHOTO_CATEGORIES, normalizePhotoCategory } from '../utils/photoCategories';
 
 export const InlineEditModal: React.FC = () => {
   const {
@@ -97,7 +98,7 @@ export const InlineEditModal: React.FC = () => {
       setPCaption(editingPhoto.caption);
       setPUrl(editingPhoto.imageUrl);
       setPLocation(editingPhoto.location);
-      setPCategory(editingPhoto.category);
+      setPCategory(normalizePhotoCategory(editingPhoto.category));
     }
   }, [editingPhoto]);
 
@@ -185,7 +186,7 @@ export const InlineEditModal: React.FC = () => {
       caption: pCaption,
       imageUrl: pUrl,
       location: pLocation,
-      category: pCategory,
+      category: normalizePhotoCategory(pCategory),
     });
     setEditingPhoto(null);
   };
@@ -470,18 +471,21 @@ export const InlineEditModal: React.FC = () => {
                       accept="image/*"
                       className="hidden"
                       onChange={async (e) => {
-                        const file = e.target.files?.[0];
+                        const input = e.target;
+                        const file = input.files?.[0];
                         if (!file) return;
                         try {
                           const uploaded = await processAndUploadImage(file, {
-                            maxWidth: 1280,
-                            maxHeight: 1280,
-                            quality: 0.82,
+                            maxWidth: 960,
+                            maxHeight: 1100,
+                            quality: 0.78,
                             contextTitle: pTitle || 'صورة في المعرض',
                           });
                           setPUrl(uploaded);
                         } catch {
                           // Handled
+                        } finally {
+                          input.value = '';
                         }
                       }}
                     />
@@ -501,12 +505,17 @@ export const InlineEditModal: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-gray-700 font-bold mb-1">التصنيف</label>
-                  <input
-                    type="text"
-                    value={pCategory}
+                  <select
+                    value={normalizePhotoCategory(pCategory)}
                     onChange={(e) => setPCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 outline-none"
-                  />
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 bg-white outline-none"
+                  >
+                    {Array.from(new Set([...PHOTO_CATEGORIES, normalizePhotoCategory(pCategory)])).map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
