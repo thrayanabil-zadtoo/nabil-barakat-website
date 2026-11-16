@@ -6,9 +6,9 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust long-polling auto-detection for preview iframes and devices
+// Force HTTP long-polling so preview iframes, proxies, and mobile WebViews connect immediately without 10s WebChannel timeouts
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
+  experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 // Export storage and auth
@@ -21,7 +21,16 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      // Retry once after brief cold-start delay before reporting offline
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        return;
+      } catch (retryErr) {
+        if (retryErr instanceof Error && retryErr.message.includes('the client is offline')) {
+          console.error('Please check your Firebase configuration.');
+        }
+      }
     }
   }
 }

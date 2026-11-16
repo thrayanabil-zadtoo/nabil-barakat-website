@@ -1,5 +1,5 @@
 // Service Worker for Official Website of Author Nabil Barakat (nb.zadtoo.com)
-const CACHE_NAME = 'nabil-barakat-cache-v4';
+const CACHE_NAME = 'nabil-barakat-cache-v7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for HTML page navigations so latest content updates immediately
+  // Network-first for HTML navigations so latest content updates immediately
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -52,8 +52,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Stale/cache-first fallback for static assets
   if (url.origin === self.location.origin) {
+    const isCodeOrManifest =
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.mjs') ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.json') ||
+      url.pathname.endsWith('.webmanifest');
+
+    // Network-first for scripts, styles, manifests & JSON so PWA never serves stale app bundles
+    if (isCodeOrManifest) {
+      event.respondWith(
+        fetch(event.request)
+          .then((response) => {
+            if (response && response.status === 200) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => caches.match(event.request))
+      );
+      return;
+    }
+
+    // Stale-while-revalidate for static images & icons
     event.respondWith(
       caches.match(event.request).then((cached) => {
         const networkFetch = fetch(event.request)

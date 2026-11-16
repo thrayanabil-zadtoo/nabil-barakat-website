@@ -144,6 +144,17 @@ function ensureGlobalListeners() {
     setTimeout(() => {
       void requestNotificationsOnInstall({ showWelcomeNotification: true });
     }, 600);
+
+    // Fallback for browsers (e.g. Android Chrome WebAPK) that require a user gesture to display the permission dialog
+    const handleFirstStandaloneGesture = () => {
+      if (getCurrentNotificationPermission() === 'default') {
+        void requestNotificationsOnInstall({ showWelcomeNotification: true });
+      }
+      window.removeEventListener('pointerdown', handleFirstStandaloneGesture);
+      window.removeEventListener('keydown', handleFirstStandaloneGesture);
+    };
+    window.addEventListener('pointerdown', handleFirstStandaloneGesture, { passive: true, once: true });
+    window.addEventListener('keydown', handleFirstStandaloneGesture, { passive: true, once: true });
   }
 
   // Keep permission state synced when changed from Android System Settings or browser site settings

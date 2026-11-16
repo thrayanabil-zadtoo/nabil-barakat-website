@@ -1,6 +1,6 @@
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, Unsubscribe, collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { sortCommunityPostsNewestFirst } from './communityPostColors';
+import { getPostTimestamp, sortCommunityPostsNewestFirst } from './communityPostColors';
 import { normalizePhotoCategory, normalizePhotosList } from './photoCategories';
 import {
   AuthorProfile,
@@ -41,7 +41,45 @@ export interface FirestoreErrorInfo {
   };
 }
 
+let cloudQuotaExceeded = false;
+let cloudQuotaListener: ((message: string) => void) | null = null;
+
+export function isQuotaExceededError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  const code = (error as any)?.code;
+  return (
+    code === 'resource-exhausted' ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Quota exceeded')
+  );
+}
+
+export function isCloudQuotaExceeded(): boolean {
+  return cloudQuotaExceeded;
+}
+
+export function resetCloudQuotaFlag(): void {
+  cloudQuotaExceeded = false;
+}
+
+export function setCloudQuotaListener(listener: ((message: string) => void) | null): void {
+  cloudQuotaListener = listener;
+}
+
+function notifyIfQuotaExceeded(error: unknown): void {
+  if (isQuotaExceededError(error)) {
+    const firstTrigger = !cloudQuotaExceeded;
+    cloudQuotaExceeded = true;
+    const msg = error instanceof Error ? error.message : String(error);
+    if (firstTrigger && cloudQuotaListener) {
+      cloudQuotaListener(msg);
+    }
+  }
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  notifyIfQuotaExceeded(error);
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -81,14 +119,20 @@ export interface SyncedSiteData {
 const COLLECTION_NAME = 'site_content';
 const MAIN_DOC_ID = 'main';
 const CLOUD_MEDIA_SENTINEL = '__CLOUD_MEDIA__';
-const AGGREGATE_BYTES_BUDGET = 520_000;
+const AGGREGATE_BYTES_BUDGET = 340_000;
+const BOOKS_AGGREGATE_BYTES_BUDGET = 520_000;
 const DELETED_PHOTOS_STORAGE_KEY = 'nabil_deleted_photo_ids_v1';
 const DELETED_POSTS_STORAGE_KEY = 'nabil_deleted_post_ids_v1';
 
 const writtenPhotoSignatures = new Map<string, string>();
 const writtenPostSignatures = new Map<string, string>();
+const writtenBookSignatures = new Map<string, string>();
+const writtenAggregateSignatures = new Map<string, string>();
 
 // Shared module caches so modular index docs & individual item collections merge deterministically
+let latestAggregateBooks: Book[] | null = null;
+const latestIndividualBooksMap = new Map<string, Book>();
+
 let latestAggregatePhotos: PhotoItem[] | null = null;
 const latestIndividualPhotosMap = new Map<string, PhotoItem>();
 const latestPhotosDeletedIds = new Set<string>(loadDeletedIdsFromStorage(DELETED_PHOTOS_STORAGE_KEY));
@@ -96,6 +140,16 @@ const latestPhotosDeletedIds = new Set<string>(loadDeletedIdsFromStorage(DELETED
 let latestAggregatePosts: AuthorPost[] | null = null;
 const latestIndividualPostsMap = new Map<string, AuthorPost>();
 const latestPostsDeletedIds = new Set<string>(loadDeletedIdsFromStorage(DELETED_POSTS_STORAGE_KEY));
+
+const utf8Encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+
+function getUtf8ByteLength(str: string): number {
+  if (!str) return 0;
+  if (utf8Encoder) {
+    return utf8Encoder.encode(str).length;
+  }
+  return str.length * 2;
+}
 
 function loadDeletedIdsFromStorage(key: string): string[] {
   if (typeof window === 'undefined' || !window.localStorage) return [];
@@ -135,6 +189,51 @@ function getItemSignature(item: Record<string, any>): string {
 function sanitizeMediaSentinel(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value === CLOUD_MEDIA_SENTINEL ? '' : value;
+}
+
+function mergeBookItem(agg: Book, indiv?: Book): Book {
+  if (!indiv) {
+    return {
+      ...agg,
+      coverImage: sanitizeMediaSentinel(agg.coverImage),
+    };
+  }
+  const indivCover = sanitizeMediaSentinel(indiv.coverImage);
+  const aggCover = sanitizeMediaSentinel(agg.coverImage);
+  const indivGallery = Array.isArray(indiv.galleryImages) ? indiv.galleryImages : [];
+  const aggGallery = Array.isArray(agg.galleryImages) ? agg.galleryImages : [];
+  const indivPages = Array.isArray(indiv.samplePages) && indiv.samplePages.length > 0 ? indiv.samplePages : agg.samplePages;
+  return {
+    ...agg,
+    ...indiv,
+    coverImage: indivCover || aggCover,
+    galleryImages: indivGallery.length > 0 ? indivGallery : aggGallery,
+    samplePages: indivPages,
+  };
+}
+
+function mergeBooksFromCaches(): Book[] {
+  const merged: Book[] = [];
+  const seen = new Set<string>();
+
+  if (latestAggregateBooks && latestAggregateBooks.length > 0) {
+    for (const agg of latestAggregateBooks) {
+      if (!agg || !agg.id || seen.has(agg.id)) continue;
+      seen.add(agg.id);
+      merged.push(mergeBookItem(agg, latestIndividualBooksMap.get(agg.id)));
+    }
+  }
+
+  latestIndividualBooksMap.forEach((indiv, id) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    merged.push({
+      ...indiv,
+      coverImage: sanitizeMediaSentinel(indiv.coverImage),
+    });
+  });
+
+  return merged;
 }
 
 function mergePhotosFromCaches(): PhotoItem[] {
@@ -259,6 +358,10 @@ export function subscribeToCloudSiteData(
   onUpdate: (data: Partial<SyncedSiteData>, source?: string) => void
 ): () => void {
   const unsubs: Unsubscribe[] = [];
+  const handleSnapshotErr = (path: string, err: any) => {
+    notifyIfQuotaExceeded(err);
+    console.warn(`[Firestore] Sync notice (${path}):`, err?.message || err);
+  };
 
   // 1. Listen to modular 'books' document
   const booksDocRef = doc(db, COLLECTION_NAME, 'books');
@@ -268,11 +371,15 @@ export function subscribeToCloudSiteData(
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data?.books && Array.isArray(data.books) && data.books.length > 0) {
-          onUpdate({ books: data.books, _isSeeded: true }, 'books');
+          latestAggregateBooks = data.books as Book[];
+          const merged = mergeBooksFromCaches();
+          if (merged.length > 0) {
+            onUpdate({ books: merged, _isSeeded: true }, 'books');
+          }
         }
       }
     },
-    (err) => console.warn('[Firestore] Books modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/books`, err)
   );
   unsubs.push(booksUnsub);
 
@@ -281,19 +388,22 @@ export function subscribeToCloudSiteData(
   const booksColUnsub = onSnapshot(
     booksCol,
     (snapshot) => {
-      if (!snapshot.empty) {
-        const loadedBooks: any[] = [];
-        snapshot.forEach((d) => {
-          if (d.id && !d.id.includes('test')) {
-            loadedBooks.push(d.data());
-          }
-        });
-        if (loadedBooks.length > 0) {
-          onUpdate({ books: loadedBooks, _isSeeded: true }, 'books');
+      latestIndividualBooksMap.clear();
+      snapshot.forEach((d) => {
+        if (d.id && !d.id.includes('test')) {
+          const bData = d.data() as Book;
+          latestIndividualBooksMap.set(d.id, bData);
+          writtenBookSignatures.set(d.id, getItemSignature(bData));
+        }
+      });
+      if (!snapshot.empty || (latestAggregateBooks && latestAggregateBooks.length > 0)) {
+        const merged = mergeBooksFromCaches();
+        if (merged.length > 0) {
+          onUpdate({ books: merged, _isSeeded: true }, 'books_col');
         }
       }
     },
-    (err) => console.warn('[Firestore] Books collection sync notice:', err.message)
+    (err) => handleSnapshotErr('books', err)
   );
   unsubs.push(booksColUnsub);
 
@@ -309,7 +419,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Profile modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/profile`, err)
   );
   unsubs.push(profileUnsub);
 
@@ -325,7 +435,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Videos modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/videos`, err)
   );
   unsubs.push(videosUnsub);
 
@@ -349,7 +459,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Photos modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/photos`, err)
   );
   unsubs.push(photosUnsub);
 
@@ -371,7 +481,7 @@ export function subscribeToCloudSiteData(
         onUpdate({ photos: merged, _isSeeded: true }, 'photos_gallery');
       }
     },
-    (err) => console.warn('[Firestore] Photos gallery collection sync notice:', err.message)
+    (err) => handleSnapshotErr('photos_gallery', err)
   );
   unsubs.push(photosGalleryUnsub);
 
@@ -387,7 +497,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] News modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/news`, err)
   );
   unsubs.push(newsUnsub);
 
@@ -403,7 +513,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Links modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/links`, err)
   );
   unsubs.push(linksUnsub);
 
@@ -419,7 +529,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Announcements sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/announcements`, err)
   );
   unsubs.push(annUnsub);
 
@@ -435,7 +545,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Comments modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/comments`, err)
   );
   unsubs.push(commentsUnsub);
 
@@ -451,7 +561,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Messages modular sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/messages`, err)
   );
   unsubs.push(messagesUnsub);
 
@@ -475,7 +585,7 @@ export function subscribeToCloudSiteData(
         }
       }
     },
-    (err) => console.warn('[Firestore] Author posts sync notification:', err.message)
+    (err) => handleSnapshotErr(`${COLLECTION_NAME}/author_posts`, err)
   );
   unsubs.push(postsUnsub);
 
@@ -497,7 +607,7 @@ export function subscribeToCloudSiteData(
         onUpdate({ authorPosts: merged, _isSeeded: true }, 'community_posts');
       }
     },
-    (err) => console.warn('[Firestore] Community posts collection sync notice:', err.message)
+    (err) => handleSnapshotErr('community_posts', err)
   );
   unsubs.push(communityPostsUnsub);
 
@@ -513,6 +623,11 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
   const result: Partial<SyncedSiteData> = {};
   let foundAny = false;
 
+  const catchReadErr = (err: unknown) => {
+    notifyIfQuotaExceeded(err);
+    return null;
+  };
+
   try {
     const [
       booksSnap,
@@ -527,49 +642,41 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
       postsSnap,
       communityColSnap,
     ] = await Promise.all([
-      getDoc(doc(db, COLLECTION_NAME, 'books')).catch(() => null),
-      getDocs(collection(db, 'books')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'photos')).catch(() => null),
-      getDocs(collection(db, 'photos_gallery')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'videos')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'news')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'links')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(() => null),
-      getDoc(doc(db, COLLECTION_NAME, 'author_posts')).catch(() => null),
-      getDocs(collection(db, 'community_posts')).catch(() => null),
+      getDoc(doc(db, COLLECTION_NAME, 'books')).catch(catchReadErr),
+      getDocs(collection(db, 'books')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'profile')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'photos')).catch(catchReadErr),
+      getDocs(collection(db, 'photos_gallery')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'videos')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'news')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'links')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'announcements')).catch(catchReadErr),
+      getDoc(doc(db, COLLECTION_NAME, 'author_posts')).catch(catchReadErr),
+      getDocs(collection(db, 'community_posts')).catch(catchReadErr),
     ]);
 
-    // Books merge
-    const individualBooksMap = new Map<string, any>();
+    // Books merge (site_content/books + books collection)
     if (booksColSnap && !booksColSnap.empty) {
       booksColSnap.forEach((d) => {
         if (d.id && !d.id.includes('test')) {
-          individualBooksMap.set(d.id, d.data());
+          const bData = d.data() as Book;
+          latestIndividualBooksMap.set(d.id, bData);
+          writtenBookSignatures.set(d.id, getItemSignature(bData));
         }
       });
     }
-
     if (booksSnap && booksSnap.exists()) {
       const data = booksSnap.data();
       if (data?.books && Array.isArray(data.books)) {
-        const mergedBooks = data.books.map((b: any) => {
-          if (b.id && individualBooksMap.has(b.id)) {
-            return { ...b, ...individualBooksMap.get(b.id) };
-          }
-          return b;
-        });
-        individualBooksMap.forEach((colBook, colId) => {
-          if (!mergedBooks.some((mb: any) => mb.id === colId)) {
-            mergedBooks.push(colBook);
-          }
-        });
+        latestAggregateBooks = data.books as Book[];
+      }
+    }
+    if ((booksSnap && booksSnap.exists()) || latestIndividualBooksMap.size > 0) {
+      const mergedBooks = mergeBooksFromCaches();
+      if (mergedBooks.length > 0) {
         result.books = mergedBooks;
         foundAny = true;
       }
-    } else if (individualBooksMap.size > 0) {
-      result.books = Array.from(individualBooksMap.values());
-      foundAny = true;
     }
 
     if (profileSnap && profileSnap.exists()) {
@@ -688,9 +795,11 @@ export async function fetchCloudSiteData(): Promise<SyncedSiteData | null> {
 }
 
 /**
- * Creates a safe, lightweight aggregate index of books for `site_content/books` (<750 KB).
+ * Creates a safe, lightweight aggregate index of books for `site_content/books` (<520 KB).
+ * Full covers/samplePages remain authoritatively inside `/books/{id}`.
  */
-export function createAggregateBooksIndex(books: any[]): any[] {
+export function createAggregateBooksIndex(books: any[], confirmedIndividualIds?: Set<string>): any[] {
+  let cumulativeBytes = 0;
   return books.map((b) => {
     const cleanedGallery = (b.galleryImages || []).filter(
       (img: string) =>
@@ -708,19 +817,36 @@ export function createAggregateBooksIndex(books: any[]): any[] {
       return p;
     });
 
-    return {
+    const candidate = {
       ...b,
       galleryImages: cleanedGallery,
       samplePages: lightweightPages,
     };
+
+    const itemBytes = getUtf8ByteLength(JSON.stringify(candidate));
+    const isHeavyCover = typeof b.coverImage === 'string' && b.coverImage.startsWith('data:image/') && b.coverImage.length > 8000;
+    const canOffloadCover = !confirmedIndividualIds || confirmedIndividualIds.has(b.id);
+
+    if (isHeavyCover && canOffloadCover && cumulativeBytes + itemBytes > BOOKS_AGGREGATE_BYTES_BUDGET) {
+      const stripped = {
+        ...candidate,
+        coverImage: CLOUD_MEDIA_SENTINEL,
+        galleryImages: [],
+      };
+      cumulativeBytes += getUtf8ByteLength(JSON.stringify(stripped));
+      return stripped;
+    }
+
+    cumulativeBytes += itemBytes;
+    return candidate;
   });
 }
 
 /**
- * Creates a guaranteed <600KB aggregate index for `site_content/photos`.
+ * Creates a guaranteed <360KB aggregate index for `site_content/photos`.
  * Full base64 images are always authoritatively stored inside `/photos_gallery/{id}`.
  */
-export function createAggregatePhotosIndex(photos: PhotoItem[]): PhotoItem[] {
+export function createAggregatePhotosIndex(photos: PhotoItem[], confirmedIndividualIds?: Set<string>): PhotoItem[] {
   let cumulativeBytes = 0;
   return photos.map((p) => {
     const normalized: PhotoItem = {
@@ -729,39 +855,48 @@ export function createAggregatePhotosIndex(photos: PhotoItem[]): PhotoItem[] {
     };
     const rawImg = normalized.imageUrl || '';
     const isHeavyBase64 = rawImg.startsWith('data:image/') && rawImg.length > 8000;
-    const itemSize = JSON.stringify(normalized).length;
+    const itemBytes = getUtf8ByteLength(JSON.stringify(normalized));
+    const canOffload = !confirmedIndividualIds || confirmedIndividualIds.has(p.id);
 
-    if (isHeavyBase64 && cumulativeBytes + itemSize > AGGREGATE_BYTES_BUDGET) {
-      return {
+    if (isHeavyBase64 && canOffload && cumulativeBytes + itemBytes > AGGREGATE_BYTES_BUDGET) {
+      const stripped = {
         ...normalized,
         imageUrl: CLOUD_MEDIA_SENTINEL,
       };
+      cumulativeBytes += getUtf8ByteLength(JSON.stringify(stripped));
+      return stripped;
     }
 
-    cumulativeBytes += itemSize;
+    cumulativeBytes += itemBytes;
     return normalized;
   });
 }
 
 /**
- * Creates a guaranteed <600KB aggregate index for `site_content/author_posts`.
+ * Creates a guaranteed <360KB aggregate index for `site_content/author_posts`.
  * Full post images/media are always authoritatively stored inside `/community_posts/{id}`.
  */
-export function createAggregateAuthorPostsIndex(posts: AuthorPost[]): AuthorPost[] {
+export function createAggregateAuthorPostsIndex(posts: AuthorPost[], confirmedIndividualIds?: Set<string>): AuthorPost[] {
   let cumulativeBytes = 0;
   return posts.map((post) => {
     const rawImg = post.imageUrl || '';
     const isHeavyBase64 = rawImg.startsWith('data:image/') && rawImg.length > 8000;
-    const itemSize = JSON.stringify(post).length;
+    const rawAudio = post.audioUrl || '';
+    const isHeavyAudio = rawAudio.startsWith('data:audio/') && rawAudio.length > 8000;
+    const itemBytes = getUtf8ByteLength(JSON.stringify(post));
+    const canOffload = !confirmedIndividualIds || confirmedIndividualIds.has(post.id);
 
-    if (isHeavyBase64 && cumulativeBytes + itemSize > AGGREGATE_BYTES_BUDGET) {
-      return {
+    if ((isHeavyBase64 || isHeavyAudio) && canOffload && cumulativeBytes + itemBytes > AGGREGATE_BYTES_BUDGET) {
+      const stripped = {
         ...post,
-        imageUrl: CLOUD_MEDIA_SENTINEL,
+        ...(isHeavyBase64 ? { imageUrl: CLOUD_MEDIA_SENTINEL } : {}),
+        ...(isHeavyAudio ? { audioUrl: '' } : {}),
       };
+      cumulativeBytes += getUtf8ByteLength(JSON.stringify(stripped));
+      return stripped;
     }
 
-    cumulativeBytes += itemSize;
+    cumulativeBytes += itemBytes;
     return post;
   });
 }
@@ -777,10 +912,124 @@ async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<
     const sanitized = cleanUndefined(dataToSave);
     const nowIso = new Date().toISOString();
     let hadCriticalFailure = false;
-    const savePromises: Promise<void>[] = [];
+
+    // Phase 1: Write all individual atomic docs first (photos_gallery, community_posts, books)
+    // and track confirmed IDs so aggregate docs only reference __CLOUD_MEDIA__ when individual storage succeeded.
+    const phase1Promises: Promise<void>[] = [];
+    const confirmedBookIds = new Set<string>(writtenBookSignatures.keys());
+    const confirmedPhotoIds = new Set<string>(writtenPhotoSignatures.keys());
+    const confirmedPostIds = new Set<string>(writtenPostSignatures.keys());
+
+    if (sanitized.books && Array.isArray(sanitized.books)) {
+      latestAggregateBooks = sanitized.books as Book[];
+      sanitized.books.forEach((b: any) => {
+        if (b?.id) {
+          latestIndividualBooksMap.set(b.id, b as Book);
+          const bookSig = getItemSignature(b);
+          if (writtenBookSignatures.get(b.id) === bookSig) {
+            confirmedBookIds.add(b.id);
+            return;
+          }
+          phase1Promises.push(
+            setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true })
+              .then(() => {
+                writtenBookSignatures.set(b.id, bookSig);
+                confirmedBookIds.add(b.id);
+              })
+              .catch((err) => {
+                hadCriticalFailure = true;
+                handleFirestoreError(err, OperationType.WRITE, `books/${b.id}`);
+              })
+          );
+        }
+      });
+    }
+
+    let normalizedPhotos: PhotoItem[] | null = null;
+    if (sanitized.photos && Array.isArray(sanitized.photos)) {
+      normalizedPhotos = normalizePhotosList(sanitized.photos as PhotoItem[]);
+      latestAggregatePhotos = normalizedPhotos;
+
+      normalizedPhotos.forEach((photo) => {
+        if (!photo.id) return;
+        latestPhotosDeletedIds.delete(photo.id);
+        latestIndividualPhotosMap.set(photo.id, photo);
+
+        const docPayload = cleanUndefined({
+          ...photo,
+          createdAt: (photo as any).createdAt || Date.now(),
+        });
+        const sig = getItemSignature(docPayload);
+        if (writtenPhotoSignatures.get(photo.id) === sig) {
+          confirmedPhotoIds.add(photo.id);
+          return;
+        }
+        phase1Promises.push(
+          setDoc(doc(db, 'photos_gallery', photo.id), { ...docPayload, updatedAt: nowIso }, { merge: true })
+            .then(() => {
+              writtenPhotoSignatures.set(photo.id, sig);
+              confirmedPhotoIds.add(photo.id);
+            })
+            .catch((err) => {
+              hadCriticalFailure = true;
+              handleFirestoreError(err, OperationType.WRITE, `photos_gallery/${photo.id}`);
+            })
+        );
+      });
+    }
+
+    let sortedPosts: AuthorPost[] | null = null;
+    if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
+      sortedPosts = sortCommunityPostsNewestFirst(sanitized.authorPosts as AuthorPost[]);
+      sanitized.authorPosts = sortedPosts;
+      latestAggregatePosts = sortedPosts;
+
+      sortedPosts.forEach((post) => {
+        if (!post.id) return;
+        latestPostsDeletedIds.delete(post.id);
+        latestIndividualPostsMap.set(post.id, post);
+
+        const docPayload = cleanUndefined({
+          ...post,
+          createdAt: (post as any).createdAt || getPostTimestamp(post) || Date.now(),
+        });
+        const sig = getItemSignature(docPayload);
+        if (writtenPostSignatures.get(post.id) === sig) {
+          confirmedPostIds.add(post.id);
+          return;
+        }
+        phase1Promises.push(
+          setDoc(doc(db, 'community_posts', post.id), { ...docPayload, updatedAt: nowIso }, { merge: true })
+            .then(() => {
+              writtenPostSignatures.set(post.id, sig);
+              confirmedPostIds.add(post.id);
+            })
+            .catch((err) => {
+              hadCriticalFailure = true;
+              handleFirestoreError(err, OperationType.WRITE, `community_posts/${post.id}`);
+            })
+        );
+      });
+    }
+
+    let phase1TimedOut = false;
+    if (phase1Promises.length > 0) {
+      await Promise.race([
+        Promise.all(phase1Promises),
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            phase1TimedOut = true;
+            resolve();
+          }, 15000)
+        ),
+      ]);
+    }
+
+    // Phase 2: Write modular aggregate index documents safely within size budgets
+    const phase2Promises: Promise<void>[] = [];
 
     const trackedWrite = (path: string, promise: Promise<unknown>) => {
-      savePromises.push(
+      phase2Promises.push(
         promise
           .then(() => undefined)
           .catch((err) => {
@@ -790,33 +1039,45 @@ async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<
       );
     };
 
-    if (sanitized.books && Array.isArray(sanitized.books)) {
-      sanitized.books.forEach((b: any) => {
-        if (b?.id) {
-          trackedWrite(
-            `books/${b.id}`,
-            setDoc(doc(db, 'books', b.id), { ...b, updatedAt: nowIso }, { merge: true })
-          );
-        }
-      });
+    const writeModularIfChanged = (key: string, payloadObj: Record<string, any>, critical = true) => {
+      const sig = getItemSignature(payloadObj);
+      if (writtenAggregateSignatures.get(key) === sig) return;
+      const writePromise = setDoc(doc(db, COLLECTION_NAME, key), { ...payloadObj, updatedAt: nowIso }, { merge: true })
+        .then(() => {
+          writtenAggregateSignatures.set(key, sig);
+        });
+      if (critical) {
+        trackedWrite(`${COLLECTION_NAME}/${key}`, writePromise);
+      } else {
+        phase2Promises.push(
+          writePromise.catch((err) => {
+            notifyIfQuotaExceeded(err);
+            console.warn(`[Firestore] ${key} save notice:`, err?.message);
+          })
+        );
+      }
+    };
 
-      const aggregateBooks = createAggregateBooksIndex(sanitized.books);
-      trackedWrite(
-        `${COLLECTION_NAME}/books`,
-        setDoc(doc(db, COLLECTION_NAME, 'books'), { books: aggregateBooks, updatedAt: nowIso }, { merge: true })
-      );
+    if (sanitized.books && Array.isArray(sanitized.books)) {
+      const aggregateBooks = createAggregateBooksIndex(sanitized.books, confirmedBookIds);
+      writeModularIfChanged('books', { books: aggregateBooks }, true);
     }
 
     if (sanitized.authorProfile) {
-      trackedWrite(
-        `${COLLECTION_NAME}/profile`,
-        setDoc(doc(db, COLLECTION_NAME, 'profile'), { authorProfile: sanitized.authorProfile, updatedAt: nowIso }, { merge: true })
-      );
-      savePromises.push(
-        setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true }).catch(
-          (err) => console.warn('[Firestore] Site settings profile notice:', err?.message)
-        )
-      );
+      writeModularIfChanged('profile', { authorProfile: sanitized.authorProfile }, true);
+      const profileSig = getItemSignature(sanitized.authorProfile);
+      if (writtenAggregateSignatures.get('site_settings_profile') !== profileSig) {
+        phase2Promises.push(
+          setDoc(doc(db, 'site_settings', 'profile'), { ...sanitized.authorProfile, updatedAt: nowIso }, { merge: true })
+            .then(() => {
+              writtenAggregateSignatures.set('site_settings_profile', profileSig);
+            })
+            .catch((err) => {
+              notifyIfQuotaExceeded(err);
+              console.warn('[Firestore] Site settings profile notice:', err?.message);
+            })
+        );
+      }
     }
 
     if (sanitized.videos && Array.isArray(sanitized.videos)) {
@@ -833,53 +1094,18 @@ async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<
         return v;
       });
 
-      trackedWrite(
-        `${COLLECTION_NAME}/videos`,
-        setDoc(doc(db, COLLECTION_NAME, 'videos'), { videos: cleanUndefined(safeVideos), updatedAt: nowIso }, { merge: true })
-      );
+      writeModularIfChanged('videos', { videos: cleanUndefined(safeVideos) }, true);
     }
 
-    if (sanitized.photos && Array.isArray(sanitized.photos)) {
-      const normalizedPhotos = normalizePhotosList(sanitized.photos as PhotoItem[]);
-      latestAggregatePhotos = normalizedPhotos;
-
-      normalizedPhotos.forEach((photo) => {
-        if (!photo.id) return;
-        latestPhotosDeletedIds.delete(photo.id);
-        latestIndividualPhotosMap.set(photo.id, photo);
-
-        const docPayload = cleanUndefined({
-          ...photo,
-          createdAt: (photo as any).createdAt || Date.now(),
-          updatedAt: nowIso,
-        });
-        const sig = getItemSignature(docPayload);
-        if (writtenPhotoSignatures.get(photo.id) !== sig) {
-          savePromises.push(
-            setDoc(doc(db, 'photos_gallery', photo.id), docPayload, { merge: true })
-              .then(() => {
-                writtenPhotoSignatures.set(photo.id, sig);
-              })
-              .catch((err) => {
-                hadCriticalFailure = true;
-                handleFirestoreError(err, OperationType.WRITE, `photos_gallery/${photo.id}`);
-              })
-          );
-        }
-      });
-
-      const aggregatePhotos = createAggregatePhotosIndex(normalizedPhotos);
-      trackedWrite(
-        `${COLLECTION_NAME}/photos`,
-        setDoc(
-          doc(db, COLLECTION_NAME, 'photos'),
-          {
-            photos: aggregatePhotos,
-            deletedIds: Array.from(latestPhotosDeletedIds).slice(-250),
-            updatedAt: nowIso,
-          },
-          { merge: true }
-        )
+    if (normalizedPhotos) {
+      const aggregatePhotos = createAggregatePhotosIndex(normalizedPhotos, confirmedPhotoIds);
+      writeModularIfChanged(
+        'photos',
+        {
+          photos: aggregatePhotos,
+          deletedIds: Array.from(latestPhotosDeletedIds).slice(-250),
+        },
+        true
       );
     }
 
@@ -890,129 +1116,53 @@ async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<
         }
         return n;
       });
-      trackedWrite(
-        `${COLLECTION_NAME}/news`,
-        setDoc(doc(db, COLLECTION_NAME, 'news'), { news: safeNews, updatedAt: nowIso }, { merge: true })
-      );
+      writeModularIfChanged('news', { news: safeNews }, true);
     }
 
     if (sanitized.links && Array.isArray(sanitized.links)) {
-      trackedWrite(
-        `${COLLECTION_NAME}/links`,
-        setDoc(doc(db, COLLECTION_NAME, 'links'), { links: sanitized.links, updatedAt: nowIso }, { merge: true })
-      );
+      writeModularIfChanged('links', { links: sanitized.links }, true);
     }
 
     if (sanitized.announcements && Array.isArray(sanitized.announcements)) {
-      trackedWrite(
-        `${COLLECTION_NAME}/announcements`,
-        setDoc(doc(db, COLLECTION_NAME, 'announcements'), { announcements: sanitized.announcements, updatedAt: nowIso }, { merge: true })
-      );
+      writeModularIfChanged('announcements', { announcements: sanitized.announcements }, true);
     }
 
     if (sanitized.comments && Array.isArray(sanitized.comments)) {
-      savePromises.push(
-        setDoc(doc(db, COLLECTION_NAME, 'comments'), { comments: sanitized.comments, updatedAt: nowIso }, { merge: true }).catch(
-          (err) => console.warn('[Firestore] Comments save notice:', err?.message)
-        )
-      );
+      writeModularIfChanged('comments', { comments: sanitized.comments }, false);
     }
 
     if (sanitized.messages && Array.isArray(sanitized.messages)) {
-      savePromises.push(
-        setDoc(doc(db, COLLECTION_NAME, 'messages'), { messages: sanitized.messages, updatedAt: nowIso }, { merge: true }).catch(
-          (err) => console.warn('[Firestore] Messages save notice:', err?.message)
-        )
+      writeModularIfChanged('messages', { messages: sanitized.messages }, false);
+    }
+
+    if (sortedPosts) {
+      const aggregatePosts = createAggregateAuthorPostsIndex(sortedPosts, confirmedPostIds);
+      writeModularIfChanged(
+        'author_posts',
+        {
+          authorPosts: aggregatePosts,
+          deletedIds: Array.from(latestPostsDeletedIds).slice(-250),
+        },
+        true
       );
     }
 
-    if (sanitized.authorPosts && Array.isArray(sanitized.authorPosts)) {
-      const sortedPosts = sortCommunityPostsNewestFirst(sanitized.authorPosts as AuthorPost[]);
-      sanitized.authorPosts = sortedPosts;
-      latestAggregatePosts = sortedPosts;
-
-      sortedPosts.forEach((post) => {
-        if (!post.id) return;
-        latestPostsDeletedIds.delete(post.id);
-        latestIndividualPostsMap.set(post.id, post);
-
-        const docPayload = cleanUndefined({
-          ...post,
-          updatedAt: nowIso,
-        });
-        const sig = getItemSignature(docPayload);
-        if (writtenPostSignatures.get(post.id) !== sig) {
-          savePromises.push(
-            setDoc(doc(db, 'community_posts', post.id), docPayload, { merge: true })
-              .then(() => {
-                writtenPostSignatures.set(post.id, sig);
-              })
-              .catch((err) => {
-                hadCriticalFailure = true;
-                handleFirestoreError(err, OperationType.WRITE, `community_posts/${post.id}`);
-              })
-          );
-        }
-      });
-
-      const aggregatePosts = createAggregateAuthorPostsIndex(sortedPosts);
-      trackedWrite(
-        `${COLLECTION_NAME}/author_posts`,
-        setDoc(
-          doc(db, COLLECTION_NAME, 'author_posts'),
-          {
-            authorPosts: aggregatePosts,
-            deletedIds: Array.from(latestPostsDeletedIds).slice(-250),
-            updatedAt: nowIso,
-          },
-          { merge: true }
-        )
-      );
+    let phase2TimedOut = false;
+    if (phase2Promises.length > 0) {
+      await Promise.race([
+        Promise.all(phase2Promises),
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            phase2TimedOut = true;
+            resolve();
+          }, 15000)
+        ),
+      ]);
     }
 
-    // Await all critical writes with a generous 15s timeout, tracking genuine completion
-    let timedOut = false;
-    await Promise.race([
-      Promise.all(savePromises),
-      new Promise<void>((resolve) =>
-        setTimeout(() => {
-          timedOut = true;
-          resolve();
-        }, 15000)
-      ),
-    ]);
-
-    if (timedOut) {
-      console.warn('[Firestore] Save exceeded 15s timeout; individual writes may still be completing in background.');
+    if (phase1TimedOut || phase2TimedOut) {
+      console.warn('[Firestore] Save exceeded 15s phase timeout; writes may still be completing in background.');
       return false;
-    }
-
-    // Best-effort combined cache doc (strictly stripped of heavy base64 images)
-    try {
-      const mainDocRef = doc(db, COLLECTION_NAME, MAIN_DOC_ID);
-      const mainPayload: any = { ...sanitized, updatedAt: nowIso };
-      if (mainPayload.books) {
-        mainPayload.books = createAggregateBooksIndex(mainPayload.books);
-      }
-      if (mainPayload.photos && Array.isArray(mainPayload.photos)) {
-        mainPayload.photos = mainPayload.photos.map((p: any) =>
-          p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000
-            ? { ...p, imageUrl: '' }
-            : p
-        );
-      }
-      if (mainPayload.authorPosts && Array.isArray(mainPayload.authorPosts)) {
-        mainPayload.authorPosts = mainPayload.authorPosts.map((p: any) =>
-          p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('data:image/') && p.imageUrl.length > 5000
-            ? { ...p, imageUrl: '' }
-            : p
-        );
-      }
-      await setDoc(mainDocRef, mainPayload, { merge: true }).catch((err) => {
-        console.warn('[Firestore] Main aggregate doc update skipped:', err?.message);
-      });
-    } catch {
-      // Non-critical combined cache
     }
 
     if (hadCriticalFailure) {
@@ -1022,6 +1172,7 @@ async function runQueuedCloudSave(dataToSave: Partial<SyncedSiteData>): Promise<
     console.log('[Firestore] Site data verified & saved to cloud!');
     return true;
   } catch (error) {
+    notifyIfQuotaExceeded(error);
     console.error('[Firestore] Failed to save site data to cloud:', error);
     return false;
   }
@@ -1095,6 +1246,34 @@ export async function deleteCommunityPostFromCloud(postId: string): Promise<void
     await deleteDoc(doc(db, 'community_posts', postId));
   } catch (err: any) {
     console.warn(`[Firestore] Notice deleting community_posts/${postId}:`, err?.message);
+  }
+}
+
+/**
+ * Atomically updates only engagement stats (likesCount / viewsCount) on a single `community_posts/{postId}` doc
+ * without rewriting aggregate index documents (`site_content/author_posts` or `site_content/main`).
+ */
+export async function syncSinglePostStatsToCloud(
+  postId: string,
+  stats: { viewsCount?: number; likesCount?: number }
+): Promise<boolean> {
+  if (!postId || cloudQuotaExceeded) return false;
+  const payload = cleanUndefined({
+    ...stats,
+    updatedAt: new Date().toISOString(),
+  });
+  if (Object.keys(payload).length <= 1) return true;
+
+  try {
+    await updateDoc(doc(db, 'community_posts', postId), payload);
+    return true;
+  } catch (err: any) {
+    notifyIfQuotaExceeded(err);
+    if (err?.code === 'not-found') {
+      return false;
+    }
+    console.warn(`[Firestore] Notice updating stats for community_posts/${postId}:`, err?.message);
+    return false;
   }
 }
 

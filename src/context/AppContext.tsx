@@ -37,6 +37,10 @@ import {
   fetchCloudSiteData,
   deleteCommunityPostFromCloud,
   deletePhotoFromCloud,
+  syncSinglePostStatsToCloud,
+  isCloudQuotaExceeded,
+  resetCloudQuotaFlag,
+  setCloudQuotaListener,
   getLocalDeletedPhotoIds,
   getLocalDeletedPostIds,
   SyncedSiteData,
@@ -754,7 +758,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return true;
       } else {
         setSaveStatus('error');
-        showToast(`⚠️ تعذر إتمام الحفظ السحابي لـ ${actionDesc}. يرجى التحقق من الاتصال بالإنترنت.`);
+        if (isCloudQuotaExceeded()) {
+          setIsCloudSynced(false);
+          showToast('⚠️ تم استهلاك الحصة اليومية المجانية لقاعدة البيانات؛ تتجدد غداً أو عبر الترقية من لوحة Firebase.');
+        } else {
+          showToast(`⚠️ تعذر إتمام الحفظ السحابي لـ ${actionDesc}. يرجى التحقق من الاتصال بالإنترنت.`);
+        }
         return false;
       }
     } catch (err: any) {
@@ -864,7 +873,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return merged;
   };
 
-  // Subscribe to real-time changes from Firebase Firestore and load initial state
+  // Subscribe to real-time changes from Firebase Firestore (single stream, zero duplicate initial reads)
   useEffect(() => {
     const wasRegistryInitializedOnBoot = hasSeededNotificationRegistry();
     seedBaselineContentIds({
@@ -877,75 +886,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorPosts: authorPostsRef.current,
     });
 
-    // 1. Initial direct fetch from Cloud Firestore (ensures instant hydration on any device or incognito)
-    fetchCloudSiteData()
-      .then((cloudData) => {
-        if (cloudData && Object.keys(cloudData).length > 0) {
-          if (!wasRegistryInitializedOnBoot) {
-            seedBaselineContentIds(cloudData);
-          }
-
-          if (cloudData.books && Array.isArray(cloudData.books) && cloudData.books.length > 0) {
-            const sanitized = sanitizeBooksList(cloudData.books);
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('book', sanitized);
-            setBooks(sanitized);
-            booksRef.current = sanitized;
-            safeSetItem('nabil_author_v4_books', sanitized);
-          }
-          if (cloudData.authorProfile) {
-            setAuthorProfile((prev) => ({ ...prev, ...cloudData.authorProfile }));
-            safeSetItem('nabil_author_v4_profile', cloudData.authorProfile);
-          }
-          if (cloudData.photos && Array.isArray(cloudData.photos)) {
-            const mergedPhotos = mergeIncomingPhotos(cloudData.photos);
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('photo', mergedPhotos);
-          }
-          const initVideos = cloudData.videos;
-          if (initVideos && Array.isArray(initVideos)) {
-            const cleanInit = initVideos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('video', cleanInit);
-            setVideos((prev) => {
-              const cloudIds = new Set(cleanInit.map((v: any) => v.id));
-              const localPending = prev.filter((v) => v && !cloudIds.has(v.id) && !v.url?.includes('mixkit.co'));
-              const merged = [...localPending, ...cleanInit];
-              safeSetItem('nabil_author_v5_videos', merged);
-              safeSetItem('nabil_author_v4_videos', merged);
-              return merged;
-            });
-          }
-          if (cloudData.news && Array.isArray(cloudData.news)) {
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('news', cloudData.news);
-            setNews(cloudData.news);
-            safeSetItem('nabil_author_v4_news', cloudData.news);
-          }
-          if (cloudData.links && Array.isArray(cloudData.links)) {
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('link', cloudData.links);
-            setLinks(cloudData.links);
-            safeSetItem('nabil_author_v4_links', cloudData.links);
-          }
-          if (cloudData.announcements && Array.isArray(cloudData.announcements)) {
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('announcement', cloudData.announcements);
-            setAnnouncements(cloudData.announcements);
-            safeSetItem('nabil_author_v4_announcements', cloudData.announcements);
-          }
-          if (cloudData.authorPosts && Array.isArray(cloudData.authorPosts)) {
-            const mergedPosts = mergeIncomingPosts(cloudData.authorPosts);
-            if (wasRegistryInitializedOnBoot) notifyNewContentFromSync('post', mergedPosts);
-          }
-          setIsCloudSynced(true);
-          isCloudHydrated.current = true;
-        }
-      })
-      .catch((err) => console.warn('Initial cloud state fetch notice:', err));
+    setCloudQuotaListener(() => {
+      setIsCloudSynced(false);
+      setSaveStatus('error');
+      if (localStorage.getItem('isSupervisorLoggedIn') === 'true') {
+        showToast('⚠️ تم استهلاك الحصة اليومية المجانية لقاعدة البيانات، تتجدد تلقائياً غداً أو بعد الترقية.');
+      }
+    });
 
     const bootedSnapshots = new Set<string>();
 
-    // 2. Real-time updates subscription
+    // Real-time updates subscription (handles both initial hydration and live changes without polling)
     const unsubscribe = subscribeToCloudSiteData((cloudData, source) => {
       if (cloudData && Object.keys(cloudData).length > 0) {
         const isFirstSnapshotForSource = source ? !bootedSnapshots.has(source) : false;
         if (source) bootedSnapshots.add(source);
-        const canNotifyLive = wasRegistryInitializedOnBoot || isCloudHydrated.current || !isFirstSnapshotForSource;
+        // Only trigger notifications during initial boot if this device already had a seeded registry;
+        // fresh browsers/devices silently seed baseline IDs across every first source snapshot.
+        const canNotifyLive = wasRegistryInitializedOnBoot ? true : !isFirstSnapshotForSource;
 
         if (!canNotifyLive) {
           seedBaselineContentIds(cloudData);
@@ -1010,11 +968,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => {
+      setCloudQuotaListener(null);
       unsubscribe();
     };
   }, []);
 
-  // Auto-refresh configuration (persisted in localStorage)
+  // Auto-refresh configuration (local IDB keep-alive only; cloud updates arrive via live onSnapshot with zero polling cost)
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState<boolean>(() => {
     return localStorage.getItem('nabil_auto_refresh_enabled') !== 'false';
   });
@@ -1026,21 +985,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAutoRefreshEnabled((prev) => {
       const next = !prev;
       localStorage.setItem('nabil_auto_refresh_enabled', next ? 'true' : 'false');
-      showToast(next ? '✓ تم تفعيل التحديث التلقائي للصفحة (تحديث مستمر للبيانات)' : 'تم إيقاف التحديث التلقائي للصفحة');
+      showToast(
+        next
+          ? '✓ تم تفعيل التحديث التلقائي المحلي والمزامنة اللحظية دون استهلاك إضافي للسحابة'
+          : 'تم إيقاف التحديث الدوري المحلي (تظل المزامنة اللحظية نشطة)'
+      );
       return next;
     });
   };
 
-  // Continuous auto-refresh timer to keep page 100% fresh without manual reload
+  // Keep local IndexedDB hydrated periodically without issuing redundant Firestore network reads
   useEffect(() => {
     if (!autoRefreshEnabled) return;
 
     const timer = setInterval(() => {
-      // 1. First sync with local IndexedDB (instant, zero network cost)
       loadFromIndexedDB<VideoItem[]>('nabil_author_v5_videos')
         .then((idbV) => {
           if (idbV && Array.isArray(idbV) && idbV.length > 0) {
-            setVideos(idbV);
+            setVideos((prev) => (JSON.stringify(prev) !== JSON.stringify(idbV) ? idbV : prev));
           }
         })
         .catch(() => {});
@@ -1059,20 +1021,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         })
         .catch(() => {});
-
-      // 2. Fetch fresh cloud data gracefully
-      fetchCloudSiteData()
-        .then((fresh) => {
-          if (fresh && Object.keys(fresh).length > 0) {
-            if (fresh.videos && Array.isArray(fresh.videos)) {
-              const clean = fresh.videos.filter((v: any) => v && !v.url?.includes('mixkit.co'));
-              setVideos(clean);
-              safeSetItem('nabil_author_v5_videos', clean);
-            }
-          }
-        })
-        .catch(() => {});
-    }, Math.max(20, autoRefreshIntervalSeconds) * 1000);
+    }, Math.max(30, autoRefreshIntervalSeconds) * 1000);
 
     return () => clearInterval(timer);
   }, [autoRefreshEnabled, autoRefreshIntervalSeconds]);
@@ -1124,7 +1073,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // ignore
     }
 
-    // 4. Fetch live Cloud Firestore data
+    // 4. Fetch live Cloud Firestore data (manual explicit refresh)
+    resetCloudQuotaFlag();
     try {
       const fresh = await fetchCloudSiteData();
       if (fresh && Object.keys(fresh).length > 0) {
@@ -1161,12 +1111,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setAuthorProfile((prev) => ({ ...prev, ...fresh.authorProfile }));
           safeSetItem('nabil_author_v4_profile', fresh.authorProfile);
         }
+        setIsCloudSynced(true);
+        isCloudHydrated.current = true;
       }
     } catch {
       // ignore
     }
 
-    showToast('✓ تم تحديث الصفحة وتجاوز الكاش بنجاح!');
+    if (isCloudQuotaExceeded()) {
+      showToast('⚠️ تم استهلاك الحصة اليومية المجانية لقاعدة البيانات، تتجدد غداً أو عبر الترقية من لوحة Firebase.');
+    } else {
+      showToast('✓ تم تحديث الصفحة وتجاوز الكاش بنجاح!');
+    }
 
     if (forceHardReload && typeof window !== 'undefined') {
       setTimeout(() => {
@@ -1176,24 +1132,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncAllToCloudNow = async () => {
+    resetCloudQuotaFlag();
     try {
       showToast('جاري حفظ ومزامنة كافة بيانات وكتب ومنشورات الموقع سحابياً على Firebase...');
+
+      // If this browser hasn't received cloud state yet, merge cloud items first so we never overwrite newer remote posts/photos
+      let postsToSync = authorPostsRef.current;
+      let photosToSync = photosRef.current;
+      if (!isCloudHydrated.current) {
+        const cloudFirst = await fetchCloudSiteData().catch(() => null);
+        if (cloudFirst) {
+          if (Array.isArray(cloudFirst.photos)) {
+            photosToSync = mergeIncomingPhotos(cloudFirst.photos);
+          }
+          if (Array.isArray(cloudFirst.authorPosts)) {
+            postsToSync = mergeIncomingPosts(cloudFirst.authorPosts);
+          }
+        }
+      }
+
       const ok = await saveSiteDataToCloud({
         authorProfile,
         books: booksRef.current,
         videos,
-        photos: photosRef.current,
+        photos: photosToSync,
         news,
         links,
         announcements,
         comments,
         messages,
-        authorPosts: authorPostsRef.current,
+        authorPosts: postsToSync,
       }, true);
       if (ok) {
         setIsCloudSynced(true);
         isCloudHydrated.current = true;
         showToast('تم الحفظ السحابي بنجاح! التعديلات ظاهرة الآن لجميع زوار الموقع حول العالم.');
+      } else if (isCloudQuotaExceeded()) {
+        setIsCloudSynced(false);
+        showToast('⚠️ تعذرت المزامنة: تم استهلاك الحصة اليومية المجانية لقاعدة البيانات، تتجدد غداً أو بعد الترقية.');
       } else {
         showToast('تعذر الحفظ السحابي لبعض العناصر، يُرجى التحقق من الاتصال بالإنترنت وإعادة المحاولة.');
       }
@@ -2182,7 +2158,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // Messages
+  // Messages (never trigger browser push notifications per author preference)
   const sendMessage = (msgData: Omit<VisitorMessage, 'id' | 'date' | 'status'>) => {
     const newMsg: VisitorMessage = {
       ...msgData,
@@ -2190,29 +2166,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }),
       status: 'unread',
     };
-    setMessages((prev) => [newMsg, ...prev]);
+    setMessages((prev) => {
+      const next: VisitorMessage[] = [newMsg, ...prev];
+      safeSetItem('nabil_author_v4_messages', next);
+      void saveSiteDataToCloud({ messages: next });
+      return next;
+    });
     showToast('تم إرسال رسالتك بأمان إلى الأستاذ نبيل بركات. شكراً لاهتمامك ومراسلتك.');
   };
 
   const markMessageRead = (id: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, status: m.status === 'unread' ? 'read' : m.status } : m))
-    );
+    setMessages((prev) => {
+      const next: VisitorMessage[] = prev.map((m) =>
+        m.id === id ? { ...m, status: m.status === 'unread' ? ('read' as const) : m.status } : m
+      );
+      safeSetItem('nabil_author_v4_messages', next);
+      void saveSiteDataToCloud({ messages: next });
+      return next;
+    });
   };
 
   const replyToMessage = (id: string, reply: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, authorReply: reply, status: 'replied' } : m))
-    );
+    setMessages((prev) => {
+      const next: VisitorMessage[] = prev.map((m) =>
+        m.id === id ? { ...m, authorReply: reply, status: 'replied' as const } : m
+      );
+      safeSetItem('nabil_author_v4_messages', next);
+      void saveSiteDataToCloud({ messages: next });
+      return next;
+    });
     showToast('تم تسجيل رد الكاتب وإرساله');
   };
 
   const deleteMessage = (id: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setMessages((prev) => {
+      const next: VisitorMessage[] = prev.filter((m) => m.id !== id);
+      safeSetItem('nabil_author_v4_messages', next);
+      void saveSiteDataToCloud({ messages: next });
+      return next;
+    });
     showToast('تم حذف الرسالة من صندوق الوارد');
   };
 
-  // Comments
+  // Comments (never trigger browser push notifications per author preference)
   const addVisitorComment = (commentData: Omit<VisitorComment, 'id' | 'date' | 'isApproved' | 'status'>) => {
     const newCom: VisitorComment = {
       ...commentData,
@@ -2222,51 +2218,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'pending',
       likesCount: 0,
     };
-    setComments((prev) => [newCom, ...prev]);
+    setComments((prev) => {
+      const next: VisitorComment[] = [newCom, ...prev];
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
     showToast('تم استلام تعليقك بنجاح! سيتم نشره فور مراجعته واعتماده من قبل أ. نبيل بركات.');
   };
 
   const approveComment = (id: string) => {
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isApproved: true, status: 'approved' } : c))
-    );
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.map((c) =>
+        c.id === id ? { ...c, isApproved: true, status: 'approved' as const } : c
+      );
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
     showToast('تم اعتماد ونشر التعليق بنجاح');
   };
 
   const rejectComment = (id: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== id));
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.filter((c) => c.id !== id);
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
     showToast('تم رفض وحذف التعليق بنجاح');
   };
 
   const toggleCommentApproval = (id: string) => {
-    setComments((prev) =>
-      prev.map((c) =>
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.map((c) =>
         c.id === id
           ? {
               ...c,
               isApproved: !c.isApproved,
-              status: !c.isApproved ? 'approved' : 'pending',
+              status: !c.isApproved ? ('approved' as const) : ('pending' as const),
             }
           : c
-      )
-    );
+      );
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
   };
 
   const likeComment = (id: string) => {
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, likesCount: (c.likesCount || 0) + 1 } : c))
-    );
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.map((c) =>
+        c.id === id ? { ...c, likesCount: (c.likesCount || 0) + 1 } : c
+      );
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
   };
 
   const replyToVisitorComment = (id: string, reply: string) => {
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, authorReply: reply } : c))
-    );
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.map((c) =>
+        c.id === id ? { ...c, authorReply: reply } : c
+      );
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
     showToast('تم حفظ رد الكاتب على التعليق');
   };
 
   const deleteVisitorComment = (id: string) => {
-    setComments((prev) => prev.filter((c) => c.id !== id));
+    setComments((prev) => {
+      const next: VisitorComment[] = prev.filter((c) => c.id !== id);
+      safeSetItem('nabil_author_v4_comments', next);
+      void saveSiteDataToCloud({ comments: next });
+      return next;
+    });
     showToast('تم حذف التعليق');
   };
 
@@ -2345,6 +2374,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const viewSyncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingViewPostIdsRef = React.useRef<Set<string>>(new Set());
 
   const toggleLikeAuthorPost = (id: string, forceLike?: boolean): boolean => {
     const prev = authorPostsRef.current;
@@ -2362,16 +2392,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setLocalPostLikeState(id, isLikedNow);
 
+    let updatedLikesCount: number | undefined;
     const next = prev.map((p) => {
       if (p.id === id) {
         const computed = getCommunityPostStats(p);
         const currentCount = typeof p.likesCount === 'number' && p.likesCount >= 50 ? p.likesCount : computed.baseLikes;
         const currentViews = typeof p.viewsCount === 'number' && p.viewsCount >= 50 ? p.viewsCount : computed.baseViews;
+        updatedLikesCount = isLikedNow ? currentCount + 1 : Math.max(50, currentCount - 1);
         return {
           ...p,
           isLiked: isLikedNow,
           viewsCount: currentViews,
-          likesCount: isLikedNow ? currentCount + 1 : Math.max(50, currentCount - 1),
+          likesCount: updatedLikesCount,
         };
       }
       return p;
@@ -2379,7 +2411,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     authorPostsRef.current = next;
     setAuthorPosts(next);
     safeSetItem('nabil_author_v4_author_posts', next);
-    saveSiteDataToCloud({ authorPosts: next }, true);
+    if (updatedLikesCount !== undefined && isCloudHydrated.current && !isCloudQuotaExceeded()) {
+      void syncSinglePostStatsToCloud(id, { likesCount: updatedLikesCount });
+    }
     return isLikedNow;
   };
 
@@ -2410,10 +2444,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     authorPostsRef.current = next;
     setAuthorPosts(next);
     safeSetItem('nabil_author_v4_author_posts', next);
+
+    pendingViewPostIdsRef.current.add(id);
     if (viewSyncTimerRef.current) clearTimeout(viewSyncTimerRef.current);
     viewSyncTimerRef.current = setTimeout(() => {
-      saveSiteDataToCloud({ authorPosts: authorPostsRef.current }, true);
-    }, 2800);
+      if (!isCloudHydrated.current || isCloudQuotaExceeded()) return;
+      const idsToFlush = Array.from(pendingViewPostIdsRef.current);
+      pendingViewPostIdsRef.current.clear();
+      idsToFlush.forEach((postId) => {
+        const post = authorPostsRef.current.find((p) => p.id === postId);
+        if (post && typeof post.viewsCount === 'number') {
+          void syncSinglePostStatsToCloud(postId, { viewsCount: post.viewsCount });
+        }
+      });
+    }, 10000);
   };
 
   const exportAllSiteData = () => {
