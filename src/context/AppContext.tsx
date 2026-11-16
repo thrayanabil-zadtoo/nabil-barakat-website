@@ -204,10 +204,6 @@ interface AppContextType {
   toastMessage: string | null;
   showToast: (msg: string) => void;
 
-  // Export & Import site data (for syncing between mobile & laptop)
-  exportAllSiteData: () => void;
-  importSiteData: (jsonString: string) => boolean;
-
   // Reset demo data
   resetAllData: () => void;
 
@@ -600,6 +596,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const rawHash = (window.location.hash || '').toLowerCase();
       const rawSearch = (window.location.search || '').toLowerCase();
 
+      if (
+        rawPath.includes('install') ||
+        rawPath.includes('تثبيت') ||
+        rawHash.includes('install') ||
+        rawHash.includes('تثبيت') ||
+        rawSearch.includes('install')
+      ) {
+        return 'install';
+      }
       if (
         rawPath.includes('community') ||
         rawPath.includes('مجتمع') ||
@@ -2460,65 +2465,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 10000);
   };
 
-  const exportAllSiteData = () => {
-    try {
-      const backupData = {
-        app: 'nabil_barakat_site',
-        version: '4.0',
-        exportDate: new Date().toISOString(),
-        authorProfile,
-        books,
-        videos,
-        photos,
-        news,
-        links,
-        announcements,
-        comments,
-        authorPosts,
-      };
-      const jsonStr = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nabil_barakat_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('تم تصدير ملف النسخة الاحتياطية بنجاح! يمكنك إرساله للابتوب واستيراده.');
-    } catch (err) {
-      console.error('Export error:', err);
-      showToast('تعذر تصدير البيانات، يرجى المحاولة لاحقاً');
-    }
-  };
-
-  const importSiteData = (jsonString: string): boolean => {
-    try {
-      const data = JSON.parse(jsonString);
-      if (!data || typeof data !== 'object') {
-        showToast('صيغة ملف النسخة الاحتياطية غير صالحة');
-        return false;
-      }
-      if (data.authorProfile) setAuthorProfile(data.authorProfile);
-      if (Array.isArray(data.books)) setBooks(data.books);
-      if (Array.isArray(data.videos)) setVideos(data.videos);
-      if (Array.isArray(data.photos)) setPhotos(data.photos);
-      if (Array.isArray(data.news)) setNews(data.news);
-      if (Array.isArray(data.links)) setLinks(data.links);
-      if (Array.isArray(data.announcements)) setAnnouncements(data.announcements);
-      if (Array.isArray(data.comments)) setComments(data.comments);
-      if (Array.isArray(data.authorPosts)) setAuthorPosts(sortCommunityPostsNewestFirst(data.authorPosts));
-
-      showToast('تم استيراد كافة البيانات والأغلفة بنجاح وتحديث الموقع على هذا الجهاز!');
-      return true;
-    } catch (err) {
-      console.error('Import error:', err);
-      showToast('حدث خطأ أثناء قراءة ملف النسخة الاحتياطية');
-      return false;
-    }
-  };
-
   const resetAllData = () => {
     setAuthorProfile(initialAuthorProfile);
     setBooks(initialBooks);
@@ -2644,8 +2590,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openCommunityPost,
         toastMessage,
         showToast,
-        exportAllSiteData,
-        importSiteData,
         resetAllData,
         isCloudSynced,
         syncAllToCloudNow,

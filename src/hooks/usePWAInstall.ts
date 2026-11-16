@@ -44,6 +44,21 @@ function detectIOSDevice(): boolean {
   return /iphone|ipad|ipod/.test(userAgent) && !(window as unknown as { MSStream?: unknown }).MSStream;
 }
 
+function detectInAppBrowser(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = window.navigator.userAgent || '';
+  return /FBAN|FBAV|Instagram|Line|WhatsApp|Snapchat|TikTok|BytedanceWebview|wv\b/i.test(ua);
+}
+
+function detectEmbeddedIframe(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
 async function showInstalledWelcomeNotification() {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
@@ -135,8 +150,30 @@ function ensureGlobalListeners() {
   if (initialized || typeof window === 'undefined') return;
   initialized = true;
 
+  // Pick up any beforeinstallprompt fired before React hydration
+  const earlyPrompt = (window as unknown as { __DEFERRED_INSTALL_PROMPT__?: BeforeInstallPromptEvent }).__DEFERRED_INSTALL_PROMPT__;
+  if (earlyPrompt && !globalDeferredPrompt) {
+    globalDeferredPrompt = earlyPrompt;
+  }
+
   globalIsInstalled = checkStandaloneMode();
   globalNotificationPermission = getCurrentNotificationPermission();
+
+  // Detect if the PWA is already installed on Android/Desktop Chrome even when opened in a normal browser tab
+  const navWithRelated = navigator as unknown as {
+    getInstalledRelatedApps?: () => Promise<Array<{ platform?: string; url?: string }>>;
+  };
+  if (!globalIsInstalled && typeof navWithRelated.getInstalledRelatedApps === 'function') {
+    navWithRelated
+      .getInstalledRelatedApps()
+      .then((apps) => {
+        if (Array.isArray(apps) && apps.length > 0) {
+          globalIsInstalled = true;
+          notifyListeners();
+        }
+      })
+      .catch(() => {});
+  }
 
   // If opened inside the installed standalone PWA and notifications aren't granted yet, automatically request permission
   if (globalIsInstalled && globalNotificationPermission === 'default' && !standaloneAutoPromptAttempted) {
@@ -173,12 +210,15 @@ function ensureGlobalListeners() {
   window.addEventListener('beforeinstallprompt', (e: Event) => {
     e.preventDefault();
     globalDeferredPrompt = e as BeforeInstallPromptEvent;
+    (window as unknown as { __DEFERRED_INSTALL_PROMPT__?: BeforeInstallPromptEvent }).__DEFERRED_INSTALL_PROMPT__ =
+      globalDeferredPrompt;
     notifyListeners();
   });
 
   window.addEventListener('appinstalled', () => {
     globalIsInstalled = true;
     globalDeferredPrompt = null;
+    delete (window as unknown as { __DEFERRED_INSTALL_PROMPT__?: BeforeInstallPromptEvent }).__DEFERRED_INSTALL_PROMPT__;
     notifyListeners();
     // Automatically request notification permission immediately upon PWA installation
     void requestNotificationsOnInstall({ showWelcomeNotification: true });
@@ -199,6 +239,10 @@ function ensureGlobalListeners() {
   }
 }
 
+if (typeof window !== 'undefined') {
+  ensureGlobalListeners();
+}
+
 export function openPWAInstallDialog() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(OPEN_PWA_INSTALL_EVENT));
@@ -208,13 +252,21 @@ export function openPWAInstallDialog() {
 export function usePWAInstall() {
   const [, setTick] = useState(0);
   const [isIOS] = useState<boolean>(() => detectIOSDevice());
+  const [isInAppBrowser] = useState<boolean>(() => detectInAppBrowser());
+  const [isEmbeddedIframe] = useState<boolean>(() => detectEmbeddedIframe());
 
   useEffect(() => {
     ensureGlobalListeners();
     const listener = () => setTick((t) => t + 1);
     listeners.add(listener);
-    // Sync initial state on mount
-    globalIsInstalled = checkStandaloneMode();
+    // Sync initial state on mount & re-check early captured beforeinstallprompt
+    const earlyPrompt = (window as unknown as { __DEFERRED_INSTALL_PROMPT__?: BeforeInstallPromptEvent }).__DEFERRED_INSTALL_PROMPT__;
+    if (earlyPrompt && !globalDeferredPrompt) {
+      globalDeferredPrompt = earlyPrompt;
+    }
+    if (checkStandaloneMode()) {
+      globalIsInstalled = true;
+    }
     globalNotificationPermission = getCurrentNotificationPermission();
     return () => {
       listeners.delete(listener);
@@ -270,6 +322,8 @@ export function usePWAInstall() {
     isInstallable: Boolean(globalDeferredPrompt),
     isInstalled: globalIsInstalled,
     isIOS,
+    isInAppBrowser,
+    isEmbeddedIframe,
     notificationPermission: globalNotificationPermission,
     siteUrl: getSiteBaseUrl(),
     installNative,

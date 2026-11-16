@@ -24,6 +24,7 @@ import { SupervisorLoginModal } from './components/SupervisorLoginModal';
 import { Toast } from './components/Toast';
 import { UploadProgressModal } from './components/UploadProgressModal';
 import { InstallAppBanner } from './components/InstallAppBanner';
+import { InstallAppPage } from './components/InstallAppPage';
 import { PoeticMarquee } from './components/PoeticMarquee';
 import { HeaderAnnouncementBanner } from './components/HeaderAnnouncementBanner';
 import { ReadingResumeBanner } from './components/ReadingResumeBanner';
@@ -226,7 +227,9 @@ const MainContent: React.FC = () => {
 
       {/* Main Body Content */}
       <main className="flex-1 w-full">
-        {activeSection === 'home' ? (
+        {activeSection === 'install' ? (
+          <InstallAppPage />
+        ) : activeSection === 'home' ? (
           <HomeHero />
         ) : (
           <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 w-full py-6 space-y-6">

@@ -12,7 +12,6 @@ import {
   Image as ImageIcon,
   FileText,
   Upload,
-  Download,
   ExternalLink,
   Camera,
   Trash2,

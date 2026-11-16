@@ -1,5 +1,5 @@
 // Service Worker for Official Website of Author Nabil Barakat (nb.zadtoo.com)
-const CACHE_NAME = 'nabil-barakat-cache-v7';
+const CACHE_NAME = 'nabil-barakat-cache-v8';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

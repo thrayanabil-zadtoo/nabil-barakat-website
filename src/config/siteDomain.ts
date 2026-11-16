@@ -53,6 +53,10 @@ export const getOfficialLicensesUrl = (): string => {
   return `${getSiteBaseUrl()}/licenses`;
 };
 
+export const getInstallPageUrl = (): string => {
+  return `${getSiteBaseUrl()}/install`;
+};
+
 export const getCommunityPostShareUrl = (postId: string): string => {
   return `${getSiteBaseUrl()}/community?post=${encodeURIComponent(postId)}`;
 };

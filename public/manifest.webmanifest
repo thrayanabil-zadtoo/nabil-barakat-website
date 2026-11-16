@@ -11,6 +11,13 @@
   "theme_color": "#07243c",
   "lang": "ar",
   "dir": "rtl",
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "webapp",
+      "url": "https://nb.zadtoo.com/manifest.webmanifest"
+    }
+  ],
   "icons": [
     {
       "src": "/pwa-192x192.png",

@@ -19,9 +19,6 @@ import {
   Sparkles,
   Upload,
   Copy,
-  Download,
-  FileUp,
-  RefreshCw,
   Cloud,
   Loader2,
   AlertCircle,
@@ -30,7 +27,6 @@ import {
 } from 'lucide-react';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getSiteDomain, setCustomSiteDomain, DEFAULT_OFFICIAL_DOMAIN } from '../config/siteDomain';
-import { downloadFileSafely } from '../utils/downloadHelper';
 import { PHOTO_CATEGORIES, DEFAULT_PHOTO_CATEGORY, normalizePhotoCategory } from '../utils/photoCategories';
 
 export const AuthorAdminModal: React.FC = () => {
@@ -74,8 +70,6 @@ export const AuthorAdminModal: React.FC = () => {
     setEditingLink,
     cvFeesEnabled,
     toggleCvFees,
-    exportAllSiteData,
-    importSiteData,
     showToast,
     isCloudSynced,
     syncAllToCloudNow,
@@ -123,21 +117,6 @@ export const AuthorAdminModal: React.FC = () => {
 
   const [copiedMediaId, setCopiedMediaId] = useState<string | null>(null);
   const [domainInput, setDomainInput] = useState(() => getSiteDomain());
-  const backupFileInputRef = React.useRef<HTMLInputElement | null>(null);
-
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      if (text) {
-        importSiteData(text);
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
 
   const [activeTab, setActiveTab] = useState<
     'videos' | 'photos' | 'books' | 'news' | 'links' | 'messages' | 'comments' | 'settings'
@@ -1657,112 +1636,6 @@ export const AuthorAdminModal: React.FC = () => {
                     nb.zadtoo.com (المعتمد الرسمي الآن)
                   </button>
                 </div>
-              </div>
-
-              {/* Production ZIP & Hosting Export Card */}
-              <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-300 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h5 className="font-bold text-emerald-950 text-xs sm:text-sm flex items-center gap-2">
-                      <Download className="w-4 h-4 text-emerald-700" />
-                      <span>تحميل ملف الموقع الكامل المجهز للنشر على الاستضافة (Production ZIP)</span>
-                    </h5>
-                    <p className="text-[11px] text-slate-700 mt-1 leading-relaxed">
-                      يحتوي هذا الملف المضغوط على النسخة الكاملة والمجهزة فوراً للرفع المباشر إلى استضافتك (مثل cPanel داخل مجلد public_html). يضم كافة الروايات والكتب الأربعة كاملة بنصوصها وفهارسها، ومشغل الموسيقى، والصور، والتنسيقات، وملف التوجيه (.htaccess).
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      downloadFileSafely(
-                        '/Nabil_Barakat_Website_Production_Ready.zip',
-                        'Nabil_Barakat_Website_Production_Ready.zip',
-                        showToast
-                      );
-                    }}
-                    className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer active:scale-98"
-                  >
-                    <Download className="w-4 h-4 text-amber-300" />
-                    <span>تحميل ملف الاستضافة المجهز (Production Ready ZIP)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      downloadFileSafely(
-                        '/Nabil_Barakat_Website_Full_Source_Code.zip',
-                        'Nabil_Barakat_Website_Full_Source_Code.zip',
-                        showToast
-                      );
-                    }}
-                    className="px-4 py-2.5 bg-white hover:bg-slate-100 text-[#0b385e] border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-2 shadow-2xs transition cursor-pointer active:scale-98"
-                  >
-                    <FileUp className="w-4 h-4 text-[#c4924c]" />
-                    <span>تحميل الأكواد المصدرية الكاملة (Source Code ZIP)</span>
-                  </button>
-                </div>
-
-                <div className="text-[10px] text-slate-600 bg-white/80 p-2.5 rounded-lg border border-emerald-200">
-                  <p className="font-bold text-emerald-900 mb-1">طريقة التركيب على أي استضافة (cPanel / Apache):</p>
-                  <ol className="list-decimal list-inside space-y-0.5">
-                    <li>افتح File Manager في لوحة تحكم الاستضافة ثم افتح مجلد public_html.</li>
-                    <li>ارفع ملف Production Ready ZIP وفك الضغط داخله (Extract).</li>
-                    <li>افتح رابط موقعك وستجد الموقع يعمل بكامل تصميمه ورواياته الأربعة مباشرة دون الحاجة لأي برمجة إضافية!</li>
-                  </ol>
-                </div>
-              </div>
-
-              {/* Device Synchronization & Backup Card (Transfer between Mobile & Laptop) */}
-              <div className="p-4 bg-sky-50/80 rounded-xl border border-sky-200/90 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h5 className="font-bold text-[#0b385e] text-xs flex items-center gap-1.5">
-                      <RefreshCw className="w-4 h-4 text-sky-600" />
-                      <span>مزامنة ونقل الأغلفة والبيانات بين الموبايل واللابتوب</span>
-                    </h5>
-                    <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
-                      💡 <strong>سبب عدم ظهور صور الأغلفة عند التبديل بين الهاتف واللابتوب:</strong> أن كل جهاز يحتفظ بالصور المرفوعة في ذاكرته المحلية المستقلة. لنقل كل الصور والأغلفة التي رفعتها من الموبايل إلى اللابتوب (أو العكس):
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                  {/* Export Button */}
-                  <button
-                    type="button"
-                    onClick={exportAllSiteData}
-                    className="p-3 bg-white hover:bg-sky-50 border border-sky-300 rounded-xl text-xs font-bold text-[#0b385e] flex items-center justify-center gap-2 shadow-2xs transition cursor-pointer group"
-                  >
-                    <Download className="w-4 h-4 text-sky-600 group-hover:-translate-y-0.5 transition-transform" />
-                    <span>1. تصدير ملف النسخة من هذا الجهاز</span>
-                  </button>
-
-                  {/* Import Button */}
-                  <div>
-                    <input
-                      type="file"
-                      ref={backupFileInputRef}
-                      onChange={handleImportBackup}
-                      accept=".json,application/json"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => backupFileInputRef.current?.click()}
-                      className="w-full p-3 bg-gradient-to-r from-[#0b385e] to-[#07243c] hover:from-[#082a47] hover:to-[#051a2c] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
-                    >
-                      <FileUp className="w-4 h-4 text-amber-400" />
-                      <span>2. استيراد الملف وتحديث الموقع هنا</span>
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-slate-500 bg-white/70 p-2 rounded-lg border border-sky-100">
-                  📌 <strong>طريقة الاستخدام السريعة:</strong> من هاتفك اضغط (1. تصدير)، أرسل الملف بالواتساب لنفسك وافتحه على اللابتوب ثم اضغط (2. استيراد) فتظهر كل الصور والأغلفة المرفوعة فوراً.
-                </p>
               </div>
 
               <div className="pt-4 border-t flex justify-between items-center">

@@ -16,7 +16,7 @@ import {
   OPEN_PWA_INSTALL_EVENT,
   usePWAInstall,
 } from '../hooks/usePWAInstall';
-import { getSiteDomain, getSiteBaseUrl } from '../config/siteDomain';
+import { getSiteDomain, getInstallPageUrl, copyTextToClipboard } from '../config/siteDomain';
 
 export const InstallAppBanner: React.FC = () => {
   const {
@@ -30,7 +30,7 @@ export const InstallAppBanner: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  const siteUrl = getSiteBaseUrl();
+  const installUrl = getInstallPageUrl();
   const siteDomain = getSiteDomain();
 
   useEffect(() => {
@@ -63,14 +63,10 @@ export const InstallAppBanner: React.FC = () => {
   };
 
   const handleCopySiteUrl = async () => {
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(siteUrl);
-        setCopiedUrl(true);
-        setTimeout(() => setCopiedUrl(false), 3000);
-      }
-    } catch {
-      // ignore clipboard errors
+    const ok = await copyTextToClipboard(installUrl);
+    if (ok) {
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 3000);
     }
   };
 
@@ -226,12 +222,12 @@ export const InstallAppBanner: React.FC = () => {
               {copiedUrl ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">تم نسخ رابط الموقع ({siteDomain})</span>
+                  <span className="text-emerald-300">تم نسخ رابط التثبيت المباشر</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5 text-[#dfa85b]" />
-                  <span>نسخ رابط الموقع المباشر ({siteDomain})</span>
+                  <span>نسخ رابط التثبيت المباشر ({siteDomain}/install)</span>
                 </>
               )}
             </button>

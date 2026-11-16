@@ -5,7 +5,6 @@ import { LegalPagesModal, LegalTabType } from './LegalPagesModal';
 import { AuthorQrModal } from './AuthorQrModal';
 import { AuthorSeal } from './AuthorSeal';
 import { getSiteDomain } from '../config/siteDomain';
-import { downloadFileSafely } from '../utils/downloadHelper';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 export const Footer: React.FC = () => {
@@ -15,7 +14,6 @@ export const Footer: React.FC = () => {
     setIsAdminPanelOpen,
     setIsLoginModalOpen,
     logoutSupervisor,
-    showToast,
   } = useApp();
 
   const { isInstalled, triggerInstall } = usePWAInstall();
@@ -128,22 +126,6 @@ export const Footer: React.FC = () => {
               <div>
                 {isAuthorMode ? (
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        downloadFileSafely(
-                          '/Nabil_Barakat_Website_Production_Ready.zip',
-                          'Nabil_Barakat_Website_Production_Ready.zip',
-                          showToast
-                        );
-                      }}
-                      className="border border-emerald-500/50 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
-                      title="تحميل ملف الموقع المجهز للنشر على الاستضافة"
-                    >
-                      <Download className="w-3 h-3 text-emerald-300" />
-                      <span className="hidden sm:inline">تحميل ZIP الاستضافة</span>
-                      <span className="sm:hidden">ZIP</span>
-                    </button>
                     <button
                       onClick={() => setIsAdminPanelOpen(true)}
                       className="border border-[#e7c76d] text-[#f5cd72] hover:bg-[#ffffff14] px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
