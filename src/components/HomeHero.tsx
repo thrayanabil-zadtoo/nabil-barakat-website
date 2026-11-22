@@ -92,7 +92,10 @@ export const HomeHero: React.FC = () => {
     }, 4000);
   };
 
-  const featuredBooks = books.slice(0, 4);
+  const visibleBooks = isAuthorMode
+    ? books
+    : books.filter((b) => (b.visibility || (b.id === 'book-5' ? 'cover_only' : 'public')) !== 'hidden');
+  const featuredBooks = visibleBooks.slice(0, 4);
   const featuredNews = news.slice(0, 4);
   const featuredPhotos = photos.slice(0, 4);
 
@@ -201,7 +204,7 @@ export const HomeHero: React.FC = () => {
                 className="px-6 py-3 rounded-xl bg-[#dfa85b] hover:bg-[#c99547] text-[#07243c] text-xs sm:text-sm font-black transition-all shadow-lg hover:shadow-xl flex items-center gap-2 transform hover:-translate-y-0.5 cursor-pointer"
               >
                 <BookOpen className="w-4 h-4 text-[#07243c]" />
-                <span>استكشف مؤلفاتي ({books.length} مؤلفات)</span>
+                <span>استكشف مؤلفاتي ({visibleBooks.length} مؤلفات)</span>
               </button>
 
               <button

@@ -39,6 +39,7 @@ import { CvPublicViewer } from './components/cv/CvPublicViewer';
 import { getPublicCvRecord, createDefaultCv } from './utils/cvStorage';
 import { AldiwanVerifiedIcon } from './components/AldiwanVerifiedBadge';
 import { DesktopRightSidebar, DesktopLeftSidebar } from './components/DesktopCompanionSidebars';
+import { getVisibleBooksForViewer } from './utils/bookVisibility';
 
 const MainContent: React.FC = () => {
   const {
@@ -82,7 +83,8 @@ const MainContent: React.FC = () => {
   }, []);
 
   const handleResumeReading = (bookmark: ReadingBookmark) => {
-    const targetBook = books.find((b) => b.id === bookmark.bookId) || books[0];
+    const candidateBooks = getVisibleBooksForViewer(books, isAuthorMode);
+    const targetBook = candidateBooks.find((b) => b.id === bookmark.bookId) || candidateBooks[0];
     if (targetBook) {
       setActiveResumeBook({
         book: targetBook,

@@ -3,6 +3,7 @@ import {
   AuthorProfile,
   Book,
   BookComment,
+  BookVisibility,
   LinkItem,
   NewsItem,
   PhotoItem,
@@ -12,6 +13,7 @@ import {
   AnnouncementItem,
   AuthorPost,
 } from '../types';
+import { getBookVisibility } from '../utils/bookVisibility';
 import {
   initialAuthorProfile,
   initialBooks,
@@ -73,6 +75,7 @@ interface AppContextType {
   deleteBook: (id: string) => void;
   setBookPdf: (bookId: string, pdfUrl: string, pdfFileName?: string) => void;
   setBookCover: (bookId: string, coverImage: string) => void;
+  setBookVisibility: (bookId: string, visibility: BookVisibility) => Promise<void>;
   deleteBookGalleryImage: (bookId: string, imageIndex: number) => void;
   addBookGalleryImage: (bookId: string, imageUrl: string) => void;
   addBookComment: (bookId: string, comment: Omit<BookComment, 'id' | 'date'>) => void;
@@ -299,9 +302,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   isbn: official.isbn,
                   publisher: official.publisher,
                   publicationYear: official.publicationYear,
+                  visibility: getBookVisibility(b),
                 };
               }
-              return b;
+              return {
+                ...b,
+                visibility: getBookVisibility(b),
+              };
             })
           );
           setBooks(sanitizedIdbBooks);
@@ -507,6 +514,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         coverImage: finalCover,
         galleryImages: cleanedGallery,
         samplePages: repairedSamplePages,
+        visibility: getBookVisibility(b),
       };
     });
   });
@@ -795,9 +803,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             isbn: official.isbn,
             publisher: official.publisher,
             publicationYear: official.publicationYear,
+            visibility: getBookVisibility(b),
           };
         }
-        return b;
+        return {
+          ...b,
+          visibility: getBookVisibility(b),
+        };
       })
     );
   };
@@ -1583,41 +1595,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Books
   const addBook = async (bookData: Omit<Book, 'id' | 'comments'>) => {
+    const visibility: BookVisibility = bookData.visibility || 'hidden';
     const newBook: Book = {
       ...bookData,
       id: `book-${Date.now()}`,
       comments: [],
+      visibility,
     };
     const nextBooksList = [newBook, ...booksRef.current];
     booksRef.current = nextBooksList;
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
-    if (newBook.coverImage) {
+    if (newBook.coverImage && visibility === 'public') {
       ensureBookImageInGallery(newBook.title, newBook.coverImage);
     }
-    notifySingleNewContent('book', newBook);
-    await executeCloudSave({ books: nextBooksList }, 'تمت إضافة الكتاب الجديد وحفظه سحابياً بنجاح', 'الكتاب الجديد');
+    const saveMsg =
+      visibility === 'hidden'
+        ? 'تم حفظ الكتاب الجديد كمسودة مخفية عن الزوار سحابياً بنجاح'
+        : visibility === 'cover_only'
+        ? 'تمت إضافة الكتاب بوضع (إظهار الغلاف فقط · قريباً النشر) وحفظه سحابياً بنجاح'
+        : 'تمت إضافة الكتاب الجديد ونشره للجميع سحابياً بنجاح';
+    const saved = await executeCloudSave({ books: nextBooksList }, saveMsg, 'الكتاب الجديد');
+    if (saved && visibility === 'public') {
+      notifySingleNewContent('book', newBook);
+    }
   };
 
   const updateBook = async (id: string, updated: Partial<Book>) => {
     const currentBooks = booksRef.current;
+    const target = currentBooks.find((b) => b.id === id);
     const nextBooksList = currentBooks.map((b) => (b.id === id ? { ...b, ...updated } : b));
     booksRef.current = nextBooksList;
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
-    const target = currentBooks.find((b) => b.id === id);
+    const updatedBook = nextBooksList.find((b) => b.id === id);
+    const effectiveVisibility = getBookVisibility(updatedBook || target);
     const title = updated.title || target?.title || 'أحد المؤلفات';
-    if (updated.coverImage) {
+    if (updated.coverImage && effectiveVisibility === 'public') {
       ensureBookImageInGallery(title, updated.coverImage, false);
     }
-    if (updated.galleryImages) {
+    if (updated.galleryImages && effectiveVisibility === 'public') {
       updated.galleryImages.forEach((img) => {
         if (!isVideoMedia(img)) ensureBookImageInGallery(title, img, false);
       });
     }
     await executeCloudSave({ books: nextBooksList }, `تم حفظ تعديلات كتاب «${title}» في قاعدة البيانات السحابية بنجاح`, `تعديلات «${title}»`);
+  };
+
+  const setBookVisibility = async (bookId: string, visibility: BookVisibility) => {
+    const currentBooks = booksRef.current;
+    const target = currentBooks.find((b) => b.id === bookId);
+    if (!target) return;
+    const prevVisibility = getBookVisibility(target);
+    const nextBooksList = currentBooks.map((b) =>
+      b.id === bookId ? { ...b, visibility } : b
+    );
+    booksRef.current = nextBooksList;
+    setBooks(nextBooksList);
+    safeSetItem('nabil_author_v4_books', nextBooksList);
+
+    const updatedBook = nextBooksList.find((b) => b.id === bookId);
+    if (visibility === 'public' && prevVisibility !== 'public' && updatedBook) {
+      if (updatedBook.coverImage) {
+        ensureBookImageInGallery(updatedBook.title, updatedBook.coverImage, false);
+      }
+    }
+
+    const msg =
+      visibility === 'public'
+        ? `تم نشر «${target.title}» وإتاحة محتوياته بالكامل لجميع الزوار!`
+        : visibility === 'cover_only'
+        ? `تم ضبط «${target.title}» على وضع (إظهار الغلاف فقط · قريباً النشر) وإخفاء المحتوى عن الزوار`
+        : `تم إخفاء «${target.title}» بالكامل عن الزوار (مسودة خاصة بك)`;
+
+    const saved = await executeCloudSave({ books: nextBooksList }, msg, `حالة ظهور «${target.title}»`);
+    if (saved && visibility === 'public' && prevVisibility !== 'public' && updatedBook) {
+      notifySingleNewContent('book', updatedBook);
+    }
   };
 
   const deleteBook = async (id: string) => {
@@ -1642,6 +1698,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const currentBooks = booksRef.current;
     const targetBook = currentBooks.find((b) => b.id === bookId);
     const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
+    const effectiveVisibility = getBookVisibility(targetBook);
 
     const nextBooksList = currentBooks.map((b) => {
       if (b.id !== bookId) return b;
@@ -1660,7 +1717,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
-    ensureBookImageInGallery(bookTitle, coverImage, false);
+    if (effectiveVisibility !== 'hidden') {
+      ensureBookImageInGallery(bookTitle, coverImage, false);
+    }
     await executeCloudSave(
       { books: nextBooksList },
       `تم اعتماد وتحديث غلاف رواية «${bookTitle}» سحابياً بنجاح`,
@@ -1699,6 +1758,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetBook = currentBooks.find((b) => b.id === bookId);
     const bookTitle = targetBook ? targetBook.title : 'أحد المؤلفات';
     const isVideo = isVideoMedia(mediaUrl);
+    const effectiveVisibility = getBookVisibility(targetBook);
 
     const nextBooksList = currentBooks.map((b) => {
       if (b.id !== bookId) return b;
@@ -1716,14 +1776,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBooks(nextBooksList);
     safeSetItem('nabil_author_v4_books', nextBooksList);
 
-    if (!isVideo) {
+    if (!isVideo && effectiveVisibility === 'public') {
       ensureBookImageInGallery(bookTitle, mediaUrl);
     }
     await saveSiteDataToCloud({ books: nextBooksList }, true);
     showToast(
       isVideo
         ? 'تمت إضافة الفيديو إلى معرض الكتاب وحفظه سحابياً'
-        : 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً وفي المعرض'
+        : effectiveVisibility === 'public'
+        ? 'تمت إضافة الصورة إلى معرض الكتاب وحفظها سحابياً وفي المعرض'
+        : 'تمت إضافة الصورة داخل الكتاب مع إبقائها مخفية عن الزوار سحابياً'
     );
   };
 
@@ -2488,6 +2550,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteBook,
         setBookPdf,
         setBookCover,
+        setBookVisibility,
         deleteBookGalleryImage,
         addBookGalleryImage,
         addBookComment,

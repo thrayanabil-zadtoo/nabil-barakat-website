@@ -8,6 +8,7 @@ import {
   VideoItem,
 } from '../types';
 import { buildShortShareExcerpt } from '../config/siteDomain';
+import { broadcastWebPushForContent } from './pushNotifications';
 
 export type NotifiableContentKind =
   | 'post'
@@ -251,7 +252,17 @@ export function notifySingleNewContent(
 
   const meta = buildNotificationMeta(kind, item);
   if (!meta) return;
-  void dispatchBrowserNotification(`nabil-${kind}-${item.id}`, meta);
+  const tag = `nabil-${kind}-${item.id}`;
+  void dispatchBrowserNotification(tag, meta);
+  void broadcastWebPushForContent({
+    kind,
+    itemId: item.id,
+    title: meta.title,
+    body: meta.body,
+    url: meta.url,
+    image: meta.image,
+    tag,
+  });
 }
 
 /**

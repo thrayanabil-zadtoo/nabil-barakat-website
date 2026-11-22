@@ -27,6 +27,7 @@ import { ContentInteractionBar } from './ContentInteractionBar';
 import { SmartVideoPlayer } from './SmartVideoPlayer';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { getItemShareUrl } from '../config/siteDomain';
+import { getVisibleBooksForViewer, isBookHiddenFromVisitors } from '../utils/bookVisibility';
 
 export const SPECIAL_CATEGORIES = [
   { id: 'cat-success', title: 'نجاحاتي', icon: '🏆', badge: 'إنجازات وتكريم' },
@@ -61,11 +62,32 @@ export const VideosSection: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [highlightedVideoId, setHighlightedVideoId] = useState<string | null>(null);
 
+  const visibleBooks = useMemo(() => {
+    return getVisibleBooksForViewer(books, isAuthorMode);
+  }, [books, isAuthorMode]);
+
+  const hiddenBookIds = useMemo(() => {
+    if (isAuthorMode) return new Set<string>();
+    return new Set(books.filter((b) => isBookHiddenFromVisitors(b)).map((b) => b.id));
+  }, [books, isAuthorMode]);
+
+  const visibleVideos = useMemo(() => {
+    if (isAuthorMode || hiddenBookIds.size === 0) return videos;
+    return videos.filter((v) => {
+      if (v.bookId && hiddenBookIds.has(v.bookId)) return false;
+      return !books.some(
+        (b) =>
+          hiddenBookIds.has(b.id) &&
+          (v.title?.includes(b.title) || v.category?.includes(b.title) || v.bookTitle?.includes(b.title))
+      );
+    });
+  }, [videos, isAuthorMode, hiddenBookIds, books]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const targetId = new URLSearchParams(window.location.search).get('item');
     if (targetId) {
-      const targetVideo = videos.find((v) => v.id === targetId);
+      const targetVideo = visibleVideos.find((v) => v.id === targetId);
       if (targetVideo) {
         setSelectedNovelId('all');
         setHighlightedVideoId(targetVideo.id);
@@ -81,7 +103,7 @@ export const VideosSection: React.FC = () => {
         };
       }
     }
-  }, [videos.length]);
+  }, [visibleVideos]);
 
   // Add / Edit Modal state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -105,13 +127,13 @@ export const VideosSection: React.FC = () => {
   // Selected Novel Object for current tab (if a book is chosen)
   const selectedNovel = useMemo(() => {
     if (selectedNovelId === 'all' || selectedSpecialCat) return null;
-    return books.find((b) => b.id === selectedNovelId) || null;
-  }, [selectedNovelId, books, selectedSpecialCat]);
+    return visibleBooks.find((b) => b.id === selectedNovelId) || null;
+  }, [selectedNovelId, visibleBooks, selectedSpecialCat]);
 
   // Special Categories with counts
   const specialCategoriesWithCounts = useMemo(() => {
     return SPECIAL_CATEGORIES.map((cat) => {
-      const count = videos.filter((v) => {
+      const count = visibleVideos.filter((v) => {
         if (v.bookId === cat.id) return true;
         if (v.category === cat.title || v.bookTitle === cat.title) return true;
         if (v.title?.includes(cat.title)) return true;
@@ -119,12 +141,12 @@ export const VideosSection: React.FC = () => {
       }).length;
       return { ...cat, count };
     });
-  }, [videos]);
+  }, [visibleVideos]);
 
   // Novels List with counts
   const novelsWithCounts = useMemo(() => {
-    return books.map((book) => {
-      const count = videos.filter((v) => {
+    return visibleBooks.map((book) => {
+      const count = visibleVideos.filter((v) => {
         if (v.bookId === book.id) return true;
         if (v.title?.includes(book.title) || v.category?.includes(book.title)) return true;
         return false;
@@ -134,23 +156,26 @@ export const VideosSection: React.FC = () => {
         count,
       };
     });
-  }, [books, videos]);
+  }, [visibleBooks, visibleVideos]);
 
   // Filtered and Sorted videos
   const displayedVideos = useMemo(() => {
-    let list = videos;
+    let list = visibleVideos;
     if (selectedSpecialCat) {
-      list = videos.filter((v) => {
+      list = visibleVideos.filter((v) => {
         if (v.bookId === selectedSpecialCat.id) return true;
         if (v.category === selectedSpecialCat.title || v.bookTitle === selectedSpecialCat.title) return true;
         if (v.title?.includes(selectedSpecialCat.title)) return true;
         return false;
       });
     } else if (selectedNovelId !== 'all') {
-      const activeBook = books.find((b) => b.id === selectedNovelId);
-      list = videos.filter((v) => {
+      const activeBook = visibleBooks.find((b) => b.id === selectedNovelId);
+      if (!activeBook) {
+        return [];
+      }
+      list = visibleVideos.filter((v) => {
         if (v.bookId === selectedNovelId) return true;
-        if (activeBook && (v.title?.includes(activeBook.title) || v.category?.includes(activeBook.title))) {
+        if (v.title?.includes(activeBook.title) || v.category?.includes(activeBook.title)) {
           return true;
         }
         return false;
@@ -171,7 +196,7 @@ export const VideosSection: React.FC = () => {
       if (!a.isPinned && b.isPinned) return 1;
       return 0;
     });
-  }, [videos, selectedNovelId, selectedSpecialCat, books]);
+  }, [visibleVideos, selectedNovelId, selectedSpecialCat, visibleBooks]);
 
   // Open modal in Add mode
   const handleOpenAddModal = (presetId?: string) => {
@@ -366,7 +391,7 @@ export const VideosSection: React.FC = () => {
             <span>اختر الرواية أو القسم لمشاهدة فصولها ومقاطعها المصورة:</span>
           </div>
           <span className="text-[11px] text-slate-500">
-            إجمالي الفيديوهات: <strong className="text-[#0b385e]">{videos.length}</strong>
+            إجمالي الفيديوهات: <strong className="text-[#0b385e]">{visibleVideos.length}</strong>
           </span>
         </div>
 
@@ -387,7 +412,7 @@ export const VideosSection: React.FC = () => {
                 selectedNovelId === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
               }`}
             >
-              {videos.length}
+              {visibleVideos.length}
             </span>
           </button>
 

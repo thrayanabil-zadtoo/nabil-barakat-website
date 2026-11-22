@@ -1,5 +1,5 @@
 // Service Worker for Official Website of Author Nabil Barakat (nb.zadtoo.com)
-const CACHE_NAME = 'nabil-barakat-cache-v8';
+const CACHE_NAME = 'nabil-barakat-cache-v11';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -95,12 +95,14 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// Handle incoming Web Push Notifications
+// Handle incoming Web Push Notifications (delivered in background even when app/browser is closed)
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'جديد الكاتب أ. نبيل بركات',
     body: 'تم نشر قصيدة أو خاطرة جديدة في مجتمع الكاتب.',
     url: '/',
+    tag: 'nabil-barakat-update',
+    image: undefined,
   };
 
   try {
@@ -113,16 +115,28 @@ self.addEventListener('push', (event) => {
     if (text) payload.body = text;
   }
 
+  const notificationOptions = {
+    body: payload.body,
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    dir: 'rtl',
+    lang: 'ar',
+    tag: payload.tag || 'nabil-barakat-update',
+    renotify: true,
+    vibrate: [180, 80, 180],
+    data: { url: payload.url || '/' },
+  };
+
+  if (
+    payload.image &&
+    typeof payload.image === 'string' &&
+    (payload.image.startsWith('https://') || payload.image.startsWith('/'))
+  ) {
+    notificationOptions.image = payload.image;
+  }
+
   event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
-      dir: 'rtl',
-      lang: 'ar',
-      tag: 'nabil-barakat-update',
-      data: { url: payload.url || '/' },
-    })
+    self.registration.showNotification(payload.title, notificationOptions)
   );
 });
 
@@ -130,6 +144,12 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  let resolvedUrl = '/';
+  try {
+    resolvedUrl = new URL(targetUrl, self.location.origin).href;
+  } catch {
+    resolvedUrl = self.location.origin + '/';
+  }
 
   event.waitUntil(
     self.clients
@@ -139,7 +159,7 @@ self.addEventListener('notificationclick', (event) => {
           if ('focus' in client) {
             if ('navigate' in client && targetUrl && targetUrl !== '/') {
               return client
-                .navigate(targetUrl)
+                .navigate(resolvedUrl)
                 .then((navigated) => (navigated ? navigated.focus() : client.focus()))
                 .catch(() => client.focus());
             }
@@ -147,7 +167,7 @@ self.addEventListener('notificationclick', (event) => {
           }
         }
         if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
+          return self.clients.openWindow(resolvedUrl);
         }
         return undefined;
       })

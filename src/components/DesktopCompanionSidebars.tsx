@@ -63,7 +63,8 @@ export const DesktopRightSidebar: React.FC = () => {
   const [lightboxPhoto, setLightboxPhoto] = useState<PhotoItem | null>(null);
 
   const activeVideo = videos[currentVideoIdx] || videos[0];
-  const featuredBooks = books.slice(0, 4);
+  const visibleBooks = isAuthorMode ? books : books.filter((b) => (b.visibility || (b.id === 'book-5' ? 'cover_only' : 'public')) !== 'hidden');
+  const featuredBooks = visibleBooks.slice(0, 4);
 
   return (
     <div className="space-y-4 select-none" dir="rtl">
@@ -158,6 +159,11 @@ export const DesktopRightSidebar: React.FC = () => {
                   referrerPolicy="no-referrer"
                   className="w-full aspect-3/4 object-cover group-hover:scale-105 transition duration-300"
                 />
+                {!isAuthorMode && (book.visibility || (book.id === 'book-5' ? 'cover_only' : 'public')) === 'cover_only' && (
+                  <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-amber-400 text-[#07243c] text-[9px] font-black shadow">
+                    قريباً
+                  </span>
+                )}
                 <div className="book-spine-effect" />
 
                 <button
@@ -420,7 +426,7 @@ export const DesktopRightSidebar: React.FC = () => {
       )}
 
       {/* 6. رواية مختارة للقراءة الفورية */}
-      {books.length > 0 && (
+      {visibleBooks.length > 0 && (
         <div className="bg-white rounded-xl border border-[#dce8ef] p-4 shadow-sm space-y-3">
           <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
             <div className="flex items-center gap-2">
@@ -433,7 +439,8 @@ export const DesktopRightSidebar: React.FC = () => {
           </div>
 
           {(() => {
-            const spotlightBook = books[1] || books[0];
+            const publicBooks = visibleBooks.filter((b) => (b.visibility || (b.id === 'book-5' ? 'cover_only' : 'public')) === 'public');
+            const spotlightBook = publicBooks[1] || publicBooks[0] || visibleBooks[0];
             return (
               <div className="space-y-2.5">
                 <div className="flex gap-3 items-center">
@@ -508,7 +515,8 @@ export const DesktopRightSidebar: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              if (books.length > 0) setSelectedBookForReading(books[0]);
+              const target = visibleBooks.find((b) => (b.visibility || (b.id === 'book-5' ? 'cover_only' : 'public')) === 'public') || visibleBooks[0];
+              if (target) setSelectedBookForReading(target);
             }}
             className="px-2.5 py-1 text-[11px] bg-[#07375a] hover:bg-[#05263f] text-white rounded-md font-bold transition shrink-0 cursor-pointer"
           >
@@ -536,7 +544,7 @@ export const DesktopRightSidebar: React.FC = () => {
               }}
               className="w-full py-1.5 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold transition text-right flex items-center justify-between cursor-pointer"
             >
-              <span>استعراض كافة الكتب ({books.length})</span>
+              <span>استعراض كافة الكتب ({visibleBooks.length})</span>
               <span>←</span>
             </button>
             <button

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSiteBaseUrl } from '../config/siteDomain';
+import { syncWebPushSubscription } from '../utils/pushNotifications';
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -109,6 +110,7 @@ export async function requestNotificationsOnInstall(
   if (current === 'granted') {
     globalNotificationPermission = 'granted';
     notifyListeners();
+    void syncWebPushSubscription();
     if (showWelcomeNotification) {
       void showInstalledWelcomeNotification();
     }
@@ -130,8 +132,11 @@ export async function requestNotificationsOnInstall(
       const result = (await Notification.requestPermission()) as NotificationPermissionState;
       globalNotificationPermission = result;
       notifyListeners();
-      if (result === 'granted' && showWelcomeNotification) {
-        void showInstalledWelcomeNotification();
+      if (result === 'granted') {
+        void syncWebPushSubscription();
+        if (showWelcomeNotification) {
+          void showInstalledWelcomeNotification();
+        }
       }
       return result;
     } catch {
@@ -158,6 +163,11 @@ function ensureGlobalListeners() {
 
   globalIsInstalled = checkStandaloneMode();
   globalNotificationPermission = getCurrentNotificationPermission();
+
+  // Auto-upgrade any existing device with granted notification permission into a real background Web Push subscription
+  if (globalNotificationPermission === 'granted') {
+    void syncWebPushSubscription();
+  }
 
   // Detect if the PWA is already installed on Android/Desktop Chrome even when opened in a normal browser tab
   const navWithRelated = navigator as unknown as {
@@ -202,6 +212,9 @@ function ensureGlobalListeners() {
         status.onchange = () => {
           globalNotificationPermission = getCurrentNotificationPermission();
           notifyListeners();
+          if (globalNotificationPermission === 'granted') {
+            void syncWebPushSubscription();
+          }
         };
       })
       .catch(() => {});

@@ -59,6 +59,7 @@ export const initialBooks: Book[] = [
     tableOfContents: shaymaaTableOfContents,
     samplePages: shaymaaPages,
     comments: richCommentsForBooks,
+    visibility: 'public',
   },
   {
     id: 'book-2',
@@ -78,6 +79,7 @@ export const initialBooks: Book[] = [
     tableOfContents: rajolBilaLawnTableOfContents,
     samplePages: rajolBilaLawnPages,
     comments: richCommentsForBooks,
+    visibility: 'public',
   },
   {
     id: 'book-3',
@@ -95,6 +97,7 @@ export const initialBooks: Book[] = [
     tableOfContents: etirafatTableOfContents,
     samplePages: etirafatPages,
     comments: richCommentsForBooks,
+    visibility: 'public',
   },
   {
     id: 'book-4',
@@ -112,11 +115,12 @@ export const initialBooks: Book[] = [
     tableOfContents: hekayatAshaqTableOfContents,
     samplePages: hekayatAshaqPages,
     comments: richCommentsForBooks,
+    visibility: 'public',
   },
   {
     id: 'book-5',
     title: 'امرأة أعادت برمجة قلبي',
-    subtitle: 'كتاب الشعر — قيد التجهيز',
+    subtitle: 'كتاب الشعر — قريباً سيتم نشر المحتوى',
     coverImage: '/assets/aistudio/file_000000001c40820a9a43eec175472c23_6445f76f.png',
     galleryImages: [],
     publicationYear: '2026',
@@ -125,7 +129,7 @@ export const initialBooks: Book[] = [
     depositNumber: '',
     pagesCount: 0,
     genre: 'كتاب شعر وقصائد',
-    description: 'كتاب الشعر «امرأة أعادت برمجة قلبي» بقلم الشاعر أ. نبيل بركات. القسم مهيأ وجاهز وسيتم تزويده بالقصائد والمحتوى الشعري الكامل قريباً.',
+    description: 'كتاب الشعر «امرأة أعادت برمجة قلبي» بقلم الشاعر أ. نبيل بركات — يُكتفى حالياً بظهور الغلاف، وقريباً سيتم نشر المحتوى الشعري كاملاً بعد الانتهاء من الكتابة وتوثيق الحقوق.',
     tableOfContents: [
       {
         chapter: 'محتوى كتاب الشعر قيد التجهيز — سيتم إضافته قريباً',
@@ -142,6 +146,7 @@ export const initialBooks: Book[] = [
       },
     ],
     comments: [],
+    visibility: 'cover_only',
   },
 ];
 

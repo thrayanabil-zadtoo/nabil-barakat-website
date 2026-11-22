@@ -28,7 +28,12 @@
         "publicationYear": { "type": "string" },
         "genre": { "type": "string" },
         "order": { "type": "number" },
-        "isPinned": { "type": "boolean" }
+        "isPinned": { "type": "boolean" },
+        "visibility": {
+          "type": "string",
+          "enum": ["public", "cover_only", "hidden"],
+          "description": "Controls whether book is public, cover-only coming soon, or hidden from visitors"
+        }
       },
       "required": ["id", "title"]
     },
@@ -109,6 +114,33 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "content"]
+    },
+    "PushSubscription": {
+      "title": "PushSubscription",
+      "description": "Web Push browser/PWA device subscription for background notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "p256dh": { "type": "string" },
+        "auth": { "type": "string" },
+        "expirationTime": { "type": "number" },
+        "isStandalone": { "type": "boolean" },
+        "userAgent": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "endpoint", "p256dh", "auth"]
+    },
+    "PushConfig": {
+      "title": "PushConfig",
+      "description": "Public Web Push VAPID key configuration",
+      "type": "object",
+      "properties": {
+        "publicKey": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["publicKey"]
     }
   },
   "firestore": {
@@ -131,6 +163,14 @@
     "/comments/{commentId}": {
       "schema": "VisitorComment",
       "description": "Public comments and reviews"
+    },
+    "/push_subscriptions/{subId}": {
+      "schema": "PushSubscription",
+      "description": "Registered PWA Web Push device endpoints for background notifications"
+    },
+    "/push_config/{configId}": {
+      "schema": "PushConfig",
+      "description": "Public VAPID key configuration for Web Push subscriptions"
     }
   }
 }

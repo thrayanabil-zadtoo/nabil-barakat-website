@@ -5,6 +5,13 @@ import fs from 'fs';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+import {
+  ensureVapidReady,
+  savePushSubscription,
+  removePushSubscription,
+  listPushSubscriptions,
+  broadcastPushNotification,
+} from './server/pushService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +94,100 @@ async function startServer() {
   // Health check API
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', serverTime: new Date().toISOString() });
+  });
+
+  // Web Push CORS headers (allows static domain mirrors to reach push endpoints if configured)
+  app.use('/api/push', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
+    }
+    return next();
+  });
+
+  app.get('/api/push/vapid-public-key', async (_req, res) => {
+    try {
+      const { publicKey } = await ensureVapidReady();
+      return res.json({ success: true, publicKey });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'VAPID init failed' });
+    }
+  });
+
+  app.get('/api/push/status', async (_req, res) => {
+    try {
+      const { publicKey } = await ensureVapidReady();
+      const subs = await listPushSubscriptions();
+      return res.json({
+        success: true,
+        enabled: true,
+        publicKey,
+        subscriberCount: subs.length,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, enabled: false, error: err?.message || 'Status failed' });
+    }
+  });
+
+  app.post('/api/push/subscribe', async (req, res) => {
+    try {
+      const { subscription, isStandalone, userAgent } = req.body || {};
+      if (!subscription || !subscription.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+        return res.status(400).json({ success: false, error: 'بيانات اشتراك الإشعارات غير مكتملة' });
+      }
+      const saved = await savePushSubscription({
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+        expirationTime: subscription.expirationTime ?? null,
+        isStandalone: Boolean(isStandalone),
+        userAgent: typeof userAgent === 'string' ? userAgent : req.headers['user-agent'] || '',
+      });
+      return res.json({ success: true, id: saved.id });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err?.message || 'تعذر حفظ الاشتراك' });
+    }
+  });
+
+  app.post('/api/push/unsubscribe', async (req, res) => {
+    try {
+      const { endpoint } = req.body || {};
+      if (endpoint && typeof endpoint === 'string') {
+        await removePushSubscription(endpoint);
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to unsubscribe' });
+    }
+  });
+
+  app.post('/api/push/send', async (req, res) => {
+    try {
+      const { kind, itemId, title, body, url, image, tag, targetEndpoint } = req.body || {};
+      const validKinds = ['post', 'book', 'video', 'photo', 'news', 'announcement', 'link', 'test'];
+      if (!kind || !validKinds.includes(kind)) {
+        return res.status(400).json({ success: false, error: 'نوع المحتوى غير صالح' });
+      }
+      if (!title || !body) {
+        return res.status(400).json({ success: false, error: 'عنوان ومحتوى الإشعار مطلوبان' });
+      }
+
+      const result = await broadcastPushNotification({
+        kind,
+        itemId,
+        title,
+        body,
+        url,
+        image,
+        tag,
+        targetEndpoint,
+      });
+      return res.json(result);
+    } catch (err: any) {
+      console.error('[WebPush] Broadcast error:', err?.message || err);
+      return res.status(500).json({ success: false, error: err?.message || 'تعذر إرسال إشعار الخلفية' });
+    }
   });
 
   // In-memory cache for synthesized audio to prevent duplicate API calls & rate limits
@@ -230,6 +331,11 @@ async function startServer() {
       res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
     });
   }
+
+  // Initialize Web Push VAPID keys cleanly on startup
+  ensureVapidReady().catch((err) => {
+    console.warn('[WebPush] VAPID startup check warning:', err?.message || err);
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running at http://0.0.0.0:${PORT} in ${isProduction ? 'production' : 'development'} mode`);

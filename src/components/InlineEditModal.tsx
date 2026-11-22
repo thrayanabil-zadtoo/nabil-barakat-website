@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { BOOK_VISIBILITY_OPTIONS, getBookVisibility } from '../utils/bookVisibility';
+import { BookVisibility } from '../types';
 import { useApp } from '../context/AppContext';
-import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy, Film } from 'lucide-react';
+import { X, Check, Trash2, Edit2, Video, Image as ImageIcon, BookOpen, Newspaper, Globe, Upload, Copy, Film, Lock, Eye, EyeOff } from 'lucide-react';
 import { compressImage } from '../utils/imageCompressor';
 import { parseVideoUrl } from '../utils/videoUtils';
 import { PHOTO_CATEGORIES, normalizePhotoCategory } from '../utils/photoCategories';
@@ -59,6 +61,7 @@ export const InlineEditModal: React.FC = () => {
   const [bPages, setBPages] = useState(300);
   const [bGenre, setBGenre] = useState('');
   const [bDesc, setBDesc] = useState('');
+  const [bVisibility, setBVisibility] = useState<BookVisibility>('public');
 
   // News local edit state
   const [nTitle, setNTitle] = useState('');
@@ -117,6 +120,7 @@ export const InlineEditModal: React.FC = () => {
       setBPages(editingBook.pagesCount);
       setBGenre(editingBook.genre);
       setBDesc(editingBook.description);
+      setBVisibility(getBookVisibility(editingBook));
     }
   }, [editingBook]);
 
@@ -204,6 +208,7 @@ export const InlineEditModal: React.FC = () => {
       pagesCount: Number(bPages),
       genre: bGenre,
       description: bDesc,
+      visibility: bVisibility,
     });
     setEditingBook(null);
   };
@@ -715,6 +720,39 @@ export const InlineEditModal: React.FC = () => {
                   onChange={(e) => setBDesc(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 outline-none resize-none"
                 />
+              </div>
+
+              <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#0b385e]">
+                  <Lock className="w-3.5 h-3.5 text-[#c4924c]" />
+                  <span>حالة الظهور للزوار</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {BOOK_VISIBILITY_OPTIONS.map((opt) => {
+                    const selected = bVisibility === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setBVisibility(opt.value)}
+                        className={`p-2 rounded-lg border text-right transition flex items-center gap-1.5 text-[11px] font-bold cursor-pointer ${
+                          selected
+                            ? 'bg-[#0b385e] text-white border-[#0b385e] shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-amber-300'
+                        }`}
+                      >
+                        {opt.value === 'hidden' ? (
+                          <EyeOff className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-amber-300' : 'text-rose-600'}`} />
+                        ) : opt.value === 'cover_only' ? (
+                          <ImageIcon className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-amber-300' : 'text-amber-600'}`} />
+                        ) : (
+                          <Eye className={`w-3.5 h-3.5 shrink-0 ${selected ? 'text-emerald-300' : 'text-emerald-600'}`} />
+                        )}
+                        <span className="truncate">{opt.shortLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, BookOpen, Upload, Sparkles, Check, Image as ImageIcon } from 'lucide-react';
+import { BookVisibility } from '../types';
+import { BOOK_VISIBILITY_OPTIONS } from '../utils/bookVisibility';
+import { X, BookOpen, Upload, Check, Image as ImageIcon, Lock, Eye, EyeOff } from 'lucide-react';
 
 export const AddBookModal: React.FC = () => {
   const { isAddBookModalOpen, setIsAddBookModalOpen, addBook, processAndUploadImage, showToast } = useApp();
@@ -14,6 +16,7 @@ export const AddBookModal: React.FC = () => {
   const [isbn, setIsbn] = useState('');
   const [coverImage, setCoverImage] = useState('/src/assets/images/book_cover_heritage_1790501223547.jpg');
   const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<BookVisibility>('hidden');
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   if (!isAddBookModalOpen) return null;
@@ -49,14 +52,15 @@ export const AddBookModal: React.FC = () => {
           { chapter: 'الفصل الثاني: التحولات', pageNumber: 48 },
         ],
         galleryImages: coverImage ? [coverImage] : [],
+        visibility,
       });
 
-      showToast(`✓ تم إضافة كتاب «${title.trim()}» بنجاح وحفظه سحابياً في المكتبة!`);
       // Reset form
       setTitle('');
       setSubtitle('');
       setDescription('');
       setIsbn('');
+      setVisibility('hidden');
       setIsAddBookModalOpen(false);
     } catch (err: any) {
       showToast(`تعذر إضافة الكتاب: ${err?.message || 'خطأ غير متوقع'}`);
@@ -255,6 +259,47 @@ export const AddBookModal: React.FC = () => {
               placeholder="اكتب نبذة شيقة وموجزة عن أحداث الرواية أو فكرة الكتاب ومحاوره..."
               className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-[#0b385e] outline-none text-xs sm:text-sm leading-relaxed"
             />
+          </div>
+
+          {/* Visibility Control for Visitors */}
+          <div className="bg-amber-50/70 p-3.5 sm:p-4 rounded-xl border border-amber-200 space-y-2.5">
+            <div className="flex items-center gap-2 text-[#0b385e] font-bold text-xs sm:text-sm">
+              <Lock className="w-4 h-4 text-[#c4924c]" />
+              <span>حالة الظهور والنشر للزوار (حماية المسودة قبل استكمال الحقوق)</span>
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              {BOOK_VISIBILITY_OPTIONS.map((opt) => {
+                const selected = visibility === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setVisibility(opt.value)}
+                    className={`p-2.5 rounded-xl border text-right transition flex items-start gap-2.5 cursor-pointer ${
+                      selected
+                        ? 'bg-[#0b385e] text-white border-[#0b385e] shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    <span className="mt-0.5 shrink-0">
+                      {opt.value === 'hidden' ? (
+                        <EyeOff className={`w-4 h-4 ${selected ? 'text-amber-300' : 'text-rose-600'}`} />
+                      ) : opt.value === 'cover_only' ? (
+                        <ImageIcon className={`w-4 h-4 ${selected ? 'text-amber-300' : 'text-amber-600'}`} />
+                      ) : (
+                        <Eye className={`w-4 h-4 ${selected ? 'text-emerald-300' : 'text-emerald-600'}`} />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold">{opt.label}</div>
+                      <div className={`text-[10px] mt-0.5 leading-snug ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {opt.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Action buttons */}

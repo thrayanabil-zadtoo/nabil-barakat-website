@@ -13,9 +13,10 @@ import {
   getItemTotalLikes,
   formatArabicNumber,
 } from '../utils/dynamicStats';
+import { getVisibleBooksForViewer } from '../utils/bookVisibility';
 
 export const SiteStatisticsHub: React.FC = () => {
-  const { books, videos, photos, news, links, comments } = useApp();
+  const { books, videos, photos, news, links, comments, isAuthorMode } = useApp();
 
   // 1. Live Current Online Visitors counter (Dynamic & pulsating > 100)
   const [onlineVisitors, setOnlineVisitors] = useState<number>(() => {
@@ -37,14 +38,15 @@ export const SiteStatisticsHub: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Aggregate stats across ALL site contents (Novels, Videos, Photos, News, Links)
+  // 2. Aggregate stats across ALL visible site contents (Novels, Videos, Photos, News, Links)
   const stats = useMemo(() => {
+    const visibleBooks = getVisibleBooksForViewer(books, isAuthorMode);
     let totalViews = 0;
     let totalLikes = 0;
     let totalComments = comments.length;
 
     // Books
-    books.forEach((b) => {
+    visibleBooks.forEach((b) => {
       totalViews += getItemViews(b.id, 400);
       totalLikes += getItemTotalLikes(b.id, 250);
       totalComments += (b.comments?.length || 22);
@@ -79,12 +81,12 @@ export const SiteStatisticsHub: React.FC = () => {
     });
 
     return {
-      booksCount: books.length,
+      booksCount: visibleBooks.length,
       totalViews,
       totalLikes,
       totalComments,
     };
-  }, [books, videos, photos, news, links, comments]);
+  }, [books, videos, photos, news, links, comments, isAuthorMode]);
 
   return (
     <section className="relative my-6 overflow-hidden rounded-xl bg-gradient-to-br from-[#07243c] via-[#0b385e] to-[#051a2c] text-white p-4 sm:p-5 shadow-lg border border-[#dfa85b]/30">

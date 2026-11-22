@@ -19,6 +19,8 @@ export interface SamplePageItem {
   image?: string;
 }
 
+export type BookVisibility = 'public' | 'cover_only' | 'hidden';
+
 export interface Book {
   id: string;
   title: string;
@@ -40,6 +42,7 @@ export interface Book {
   comments: BookComment[];
   isPinned?: boolean;
   order?: number;
+  visibility?: BookVisibility;
 }
 
 export interface VideoItem {

@@ -23,9 +23,11 @@ import {
 } from 'lucide-react';
 import { getLicensesPageUrl, getOfficialLicensesUrl } from '../config/siteDomain';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
+import { getBookVisibility, getVisibleBooksForViewer } from '../utils/bookVisibility';
 
 export const AuthorLicensesSection: React.FC = () => {
   const { books, isAuthorMode, updateBook, showToast, setActiveSection } = useApp();
+  const visibleBooks = getVisibleBooksForViewer(books, isAuthorMode);
   const [selectedBookForReading, setSelectedBookForReading] = useState<Book | null>(null);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
 
@@ -193,7 +195,7 @@ export const AuthorLicensesSection: React.FC = () => {
           </div>
           <div>
             <div className="text-xs text-[#64748b] font-medium">عدد المؤلفات</div>
-            <div className="text-lg font-black text-[#07243c] font-mono">{books.length} كتب ودواوين</div>
+            <div className="text-lg font-black text-[#07243c] font-mono">{visibleBooks.length} كتب ودواوين</div>
           </div>
         </div>
 
@@ -230,7 +232,9 @@ export const AuthorLicensesSection: React.FC = () => {
 
       {/* BOOKS & POETRY LICENSES GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {books.map((book, index) => {
+        {visibleBooks.map((book, index) => {
+          const visibility = getBookVisibility(book);
+          const isCoverOnlyVisitor = !isAuthorMode && visibility === 'cover_only';
           const isPoetryBook =
             book.id === 'book-5' ||
             Boolean(book.genre?.includes('شعر')) ||
@@ -280,6 +284,18 @@ export const AuthorLicensesSection: React.FC = () => {
                       </span>
                     )}
 
+                    {isAuthorMode && visibility !== 'public' && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          visibility === 'hidden'
+                            ? 'bg-rose-50 border-rose-200 text-rose-700'
+                            : 'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}
+                      >
+                        {visibility === 'hidden' ? 'مخفي عن الزوار 🔒' : 'الغلاف فقط للزوار 🖼️'}
+                      </span>
+                    )}
+
                     {isAuthorMode && (
                       <button
                         type="button"
@@ -311,7 +327,11 @@ export const AuthorLicensesSection: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-end p-3 text-white text-center">
                       <BookOpen className="w-6 h-6 text-[#dfa85b] mb-1 animate-bounce" />
                       <span className="text-xs font-bold text-[#f5cd72]">
-                        {isPoetryBook ? 'تصفح كتاب الشعر' : 'تصفح الرواية'}
+                        {isCoverOnlyVisitor
+                          ? 'معاينة الغلاف (قريباً)'
+                          : isPoetryBook
+                          ? 'تصفح كتاب الشعر'
+                          : 'تصفح الرواية'}
                       </span>
                     </div>
                   </div>
@@ -342,12 +362,20 @@ export const AuthorLicensesSection: React.FC = () => {
                       </span>
                       <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-lg">
                         <Layers className="w-3 h-3 text-[#c4924c]" />
-                        <span>{book.pagesCount > 0 ? `${book.pagesCount} صفحة` : 'المحتوى قيد التجهيز'}</span>
+                        <span>
+                          {isCoverOnlyVisitor
+                            ? 'قريباً سيتم نشر المحتوى'
+                            : book.pagesCount > 0
+                            ? `${book.pagesCount} صفحة`
+                            : 'المحتوى قيد التجهيز'}
+                        </span>
                       </span>
                     </div>
 
                     <p className="text-xs text-[#475569] line-clamp-2 leading-relaxed">
-                      {book.description}
+                      {isCoverOnlyVisitor
+                        ? 'يُكتفى حالياً بعرض الغلاف، وقريباً سيتم نشر المحتوى الكامل فور الانتهاء من الكتابة وتوثيق الحقوق.'
+                        : book.description}
                     </p>
                   </div>
                 </div>
@@ -409,7 +437,9 @@ export const AuthorLicensesSection: React.FC = () => {
               {/* Card Footer: Action Button to browse and read book */}
               <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-[11px] text-[#64748b]">
-                  {isPoetryBook && book.pagesCount === 0
+                  {isCoverOnlyVisitor
+                    ? 'قريباً سيتم نشر المحتوى الكامل بعد توثيق الحقوق'
+                    : isPoetryBook && book.pagesCount === 0
                     ? 'قريباً سيتم تزويد الديوان بالقصائد الكاملة'
                     : 'متاح للقراءة الكاملة والاستماع الصوتي'}
                 </span>
@@ -420,7 +450,13 @@ export const AuthorLicensesSection: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-[#07243c] hover:bg-[#0b385e] text-[#f5cd72] hover:text-white text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md flex items-center gap-2 cursor-pointer transform hover:-translate-y-0.5 border border-[#dfa85b]/40"
                 >
                   <BookOpen className="w-4 h-4 text-[#dfa85b]" />
-                  <span>{isPoetryBook ? 'تصفح كتاب الشعر' : 'تصفح وقراءة الرواية الآن'}</span>
+                  <span>
+                    {isCoverOnlyVisitor
+                      ? 'معاينة الغلاف'
+                      : isPoetryBook
+                      ? 'تصفح كتاب الشعر'
+                      : 'تصفح وقراءة الرواية الآن'}
+                  </span>
                 </button>
               </div>
             </div>

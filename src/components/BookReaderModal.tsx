@@ -38,6 +38,8 @@ import {
   User,
   Feather,
   Award,
+  Lock,
+  EyeOff,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useMusic } from '../context/MusicContext';
@@ -50,6 +52,8 @@ import { compressImage } from '../utils/imageCompressor';
 import { getSiteDomain } from '../config/siteDomain';
 import { initialBooks } from '../data/initialData';
 import { AldiwanCertifiedBadge, AldiwanVerifiedIcon } from './AldiwanVerifiedBadge';
+import { getBookVisibility, getVisibleBooksForViewer } from '../utils/bookVisibility';
+import { SupervisorBookExportButtons } from './SupervisorBookExportButtons';
 
 interface BookReaderModalProps {
   book: Book;
@@ -58,7 +62,7 @@ interface BookReaderModalProps {
 }
 
 export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose, initialPageIndex }) => {
-  const { books, authorProfile, addBookComment, deleteBookComment, setBookCover, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos, processAndUploadImage, processAndUploadVideo } = useApp();
+  const { books, authorProfile, addBookComment, deleteBookComment, setBookCover, setBookVisibility, updateBook, deleteBookGalleryImage, addBookGalleryImage, showToast, isAuthorMode, photos, processAndUploadImage, processAndUploadVideo } = useApp();
   const [confirmDeleteBookCommentId, setConfirmDeleteBookCommentId] = useState<string | null>(null);
   
   // Track active book ID so user can switch books right inside reader
@@ -79,6 +83,12 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
     samplePages,
     tableOfContents,
   };
+
+  const visibleSwitcherBooks = getVisibleBooksForViewer(books, isAuthorMode);
+  const activeVisibility = getBookVisibility(activeBook);
+  const isVisitorCoverOnly = !isAuthorMode && activeVisibility === 'cover_only';
+  const isVisitorHiddenDraft = !isAuthorMode && activeVisibility === 'hidden';
+  const isVisitorRestricted = isVisitorCoverOnly || isVisitorHiddenDraft;
 
   const { pauseMusic } = useMusic();
   const [activeTab, setActiveTab] = useState<'reader' | 'toc' | 'gallery' | 'reviews'>('reader');
@@ -700,10 +710,11 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
             <span className="text-[11px] font-bold text-amber-300 hidden md:inline">مؤلفات الكاتب:</span>
           </div>
 
-          {/* Horizontal scroll of all books */}
+          {/* Horizontal scroll of visible books */}
           <div className="flex items-center gap-2 overflow-x-auto py-0.5 scrollbar-thin">
-            {books.map((b) => {
+            {visibleSwitcherBooks.map((b) => {
               const isCurrent = b.id === activeBook.id;
+              const bVis = getBookVisibility(b);
               return (
                 <button
                   key={b.id}
@@ -731,6 +742,12 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     </div>
                   )}
                   <span className="truncate max-w-[120px] sm:max-w-[170px]">{b.title}</span>
+                  {bVis === 'cover_only' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-black/25 text-amber-200 shrink-0">قريباً</span>
+                  )}
+                  {isAuthorMode && bVis === 'hidden' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-700 text-white shrink-0">مخفي</span>
+                  )}
                   {isCurrent && (
                     <span className="w-1.5 h-1.5 rounded-full bg-[#07243c] shrink-0" />
                   )}
@@ -752,7 +769,58 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
         </div>
       </div>
 
-      {/* Tab Navigation Bar */}
+      {/* Author Quick Visibility Control Bar inside Reader */}
+      {isAuthorMode && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-8 py-2">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 font-bold text-[#07243c]">
+              <Lock className="w-4 h-4 text-[#c4924c] shrink-0" />
+              <span>
+                {activeVisibility === 'hidden'
+                  ? 'وضع المسودة الخاصة: هذا العمل مخفي بالكامل عن الزوار حالياً (تشاهده أنت كمشرف أثناء الكتابة والتجهيز).'
+                  : activeVisibility === 'cover_only'
+                  ? 'وضع الغلاف فقط: يرى الزوار الغلاف وعبارة «قريباً سيتم نشر المحتوى» بينما الفصول والنصوص مخفية عنهم.'
+                  : 'وضع النشر العام: هذا العمل وكافة محتوياته ظاهر للجميع.'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SupervisorBookExportButtons book={activeBook} variant="reader" />
+              <div className="inline-flex rounded-lg border border-amber-300 bg-white p-0.5 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setBookVisibility(activeBook.id, 'public')}
+                  className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    activeVisibility === 'public' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  نشر للجميع
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBookVisibility(activeBook.id, 'cover_only')}
+                  className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    activeVisibility === 'cover_only' ? 'bg-amber-500 text-[#07243c]' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  الغلاف فقط (قريباً)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBookVisibility(activeBook.id, 'hidden')}
+                  className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    activeVisibility === 'hidden' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  مخفي عن الزوار 🔒
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Navigation Bar (hidden for visitors when book is cover_only or hidden) */}
+      {!isVisitorRestricted && (
       <div className="bg-white border-b border-[#e2e8f0] shadow-2xs sticky top-[103px] z-20">
         <div className="max-w-6xl mx-auto flex items-center gap-2 px-4 sm:px-8 py-2.5 overflow-x-auto text-xs font-bold">
           <button
@@ -812,6 +880,7 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
           </button>
         </div>
       </div>
+      )}
 
       {/* Content Area */}
       <main className="flex-1 max-w-[1550px] w-full mx-auto p-3 sm:p-6 lg:p-8 space-y-6">
@@ -876,6 +945,103 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
             }}
           />
           
+          {/* VISITOR GATE: Cover-only OR Hidden Draft */}
+          {isVisitorRestricted ? (
+            <div className="max-w-3xl mx-auto my-6">
+              {isVisitorHiddenDraft ? (
+                <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200 shadow-xl text-center space-y-5">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 mx-auto flex items-center justify-center">
+                    <EyeOff className="w-8 h-8 text-slate-500" />
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#07243c] font-literary">
+                    هذا العمل غير متاح للعرض العام حالياً
+                  </h2>
+                  <p className="text-sm text-[#64748b] max-w-lg mx-auto leading-relaxed">
+                    يجري العمل على إعداده وتوثيق حقوقه الأدبية والفكرية، وسيتم نشره للجميع فور جاهزيته.
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-6 py-2.5 rounded-xl bg-[#0b385e] hover:bg-[#07243c] text-white text-xs sm:text-sm font-bold transition cursor-pointer"
+                    >
+                      العودة إلى المكتبة
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-3xl overflow-hidden border border-[#dfa85b]/40 shadow-2xl">
+                  <div className="bg-gradient-to-br from-[#07243c] via-[#0b385e] to-[#051a2c] p-6 sm:p-10 text-white text-center space-y-4">
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#dfa85b]/20 border border-[#dfa85b]/50 text-[#f5cd72] text-xs font-extrabold">
+                      <Sparkles className="w-4 h-4 text-[#dfa85b]" />
+                      <span>قريباً سيتم نشر المحتوى الكامل</span>
+                    </div>
+
+                    <div className="w-48 sm:w-56 aspect-[3/4] mx-auto rounded-2xl overflow-hidden border-2 border-[#dfa85b]/70 shadow-2xl bg-[#051a2c]">
+                      <img
+                        src={activeBook.coverImage}
+                        alt={activeBook.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 pt-2">
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-[#f5cd72] font-literary">
+                        {activeBook.title}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-sky-100 font-semibold">
+                        {activeBook.genre} · بقلم أ. نبيل بركات
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-6 sm:p-8 text-center space-y-5 bg-gradient-to-b from-amber-50/50 to-white">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/90 border border-amber-200 max-w-xl mx-auto space-y-2">
+                      <div className="flex items-center justify-center gap-2 text-sm font-extrabold text-[#07243c]">
+                        <Lock className="w-4 h-4 text-[#c4924c]" />
+                        <span>المحتوى قيد الإعداد وحفظ الحقوق الفكرية</span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                        نكتفي حالياً بعرض الغلاف الرسمي لهذا العمل؛ وقريباً سيتم نشر الفصول والنصوص الكاملة وإتاحتها للقراءة والاستماع لجميع الزوار فور إتمام الكتابة وتوثيق الحقوق.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center">
+                      <AuthorSeal size="sm" showText={true} />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                      {visibleSwitcherBooks.some((b) => getBookVisibility(b) === 'public') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pub = visibleSwitcherBooks.find((b) => getBookVisibility(b) === 'public');
+                            if (pub) {
+                              setActiveBookId(pub.id);
+                              setCurrentPageIndex(0);
+                            }
+                          }}
+                          className="px-5 py-2.5 rounded-xl bg-[#dfa85b] hover:bg-[#c4924c] text-[#07243c] text-xs sm:text-sm font-black transition cursor-pointer shadow-sm flex items-center gap-2"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          <span>تصفح المؤلفات المنشورة حالياً</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-5 py-2.5 rounded-xl bg-[#0b385e] hover:bg-[#07243c] text-white text-xs sm:text-sm font-bold transition cursor-pointer shadow-sm"
+                      >
+                        العودة إلى المكتبة
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
           {/* TAB 1: Reader View */}
           {activeTab === 'reader' && (
             <div className="w-full">
@@ -1843,12 +2009,13 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                     <BookOpen className="w-4 h-4 text-[#c4924c]" />
                     <h4 className="font-bold text-xs text-[#07243c]">مؤلفات وروايات الكاتب</h4>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">({books.length})</span>
+                  <span className="text-[10px] text-slate-400 font-mono">({visibleSwitcherBooks.length})</span>
                 </div>
 
                 <div className="space-y-2.5">
-                  {books.map((b) => {
+                  {visibleSwitcherBooks.map((b) => {
                     const isCurrent = b.id === activeBook.id;
+                    const itemCoverOnlyVisitor = !isAuthorMode && getBookVisibility(b) === 'cover_only';
                     return (
                       <div
                         key={b.id}
@@ -1876,9 +2043,11 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
                             {b.subtitle}
                           </p>
                           <div className="flex items-center gap-1.5 mt-1 text-[9px] text-slate-400">
-                            <span>{b.pagesCount} صفحة</span>
+                            <span>{itemCoverOnlyVisitor ? 'قريباً النشر' : `${b.pagesCount} صفحة`}</span>
                             <span>·</span>
-                            <span className="text-[#c4924c] font-bold">{isCurrent ? 'الرواية المعروضة' : 'اضغط للتصفح'}</span>
+                            <span className="text-[#c4924c] font-bold">
+                              {isCurrent ? 'الرواية المعروضة' : itemCoverOnlyVisitor ? 'معاينة الغلاف' : 'اضغط للتصفح'}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -2274,6 +2443,8 @@ export const BookReaderModal: React.FC<BookReaderModalProps> = ({ book, onClose,
               </form>
 
             </div>
+          )}
+          </>
           )}
 
         </main>
