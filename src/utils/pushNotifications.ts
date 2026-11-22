@@ -27,21 +27,178 @@ export interface PushBackendDiagnostics {
   subscriberCount: number;
   currentDeviceSubscribed: boolean;
   currentEndpoint?: string;
+  configuredBackendUrl?: string;
+  isSameOriginBackend?: boolean;
+  hasPersistentVapidEnv?: boolean;
 }
+
+const PUSH_BACKEND_STORAGE_KEY = 'nabil_push_api_base_url';
 
 let syncInFlight: Promise<PushSubscription | null> | null = null;
 let cachedBaseUrl: string | null | undefined;
+let cachedCloudBackendUrl: string | null | undefined;
 
-function getOptionalExternalPushBase(): string {
+function normalizeBaseUrl(raw?: string | null): string {
+  if (!raw || typeof raw !== 'string') return '';
+  let clean = raw.trim().replace(/\/+$/, '');
+  if (!clean) return '';
+  if (!/^https?:\/\//i.test(clean)) {
+    clean = `https://${clean}`;
+  }
   try {
-    const envBase = (import.meta as any)?.env?.VITE_PUSH_API_BASE_URL;
-    if (typeof envBase === 'string' && envBase.trim()) {
-      return envBase.trim().replace(/\/+$/, '');
+    const parsed = new URL(clean);
+    if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+      return '';
+    }
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+export function getConfiguredPushApiBaseUrl(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(PUSH_BACKEND_STORAGE_KEY);
+      const norm = normalizeBaseUrl(stored);
+      if (norm) return norm;
     }
   } catch {
     // ignore
   }
+
+  if (cachedCloudBackendUrl) {
+    return cachedCloudBackendUrl;
+  }
+
+  try {
+    const envBase = (import.meta as any)?.env?.VITE_PUSH_API_BASE_URL;
+    const normEnv = normalizeBaseUrl(envBase);
+    if (normEnv) return normEnv;
+  } catch {
+    // ignore
+  }
+
   return '';
+}
+
+async function resolveExternalPushBaseFromCloud(): Promise<string> {
+  const localOrEnv = getConfiguredPushApiBaseUrl();
+  if (localOrEnv) return localOrEnv;
+
+  if (cachedCloudBackendUrl !== undefined) {
+    return cachedCloudBackendUrl || '';
+  }
+
+  try {
+    const snap = await getDoc(doc(db, 'push_config', 'backend'));
+    if (snap.exists()) {
+      const norm = normalizeBaseUrl(snap.data()?.apiBaseUrl);
+      cachedCloudBackendUrl = norm || null;
+      if (norm) {
+        try {
+          localStorage.setItem(PUSH_BACKEND_STORAGE_KEY, norm);
+        } catch {
+          // ignore
+        }
+        return norm;
+      }
+    } else {
+      cachedCloudBackendUrl = null;
+    }
+  } catch {
+    cachedCloudBackendUrl = null;
+  }
+
+  return '';
+}
+
+export async function saveConfiguredPushApiBaseUrl(rawUrl: string): Promise<{
+  success: boolean;
+  normalizedUrl: string;
+  reachable: boolean;
+  message: string;
+}> {
+  const trimmed = (rawUrl || '').trim();
+  const normalizedUrl = normalizeBaseUrl(trimmed);
+
+  if (trimmed && !normalizedUrl) {
+    return {
+      success: false,
+      normalizedUrl: '',
+      reachable: false,
+      message: 'الرابط غير صالح. يجب أن يبدأ بـ https:// مثل: https://your-push-server.vercel.app',
+    };
+  }
+
+  // Test reachability before saving if non-empty
+  if (normalizedUrl) {
+    try {
+      const testRes = await fetch(`${normalizedUrl}/api/push/status`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const ct = testRes.headers.get('content-type') || '';
+      if (!testRes.ok || !ct.includes('application/json')) {
+        return {
+          success: false,
+          normalizedUrl,
+          reachable: false,
+          message: 'الخادم عند هذا الرابط لم يستجب لـ /api/push/status — تأكد من نشر الخادم أولاً.',
+        };
+      }
+      const data = await testRes.json().catch(() => null);
+      if (!data?.enabled) {
+        return {
+          success: false,
+          normalizedUrl,
+          reachable: false,
+          message: 'الرابط استجاب ولكن خدمة الإشعارات غير مفعلة عليه.',
+        };
+      }
+    } catch {
+      return {
+        success: false,
+        normalizedUrl,
+        reachable: false,
+        message: 'تعذر الاتصال بهذا الرابط. تأكد من صحة عنوان الخادم وأنه يعمل.',
+      };
+    }
+  }
+
+  try {
+    if (normalizedUrl) {
+      localStorage.setItem(PUSH_BACKEND_STORAGE_KEY, normalizedUrl);
+    } else {
+      localStorage.removeItem(PUSH_BACKEND_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+
+  cachedCloudBackendUrl = normalizedUrl || null;
+  cachedBaseUrl = undefined;
+
+  try {
+    await setDoc(
+      doc(db, 'push_config', 'backend'),
+      {
+        apiBaseUrl: normalizedUrl || '',
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // non-fatal
+  }
+
+  return {
+    success: true,
+    normalizedUrl,
+    reachable: Boolean(normalizedUrl),
+    message: normalizedUrl
+      ? '✓ تم ربط خادم الإشعارات وحفظه سحابياً لجميع الزوار بنجاح!'
+      : 'تم مسح رابط خادم الإشعارات الخارجي.',
+  };
 }
 
 async function fetchPushApi(path: string, init?: RequestInit): Promise<Response | null> {
@@ -55,10 +212,7 @@ async function fetchPushApi(path: string, init?: RequestInit): Promise<Response 
         },
       });
       const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        return res;
-      }
-      if (!res.ok && contentType.includes('application/json')) {
+      if (contentType.includes('application/json')) {
         return res;
       }
       return null;
@@ -68,18 +222,20 @@ async function fetchPushApi(path: string, init?: RequestInit): Promise<Response 
   };
 
   if (cachedBaseUrl !== undefined && cachedBaseUrl !== null) {
-    return tryBase(cachedBaseUrl);
+    const cachedRes = await tryBase(cachedBaseUrl);
+    if (cachedRes) return cachedRes;
+    cachedBaseUrl = undefined;
   }
 
-  // 1. Try same-origin /api/push/... first
+  // 1. Try same-origin /api/push/... first (works natively on Node / Cloud Run / Vercel)
   const sameOriginRes = await tryBase('');
   if (sameOriginRes) {
     cachedBaseUrl = '';
     return sameOriginRes;
   }
 
-  // 2. Optional external push API URL fallback (for static-only domain mirrors)
-  const externalBase = getOptionalExternalPushBase();
+  // 2. Fallback to configured external push API URL (saved in Firestore / localStorage / env)
+  const externalBase = await resolveExternalPushBaseFromCloud();
   if (externalBase) {
     const extRes = await tryBase(externalBase);
     if (extRes) {
@@ -353,6 +509,7 @@ export async function sendTestPushToCurrentDevice(): Promise<{
     };
   }
 
+  const subJson = sub.toJSON();
   const res = await fetchPushApi('/api/push/send', {
     method: 'POST',
     body: JSON.stringify({
@@ -361,13 +518,21 @@ export async function sendTestPushToCurrentDevice(): Promise<{
       body: 'تعمل إشعارات Web Push بنجاح! ستصل منشوراتك الجديدة للقراء حتى لو كان التطبيق مغلقاً.',
       url: '/?section=community',
       targetEndpoint: sub.endpoint,
+      subscription:
+        subJson.endpoint && subJson.keys?.p256dh && subJson.keys?.auth
+          ? {
+              endpoint: subJson.endpoint,
+              keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },
+              expirationTime: subJson.expirationTime ?? null,
+            }
+          : undefined,
     }),
   });
 
   if (!res) {
     return {
       success: false,
-      message: 'تعذر الوصول إلى خادم الإشعارات من هذا النطاق الحالي.',
+      message: 'تعذر الوصول إلى خادم الإشعارات من هذا النطاق الحالي (الاستضافة ثابتة ولم يتم ربط خادم إرسال بعد).',
     };
   }
 
@@ -408,6 +573,7 @@ export async function getPushBackendDiagnostics(): Promise<PushBackendDiagnostic
 
   let backendReachable = false;
   let subscriberCount = 0;
+  let hasPersistentVapidEnv: boolean | undefined;
 
   const statusRes = await fetchPushApi('/api/push/status');
   if (statusRes && statusRes.ok) {
@@ -416,6 +582,9 @@ export async function getPushBackendDiagnostics(): Promise<PushBackendDiagnostic
       if (data?.enabled) {
         backendReachable = true;
         subscriberCount = Number(data?.subscriberCount || 0);
+        if (typeof data?.hasPersistentVapidEnv === 'boolean') {
+          hasPersistentVapidEnv = data.hasPersistentVapidEnv;
+        }
       }
     } catch {
       // ignore
@@ -431,6 +600,8 @@ export async function getPushBackendDiagnostics(): Promise<PushBackendDiagnostic
     }
   }
 
+  const configuredBackendUrl = (await resolveExternalPushBaseFromCloud()) || '';
+
   return {
     supported,
     permission,
@@ -438,5 +609,68 @@ export async function getPushBackendDiagnostics(): Promise<PushBackendDiagnostic
     subscriberCount,
     currentDeviceSubscribed,
     currentEndpoint,
+    configuredBackendUrl,
+    isSameOriginBackend: cachedBaseUrl === '',
+    hasPersistentVapidEnv,
   };
 }
+
+/**
+ * Generates a standard Web Push VAPID keypair (P-256) directly inside the supervisor's browser
+ * so keys can be copied into Vercel/Render/Cloud Run Environment Variables even from a phone.
+ */
+export async function generateBrowserVapidKeys(): Promise<{
+  publicKey: string;
+  privateKey: string;
+}> {
+  if (typeof window === 'undefined' || !window.crypto?.subtle) {
+    throw new Error('المتصفح الحالي لا يدعم التوليد المحلي لمفاتيح التشفير.');
+  }
+
+  const base64UrlToBytes = (b64u: string): Uint8Array => {
+    const pad = '='.repeat((4 - (b64u.length % 4)) % 4);
+    const b64 = (b64u + pad).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = window.atob(b64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  };
+
+  const pad32 = (bytes: Uint8Array): Uint8Array => {
+    if (bytes.length === 32) return bytes;
+    const out = new Uint8Array(32);
+    out.set(bytes.slice(-32), Math.max(0, 32 - bytes.length));
+    return out;
+  };
+
+  const bytesToBase64Url = (bytes: Uint8Array): string => {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return window.btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+
+  const kp = await window.crypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify']
+  );
+  const jwk = await window.crypto.subtle.exportKey('jwk', kp.privateKey);
+  if (!jwk.x || !jwk.y || !jwk.d) {
+    throw new Error('تعذر استخراج مفاتيح VAPID.');
+  }
+
+  const x = pad32(base64UrlToBytes(jwk.x));
+  const y = pad32(base64UrlToBytes(jwk.y));
+  const d = pad32(base64UrlToBytes(jwk.d));
+
+  const pubBytes = new Uint8Array(65);
+  pubBytes[0] = 0x04;
+  pubBytes.set(x, 1);
+  pubBytes.set(y, 33);
+
+  return {
+    publicKey: bytesToBase64Url(pubBytes),
+    privateKey: bytesToBase64Url(d),
+  };
+}
+

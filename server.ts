@@ -120,11 +120,16 @@ async function startServer() {
     try {
       const { publicKey } = await ensureVapidReady();
       const subs = await listPushSubscriptions();
+      const hasPersistentVapidEnv = Boolean(
+        (process.env.VAPID_PUBLIC_KEY?.trim() && process.env.VAPID_PRIVATE_KEY?.trim()) ||
+          !process.env.VERCEL
+      );
       return res.json({
         success: true,
         enabled: true,
         publicKey,
         subscriberCount: subs.length,
+        hasPersistentVapidEnv,
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, enabled: false, error: err?.message || 'Status failed' });
@@ -164,7 +169,7 @@ async function startServer() {
 
   app.post('/api/push/send', async (req, res) => {
     try {
-      const { kind, itemId, title, body, url, image, tag, targetEndpoint } = req.body || {};
+      const { kind, itemId, title, body, url, image, tag, targetEndpoint, subscription } = req.body || {};
       const validKinds = ['post', 'book', 'video', 'photo', 'news', 'announcement', 'link', 'test'];
       if (!kind || !validKinds.includes(kind)) {
         return res.status(400).json({ success: false, error: 'نوع المحتوى غير صالح' });
@@ -182,6 +187,7 @@ async function startServer() {
         image,
         tag,
         targetEndpoint,
+        subscription,
       });
       return res.json(result);
     } catch (err: any) {

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as webpush from 'web-push';
@@ -7,7 +8,15 @@ import * as webpush from 'web-push';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
-const DATA_DIR = path.resolve(ROOT_DIR, '.data');
+
+function resolveWritableDataDir(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.resolve(os.tmpdir(), 'nabil-barakat-push');
+  }
+  return path.resolve(ROOT_DIR, '.data');
+}
+
+const DATA_DIR = resolveWritableDataDir();
 const VAPID_FILE = path.resolve(DATA_DIR, 'vapid-keys.json');
 const SUBS_CACHE_FILE = path.resolve(DATA_DIR, 'push-subscriptions.json');
 const SENT_HISTORY_FILE = path.resolve(DATA_DIR, 'push-sent-history.json');
@@ -56,6 +65,11 @@ export interface PushBroadcastRequest {
   image?: string;
   tag?: string;
   targetEndpoint?: string;
+  subscription?: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    expirationTime?: number | null;
+  };
 }
 
 let cachedFirebaseConfig: FirebaseAppletConfig | null = null;
@@ -71,17 +85,22 @@ function ensureDataDir() {
 
 function getFirebaseConfig(): FirebaseAppletConfig | null {
   if (cachedFirebaseConfig) return cachedFirebaseConfig;
-  try {
-    const configPath = path.resolve(ROOT_DIR, 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as FirebaseAppletConfig;
-      if (parsed?.projectId && parsed?.apiKey) {
-        cachedFirebaseConfig = parsed;
-        return cachedFirebaseConfig;
+  const candidates = [
+    path.resolve(ROOT_DIR, 'firebase-applet-config.json'),
+    path.resolve(process.cwd(), 'firebase-applet-config.json'),
+  ];
+  for (const configPath of candidates) {
+    try {
+      if (fs.existsSync(configPath)) {
+        const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as FirebaseAppletConfig;
+        if (parsed?.projectId && parsed?.apiKey) {
+          cachedFirebaseConfig = parsed;
+          return cachedFirebaseConfig;
+        }
       }
+    } catch (err) {
+      console.warn('[WebPush] Failed to read firebase-applet-config.json:', err);
     }
-  } catch (err) {
-    console.warn('[WebPush] Failed to read firebase-applet-config.json:', err);
   }
   return null;
 }
@@ -212,22 +231,29 @@ async function firestoreListCollection(collectionName: string): Promise<Record<s
   if (!baseUrl || !keyQ) return [];
 
   const items: Record<string, any>[] = [];
-  let pageToken = '';
 
   try {
-    for (let page = 0; page < 10; page++) {
-      const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
-      const res = await fetch(`${baseUrl}/${collectionName}?pageSize=300${tokenPart}&${keyQ}`);
-      if (!res.ok) break;
-      const json = (await res.json()) as { documents?: any[]; nextPageToken?: string };
-      if (Array.isArray(json.documents)) {
-        for (const d of json.documents) {
-          const parsed = fromFirestoreDoc(d);
+    // Firestore REST v1 GET /documents/{collection} rejects API-key calls with 403,
+    // whereas POST /documents:runQuery works seamlessly under public read rules.
+    const res = await fetch(`${baseUrl}:runQuery?${keyQ}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: collectionName }],
+          limit: 500,
+        },
+      }),
+    });
+    if (!res.ok) return [];
+    const rows = (await res.json()) as Array<{ document?: any }>;
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        if (row?.document) {
+          const parsed = fromFirestoreDoc(row.document);
           if (parsed) items.push(parsed);
         }
       }
-      if (!json.nextPageToken) break;
-      pageToken = json.nextPageToken;
     }
   } catch {
     // ignore network glitch, caller merges local cache
@@ -553,8 +579,37 @@ export async function broadcastPushNotification(reqPayload: PushBroadcastRequest
     if (!endpoint) {
       throw new Error('targetEndpoint is required for test notification');
     }
+
+    if (
+      reqPayload.subscription &&
+      reqPayload.subscription.endpoint === endpoint &&
+      reqPayload.subscription.keys?.p256dh &&
+      reqPayload.subscription.keys?.auth
+    ) {
+      await savePushSubscription({
+        endpoint: reqPayload.subscription.endpoint,
+        keys: reqPayload.subscription.keys,
+        expirationTime: reqPayload.subscription.expirationTime ?? null,
+      }).catch(() => {});
+    }
+
     const allSubs = await listPushSubscriptions();
-    const targetSub = allSubs.find((s) => s.endpoint === endpoint);
+    const targetSub =
+      allSubs.find((s) => s.endpoint === endpoint) ||
+      (reqPayload.subscription &&
+      reqPayload.subscription.endpoint === endpoint &&
+      reqPayload.subscription.keys?.p256dh &&
+      reqPayload.subscription.keys?.auth
+        ? {
+            id: makeSubDocId(endpoint),
+            endpoint,
+            p256dh: reqPayload.subscription.keys.p256dh,
+            auth: reqPayload.subscription.keys.auth,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        : undefined);
+
     if (!targetSub) {
       return {
         success: false,

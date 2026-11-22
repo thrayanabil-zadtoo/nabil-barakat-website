@@ -33,8 +33,11 @@ import { BookVisibility } from '../types';
 import { BOOK_VISIBILITY_OPTIONS, getBookVisibility } from '../utils/bookVisibility';
 import { SupervisorBookExportButtons } from './SupervisorBookExportButtons';
 import {
+  generateBrowserVapidKeys,
+  getConfiguredPushApiBaseUrl,
   getPushBackendDiagnostics,
   PushBackendDiagnostics,
+  saveConfiguredPushApiBaseUrl,
   sendTestPushToCurrentDevice,
   syncWebPushSubscription,
 } from '../utils/pushNotifications';
@@ -136,11 +139,16 @@ export const AuthorAdminModal: React.FC = () => {
 
   const [pushDiag, setPushDiag] = useState<PushBackendDiagnostics | null>(null);
   const [isPushBusy, setIsPushBusy] = useState(false);
+  const [pushServerUrlInput, setPushServerUrlInput] = useState(() => getConfiguredPushApiBaseUrl());
+  const [generatedVapidPair, setGeneratedVapidPair] = useState<{ publicKey: string; privateKey: string } | null>(null);
 
   const refreshPushDiagnostics = useCallback(async () => {
     try {
       const diag = await getPushBackendDiagnostics();
       setPushDiag(diag);
+      if (diag.configuredBackendUrl) {
+        setPushServerUrlInput((prev) => prev || diag.configuredBackendUrl || '');
+      }
     } catch {
       // ignore
     }
@@ -1804,6 +1812,142 @@ export const AuthorAdminModal: React.FC = () => {
                     {isPushBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                     <span>إرسال إشعار تجريبي لجهازي الآن</span>
                   </button>
+                </div>
+
+                <p className="text-[10px] text-slate-500">
+                  * زر الاختبار يرسل إشعاراً لجهازك الحالي فقط ولن يرسل أي إشعار لبقية القراء المشتركين.
+                </p>
+
+                {pushDiag?.backendReachable &&
+                  pushDiag.isSameOriginBackend &&
+                  typeof window !== 'undefined' &&
+                  window.location.protocol === 'https:' &&
+                  window.location.hostname !== 'nb.zadtoo.com' &&
+                  !window.location.hostname.includes('localhost') &&
+                  !window.location.hostname.includes('127.0.0.1') &&
+                  pushDiag.configuredBackendUrl !== window.location.origin && (
+                    <div className="bg-emerald-50/90 border border-emerald-300 rounded-lg p-3 space-y-2 text-[11px] text-emerald-950">
+                      <div className="font-bold flex items-center gap-1.5 text-emerald-900">
+                        <Cloud className="w-4 h-4 shrink-0 text-emerald-700" />
+                        <span>أنت تفتح الموقع من خادم دفع نشط ({window.location.hostname})</span>
+                      </div>
+                      <p className="text-emerald-900/90 leading-relaxed">
+                        بعد التأكد من نجاح الإشعار التجريبي هنا، يمكنك اعتماد هذا الرابط بضغطة واحدة ليصبح خادم الإشعارات لموقعك الرئيسي <strong>nb.zadtoo.com</strong> دون فك ربط الدومين عن Firebase.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={isPushBusy}
+                        onClick={async () => {
+                          setIsPushBusy(true);
+                          try {
+                            const res = await saveConfiguredPushApiBaseUrl(window.location.origin);
+                            showToast(res.message);
+                            await refreshPushDiagnostics();
+                          } finally {
+                            setIsPushBusy(false);
+                          }
+                        }}
+                        className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        اعتماد هذا النطاق كخادم إشعارات لـ nb.zadtoo.com
+                      </button>
+                    </div>
+                  )}
+
+                {pushDiag && !pushDiag.backendReachable && (
+                  <div className="bg-amber-50/90 border border-amber-300 rounded-lg p-3 space-y-2 text-[11px] text-amber-950">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                      <span>لماذا ظهر «غير متصل من هذا النطاق»؟</span>
+                    </div>
+                    <p className="leading-relaxed text-amber-900/90">
+                      نطاق <strong>nb.zadtoo.com</strong> يعمل حالياً على استضافة ملفات ثابتة (Firebase Hosting) لا تشغّل خادم الإرسال الخلفي (<span className="font-mono">Node.js</span>). لربط الموقع بخادم الإرسال المجاني وتشغيل الإشعارات والتطبيق المغلق فوراً، الصق رابط الخادم الحي (من Vercel أو الدومين الفرعي التجريبي) أدناه:
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="url"
+                        dir="ltr"
+                        value={pushServerUrlInput}
+                        onChange={(e) => setPushServerUrlInput(e.target.value)}
+                        placeholder="https://your-push-server.vercel.app"
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs text-left"
+                      />
+                      <button
+                        type="button"
+                        disabled={isPushBusy}
+                        onClick={async () => {
+                          setIsPushBusy(true);
+                          try {
+                            const savedRes = await saveConfiguredPushApiBaseUrl(pushServerUrlInput);
+                            showToast(savedRes.message);
+                            await refreshPushDiagnostics();
+                          } finally {
+                            setIsPushBusy(false);
+                          }
+                        }}
+                        className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                      >
+                        حفظ واختبار الاتصال
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white/90 border border-indigo-200 rounded-lg p-3 space-y-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const pair = await generateBrowserVapidKeys();
+                        setGeneratedVapidPair(pair);
+                        showToast('✓ تم توليد مفاتيح VAPID محلياً — انسخها إلى Environment Variables في Vercel');
+                      } catch {
+                        showToast('تعذر توليد المفاتيح في هذا المتصفح');
+                      }
+                    }}
+                    className="text-[11px] font-bold text-[#0b385e] hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <Lock className="w-3 h-3" />
+                    <span>
+                      {pushDiag?.hasPersistentVapidEnv === false
+                        ? 'تنبيه: ثبّت مفاتيح VAPID في Vercel Environment Variables (اضغط لتوليد المفاتيح ونسخها)'
+                        : 'توليد مفاتيح VAPID ثابتة لـ Vercel من الهاتف مباشرة (اضغط لإنشاء ونسخ المفاتيح)'}
+                    </span>
+                  </button>
+
+                    {generatedVapidPair && (
+                      <div className="bg-slate-50 rounded-lg p-2.5 border border-indigo-100 space-y-1.5 text-[10px]">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono font-bold text-slate-700">VAPID_PUBLIC_KEY</span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboardWithFeedback(generatedVapidPair.publicKey, 'المفتاح العام VAPID_PUBLIC_KEY')}
+                            className="px-2 py-0.5 bg-white hover:bg-slate-100 border rounded text-[#0b385e] font-bold cursor-pointer flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>نسخ</span>
+                          </button>
+                        </div>
+                        <div dir="ltr" className="font-mono bg-white p-1.5 rounded border text-slate-600 truncate">
+                          {generatedVapidPair.publicKey}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <span className="font-mono font-bold text-slate-700">VAPID_PRIVATE_KEY</span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboardWithFeedback(generatedVapidPair.privateKey, 'المفتاح الخاص VAPID_PRIVATE_KEY')}
+                            className="px-2 py-0.5 bg-white hover:bg-slate-100 border rounded text-[#0b385e] font-bold cursor-pointer flex items-center gap-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>نسخ</span>
+                          </button>
+                        </div>
+                        <div dir="ltr" className="font-mono bg-white p-1.5 rounded border text-slate-600 truncate">
+                          {generatedVapidPair.privateKey}
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
 
