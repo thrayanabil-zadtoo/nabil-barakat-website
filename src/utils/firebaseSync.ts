@@ -358,260 +358,314 @@ export function subscribeToCloudSiteData(
   onUpdate: (data: Partial<SyncedSiteData>, source?: string) => void
 ): () => void {
   const unsubs: Unsubscribe[] = [];
+  let disposed = false;
+  let heavyAttached = false;
+  let waveBTimer: ReturnType<typeof setTimeout> | null = null;
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
   const handleSnapshotErr = (path: string, err: any) => {
     notifyIfQuotaExceeded(err);
     console.warn(`[Firestore] Sync notice (${path}):`, err?.message || err);
   };
 
-  // 1. Listen to modular 'books' document
-  const booksDocRef = doc(db, COLLECTION_NAME, 'books');
-  const booksUnsub = onSnapshot(
-    booksDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.books && Array.isArray(data.books) && data.books.length > 0) {
-          latestAggregateBooks = data.books as Book[];
-          const merged = mergeBooksFromCaches();
-          if (merged.length > 0) {
-            onUpdate({ books: merged, _isSeeded: true }, 'books');
-          }
-        }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/books`, err)
-  );
-  unsubs.push(booksUnsub);
+  const attachHeavyListeners = () => {
+    if (disposed || heavyAttached) return;
+    heavyAttached = true;
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
 
-  // 1b. Listen to individual books collection for atomic single-book updates
-  const booksCol = collection(db, 'books');
-  const booksColUnsub = onSnapshot(
-    booksCol,
-    (snapshot) => {
-      latestIndividualBooksMap.clear();
-      snapshot.forEach((d) => {
-        if (d.id && !d.id.includes('test')) {
-          const bData = d.data() as Book;
-          latestIndividualBooksMap.set(d.id, bData);
-          writtenBookSignatures.set(d.id, getItemSignature(bData));
-        }
-      });
-      if (!snapshot.empty || (latestAggregateBooks && latestAggregateBooks.length > 0)) {
-        const merged = mergeBooksFromCaches();
-        if (merged.length > 0) {
-          onUpdate({ books: merged, _isSeeded: true }, 'books_col');
-        }
-      }
-    },
-    (err) => handleSnapshotErr('books', err)
-  );
-  unsubs.push(booksColUnsub);
+    // Wave A: Lightweight-to-medium modular aggregate docs (instant above-the-fold hydration)
+    // 1. Modular 'books' document
+    const booksDocRef = doc(db, COLLECTION_NAME, 'books');
+    unsubs.push(
+      onSnapshot(
+        booksDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data?.books && Array.isArray(data.books) && data.books.length > 0) {
+              latestAggregateBooks = data.books as Book[];
+              const merged = mergeBooksFromCaches();
+              if (merged.length > 0) {
+                onUpdate({ books: merged, _isSeeded: true }, 'books');
+              }
+            }
+          }
+        },
+        (err) => handleSnapshotErr(`${COLLECTION_NAME}/books`, err)
+      )
+    );
+
+    // 4. Modular 'photos' document
+    const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
+    unsubs.push(
+      onSnapshot(
+        photosDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (Array.isArray(data?.deletedIds)) {
+              data.deletedIds.forEach((id: string) => id && latestPhotosDeletedIds.add(id));
+              saveDeletedIdsToStorage(DELETED_PHOTOS_STORAGE_KEY, latestPhotosDeletedIds);
+            }
+            if (data?.photos && Array.isArray(data.photos)) {
+              latestAggregatePhotos = data.photos;
+              const merged = mergePhotosFromCaches();
+              if (merged.length > 0 || data.photos.length === 0) {
+                onUpdate({ photos: merged, _isSeeded: true }, 'photos');
+              }
+            }
+          }
+        },
+        (err) => handleSnapshotErr(`${COLLECTION_NAME}/photos`, err)
+      )
+    );
+
+    // 5. Modular 'news' document
+    const newsDocRef = doc(db, COLLECTION_NAME, 'news');
+    unsubs.push(
+      onSnapshot(
+        newsDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data?.news && Array.isArray(data.news)) {
+              onUpdate({ news: data.news, _isSeeded: true }, 'news');
+            }
+          }
+        },
+        (err) => handleSnapshotErr(`${COLLECTION_NAME}/news`, err)
+      )
+    );
+
+    // 10. Modular 'author_posts' document
+    const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
+    unsubs.push(
+      onSnapshot(
+        postsDocRef,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (Array.isArray(data?.deletedIds)) {
+              data.deletedIds.forEach((id: string) => id && latestPostsDeletedIds.add(id));
+              saveDeletedIdsToStorage(DELETED_POSTS_STORAGE_KEY, latestPostsDeletedIds);
+            }
+            if (data?.authorPosts && Array.isArray(data.authorPosts)) {
+              latestAggregatePosts = data.authorPosts;
+              const merged = mergePostsFromCaches();
+              if (merged.length > 0 || data.authorPosts.length === 0) {
+                onUpdate({ authorPosts: merged, _isSeeded: true }, 'author_posts');
+              }
+            }
+          }
+        },
+        (err) => handleSnapshotErr(`${COLLECTION_NAME}/author_posts`, err)
+      )
+    );
+
+    // Wave B: Full individual item collections (books, photos_gallery, community_posts)
+    waveBTimer = setTimeout(() => {
+      if (disposed) return;
+
+      // 1b. Individual books collection
+      const booksCol = collection(db, 'books');
+      unsubs.push(
+        onSnapshot(
+          booksCol,
+          (snapshot) => {
+            latestIndividualBooksMap.clear();
+            snapshot.forEach((d) => {
+              if (d.id && !d.id.includes('test')) {
+                const bData = d.data() as Book;
+                latestIndividualBooksMap.set(d.id, bData);
+                writtenBookSignatures.set(d.id, getItemSignature(bData));
+              }
+            });
+            if (!snapshot.empty || (latestAggregateBooks && latestAggregateBooks.length > 0)) {
+              const merged = mergeBooksFromCaches();
+              if (merged.length > 0) {
+                onUpdate({ books: merged, _isSeeded: true }, 'books_col');
+              }
+            }
+          },
+          (err) => handleSnapshotErr('books', err)
+        )
+      );
+
+      // 4b. Individual photos_gallery collection
+      const photosGalleryCol = collection(db, 'photos_gallery');
+      unsubs.push(
+        onSnapshot(
+          photosGalleryCol,
+          (snapshot) => {
+            latestIndividualPhotosMap.clear();
+            snapshot.forEach((d) => {
+              if (d.id && !d.id.includes('test')) {
+                const pData = d.data() as PhotoItem;
+                latestIndividualPhotosMap.set(d.id, pData);
+                writtenPhotoSignatures.set(d.id, getItemSignature(pData));
+              }
+            });
+            if (!snapshot.empty || (latestAggregatePhotos && latestAggregatePhotos.length > 0)) {
+              const merged = mergePhotosFromCaches();
+              onUpdate({ photos: merged, _isSeeded: true }, 'photos_gallery');
+            }
+          },
+          (err) => handleSnapshotErr('photos_gallery', err)
+        )
+      );
+
+      // 10b. Individual community_posts collection
+      const communityPostsCol = collection(db, 'community_posts');
+      unsubs.push(
+        onSnapshot(
+          communityPostsCol,
+          (snapshot) => {
+            latestIndividualPostsMap.clear();
+            snapshot.forEach((d) => {
+              if (d.id && !d.id.includes('test')) {
+                const postData = d.data() as AuthorPost;
+                latestIndividualPostsMap.set(d.id, postData);
+                writtenPostSignatures.set(d.id, getItemSignature(postData));
+              }
+            });
+            if (!snapshot.empty || (latestAggregatePosts && latestAggregatePosts.length > 0)) {
+              const merged = mergePostsFromCaches();
+              onUpdate({ authorPosts: merged, _isSeeded: true }, 'community_posts');
+            }
+          },
+          (err) => handleSnapshotErr('community_posts', err)
+        )
+      );
+    }, 120);
+  };
+
+  // Stage 1: Attach tiny core metadata docs first (~12 KB total) so Watch stream connects and marks Online in <500ms
+  const triggerHeavyOnce = (snapshot: { metadata?: { fromCache?: boolean } }) => {
+    if (!heavyAttached && !snapshot?.metadata?.fromCache) {
+      attachHeavyListeners();
+    }
+  };
 
   // 2. Listen to modular 'profile' document
   const profileDocRef = doc(db, COLLECTION_NAME, 'profile');
-  const profileUnsub = onSnapshot(
-    profileDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.authorProfile) {
-          onUpdate({ authorProfile: data.authorProfile, _isSeeded: true }, 'profile');
+  unsubs.push(
+    onSnapshot(
+      profileDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.authorProfile) {
+            onUpdate({ authorProfile: data.authorProfile, _isSeeded: true }, 'profile');
+          }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/profile`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/profile`, err)
+    )
   );
-  unsubs.push(profileUnsub);
 
   // 3. Listen to modular 'videos' document
   const videosDocRef = doc(db, COLLECTION_NAME, 'videos');
-  const videosUnsub = onSnapshot(
-    videosDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.videos && Array.isArray(data.videos)) {
-          onUpdate({ videos: data.videos, _isSeeded: true }, 'videos');
-        }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/videos`, err)
-  );
-  unsubs.push(videosUnsub);
-
-  // 4. Listen to modular 'photos' document
-  const photosDocRef = doc(db, COLLECTION_NAME, 'photos');
-  const photosUnsub = onSnapshot(
-    photosDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (Array.isArray(data?.deletedIds)) {
-          data.deletedIds.forEach((id: string) => id && latestPhotosDeletedIds.add(id));
-          saveDeletedIdsToStorage(DELETED_PHOTOS_STORAGE_KEY, latestPhotosDeletedIds);
-        }
-        if (data?.photos && Array.isArray(data.photos)) {
-          latestAggregatePhotos = data.photos;
-          const merged = mergePhotosFromCaches();
-          if (merged.length > 0 || data.photos.length === 0) {
-            onUpdate({ photos: merged, _isSeeded: true }, 'photos');
+  unsubs.push(
+    onSnapshot(
+      videosDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.videos && Array.isArray(data.videos)) {
+            onUpdate({ videos: data.videos, _isSeeded: true }, 'videos');
           }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/photos`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/videos`, err)
+    )
   );
-  unsubs.push(photosUnsub);
-
-  // 4b. Listen to individual photos_gallery collection for atomic updates
-  const photosGalleryCol = collection(db, 'photos_gallery');
-  const photosGalleryUnsub = onSnapshot(
-    photosGalleryCol,
-    (snapshot) => {
-      latestIndividualPhotosMap.clear();
-      snapshot.forEach((d) => {
-        if (d.id && !d.id.includes('test')) {
-          const pData = d.data() as PhotoItem;
-          latestIndividualPhotosMap.set(d.id, pData);
-          writtenPhotoSignatures.set(d.id, getItemSignature(pData));
-        }
-      });
-      if (!snapshot.empty || (latestAggregatePhotos && latestAggregatePhotos.length > 0)) {
-        const merged = mergePhotosFromCaches();
-        onUpdate({ photos: merged, _isSeeded: true }, 'photos_gallery');
-      }
-    },
-    (err) => handleSnapshotErr('photos_gallery', err)
-  );
-  unsubs.push(photosGalleryUnsub);
-
-  // 5. Listen to modular 'news' document
-  const newsDocRef = doc(db, COLLECTION_NAME, 'news');
-  const newsUnsub = onSnapshot(
-    newsDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.news && Array.isArray(data.news)) {
-          onUpdate({ news: data.news, _isSeeded: true }, 'news');
-        }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/news`, err)
-  );
-  unsubs.push(newsUnsub);
 
   // 6. Listen to modular 'links' document
   const linksDocRef = doc(db, COLLECTION_NAME, 'links');
-  const linksUnsub = onSnapshot(
-    linksDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.links && Array.isArray(data.links)) {
-          onUpdate({ links: data.links, _isSeeded: true }, 'links');
+  unsubs.push(
+    onSnapshot(
+      linksDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.links && Array.isArray(data.links)) {
+            onUpdate({ links: data.links, _isSeeded: true }, 'links');
+          }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/links`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/links`, err)
+    )
   );
-  unsubs.push(linksUnsub);
 
   // 7. Listen to modular 'announcements' document
   const annDocRef = doc(db, COLLECTION_NAME, 'announcements');
-  const annUnsub = onSnapshot(
-    annDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.announcements && Array.isArray(data.announcements)) {
-          onUpdate({ announcements: data.announcements, _isSeeded: true }, 'announcements');
+  unsubs.push(
+    onSnapshot(
+      annDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.announcements && Array.isArray(data.announcements)) {
+            onUpdate({ announcements: data.announcements, _isSeeded: true }, 'announcements');
+          }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/announcements`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/announcements`, err)
+    )
   );
-  unsubs.push(annUnsub);
 
   // 8. Listen to modular 'comments' document
   const commentsDocRef = doc(db, COLLECTION_NAME, 'comments');
-  const commentsUnsub = onSnapshot(
-    commentsDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.comments && Array.isArray(data.comments)) {
-          onUpdate({ comments: data.comments, _isSeeded: true }, 'comments');
+  unsubs.push(
+    onSnapshot(
+      commentsDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.comments && Array.isArray(data.comments)) {
+            onUpdate({ comments: data.comments, _isSeeded: true }, 'comments');
+          }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/comments`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/comments`, err)
+    )
   );
-  unsubs.push(commentsUnsub);
 
   // 9. Listen to modular 'messages' document
   const messagesDocRef = doc(db, COLLECTION_NAME, 'messages');
-  const messagesUnsub = onSnapshot(
-    messagesDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.messages && Array.isArray(data.messages)) {
-          onUpdate({ messages: data.messages, _isSeeded: true }, 'messages');
-        }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/messages`, err)
-  );
-  unsubs.push(messagesUnsub);
-
-  // 10. Listen to modular 'author_posts' document
-  const postsDocRef = doc(db, COLLECTION_NAME, 'author_posts');
-  const postsUnsub = onSnapshot(
-    postsDocRef,
-    (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (Array.isArray(data?.deletedIds)) {
-          data.deletedIds.forEach((id: string) => id && latestPostsDeletedIds.add(id));
-          saveDeletedIdsToStorage(DELETED_POSTS_STORAGE_KEY, latestPostsDeletedIds);
-        }
-        if (data?.authorPosts && Array.isArray(data.authorPosts)) {
-          latestAggregatePosts = data.authorPosts;
-          const merged = mergePostsFromCaches();
-          if (merged.length > 0 || data.authorPosts.length === 0) {
-            onUpdate({ authorPosts: merged, _isSeeded: true }, 'author_posts');
+  unsubs.push(
+    onSnapshot(
+      messagesDocRef,
+      (snapshot) => {
+        triggerHeavyOnce(snapshot);
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.messages && Array.isArray(data.messages)) {
+            onUpdate({ messages: data.messages, _isSeeded: true }, 'messages');
           }
         }
-      }
-    },
-    (err) => handleSnapshotErr(`${COLLECTION_NAME}/author_posts`, err)
+      },
+      (err) => handleSnapshotErr(`${COLLECTION_NAME}/messages`, err)
+    )
   );
-  unsubs.push(postsUnsub);
 
-  // 10b. Listen to individual community_posts collection for atomic updates
-  const communityPostsCol = collection(db, 'community_posts');
-  const communityPostsUnsub = onSnapshot(
-    communityPostsCol,
-    (snapshot) => {
-      latestIndividualPostsMap.clear();
-      snapshot.forEach((d) => {
-        if (d.id && !d.id.includes('test')) {
-          const postData = d.data() as AuthorPost;
-          latestIndividualPostsMap.set(d.id, postData);
-          writtenPostSignatures.set(d.id, getItemSignature(postData));
-        }
-      });
-      if (!snapshot.empty || (latestAggregatePosts && latestAggregatePosts.length > 0)) {
-        const merged = mergePostsFromCaches();
-        onUpdate({ authorPosts: merged, _isSeeded: true }, 'community_posts');
-      }
-    },
-    (err) => handleSnapshotErr('community_posts', err)
-  );
-  unsubs.push(communityPostsUnsub);
+  // Fallback safeguard in case Stage 1 fires only from cache or takes longer
+  fallbackTimer = setTimeout(() => {
+    attachHeavyListeners();
+  }, 600);
 
   return () => {
+    disposed = true;
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    if (waveBTimer) clearTimeout(waveBTimer);
     unsubs.forEach((unsub) => unsub());
   };
 }

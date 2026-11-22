@@ -1,5 +1,5 @@
 // Service Worker for Official Website of Author Nabil Barakat (nb.zadtoo.com)
-const CACHE_NAME = 'nabil-barakat-cache-v11';
+const CACHE_NAME = 'nabil-barakat-cache-v12';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -26,11 +26,17 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (!url.protocol.startsWith('http')) return;
 
-  // Always keep API calls, Firebase realtime traffic, and video streams live
+  // Always keep API calls, Firebase realtime traffic, Vite dev modules, and video streams live
   if (
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/uploads/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.endsWith('.ts') ||
+    url.pathname.endsWith('.tsx') ||
     url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('gstatic.com') ||
     url.hostname.includes('firebase')
   ) {
     return;
